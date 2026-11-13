@@ -8,15 +8,25 @@ import L from 'leaflet'
 // Real tiles stop at z7 (Viking, MOLA) and z9 (THEMIS) even though the capabilities XML lists more levels.
 const TREK = 'https://trek.nasa.gov/tiles/Mars/EQ'
 
-function trekLayer(layerId: string, ext: 'jpg' | 'png', maxNativeZoom: number) {
+function trekLayer(
+  layerId: string,
+  ext: 'jpg' | 'png',
+  maxNativeZoom: number,
+  bounds?: L.LatLngBoundsExpression,
+) {
   return L.tileLayer(
     `${TREK}/${layerId}/1.0.0/default/default028mm/{z}/{y}/{x}.${ext}`,
-    { maxNativeZoom, maxZoom: 14, noWrap: true, attribution: 'NASA/JPL-Caltech Mars Trek' },
+    { maxNativeZoom, maxZoom: 19, noWrap: true, bounds, attribution: 'NASA/JPL-Caltech Mars Trek' },
   )
 }
 
+// Jezero site mosaics (Mars 2020 science team, controlled). Bounds stop Leaflet requesting tiles that don't exist.
+// HiRISE 25 cm/px: real tiles up to z17 (~0.3 m/px). CTX 6 m/px: up to z13. Verified 13 Nov.
+const JEZ_HIRISE_BOUNDS: L.LatLngBoundsExpression = [[18.3067994, 77.2229331], [18.669315, 77.583964]]
+const JEZ_CTX_BOUNDS: L.LatLngBoundsExpression = [[18.2110274, 77.1604655], [18.7211945, 77.6991776]]
+
 // Jezero crater, Perseverance landing area (planetocentric lat, east-positive lon)
-const JEZERO: L.LatLngExpression = [18.44, 77.45]
+const JEZERO: L.LatLngExpression = [18.4447, 77.4509]
 
 export default function MarsMap() {
   const ref = useRef<HTMLDivElement>(null)
@@ -29,20 +39,28 @@ export default function MarsMap() {
     const map = L.map(ref.current, {
       crs: L.CRS.EPSG4326,
       center: JEZERO,
-      zoom: 7,
+      zoom: 13,
       minZoom: 0,
-      maxZoom: 14,
+      maxZoom: 19,
       worldCopyJump: false,
     })
 
     const viking = trekLayer('Mars_Viking_MDIM21_ClrMosaic_global_232m', 'jpg', 7).addTo(map)
     const mola = trekLayer('Mars_MGS_MOLA_ClrShade_merge_global_463m', 'jpg', 7)
 
+    // Site imagery on top of the global basemap: CTX for context, HiRISE for walking-scale detail
+    const ctx = trekLayer('JEZ_ctx_B_soc_008_orthoMosaic_6m_Eqc_latTs0_lon0', 'png', 13, JEZ_CTX_BOUNDS).addTo(map)
+    const hirise = trekLayer('JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd', 'png', 17, JEZ_HIRISE_BOUNDS).addTo(map)
+
     // Thermal: THEMIS daytime IR, 100 m/px, covers 65S-65N
     const themis = trekLayer('THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018', 'png', 9)
     themis.setOpacity(0.7)
 
-    const overlays: Record<string, L.Layer> = { 'THEMIS day IR (thermal)': themis }
+    const overlays: Record<string, L.Layer> = {
+      'CTX Jezero 6 m (optical)': ctx,
+      'HiRISE Jezero 25 cm (optical)': hirise,
+      'THEMIS day IR (thermal)': themis,
+    }
     const control = L.control.layers(
       { 'Viking color (optical)': viking, 'MOLA shaded relief (topography)': mola },
       overlays,

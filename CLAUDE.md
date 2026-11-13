@@ -40,6 +40,8 @@ Confirm every endpoint with a real request before building on it. Write down wha
 | Layer | Source | Notes |
 |---|---|---|
 | Basemap / optical | Mars Trek WMTS: `https://trek.nasa.gov/tiles/Mars/EQ/{LayerID}/1.0.0/default/default028mm/{z}/{y}/{x}.{ext}`. VERIFIED: `Mars_Viking_MDIM21_ClrMosaic_global_232m` (jpg, max z7) | Grid = Leaflet `L.CRS.EPSG4326` (2x1 tiles at z0, 256px). Capabilities XML lists more zoom levels than really exist, so test real tiles. Many catalog IDs 404 |
+| Site imagery (walking scale) | VERIFIED: `JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd` (png, tiles to z17 ≈ 0.3 m/px) and `JEZ_ctx_B_soc_008_orthoMosaic_6m_Eqc_latTs0_lon0` (png, to z13) | Jezero only. Bounds in `MarsMap.tsx`. Found via Trek catalog search: `https://trek.nasa.gov/mars/TrekServices/ws/index/eq/searchItems?q=Jezero&rows=200` |
+| Site elevation | Exists in Trek catalog: `JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40` (1 m) and CTX 20 m DTM | NOT served as tiles (404). Need the GeoTIFF download (Trek UI or USGS) for slope / no-go zones. Spike C |
 | Thermal | VERIFIED: `THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018` (png, max z9, 65S–65N) | Our 3rd data type |
 | Topography (global) | VERIFIED: `Mars_MGS_MOLA_ClrShade_merge_global_463m` (jpg, max z7) | Too coarse to route by on foot. Fine for context |
 | Topography (local, for routing) | HiRISE DTMs: https://www.uahirise.org/dtm/ | ~1 m/px. Derive slope from it to find no-go zones |
