@@ -17,9 +17,40 @@ What the judges will look for (taken from the challenge text):
 5. Ground-level imagery from rovers, so the crew knows what a stop looks like before they get there
 6. A form factor: habitat planning screen, tablet, or helmet HUD
 
+## Status (update at every handover)
+
+Last updated: Fri 13 Nov, evening before the hackathon.
+
+Live: https://martian-map-nasa.vercel.app (Vercel project `martian-map`, team `danyarwx-9436s-projects`)
+Repo: https://github.com/danyarwx/martian-map (public, so collaborators' pushes deploy on Vercel Hobby)
+Every push to `main` deploys production. Every other branch and PR gets a preview URL.
+
+Done:
+- Vite + React + TS + Leaflet app with `L.CRS.EPSG4326` (Trek tiles line up, checked on the live site)
+- Layers in `src/MarsMap.tsx`: Viking color + MOLA relief (global), CTX 6 m + HiRISE 25 cm (Jezero), THEMIS day IR (thermal)
+- Perseverance traverse + 708 waypoints from `public/data/*.json` (`npm run fetch-data` refreshes them)
+- Map opens at Perseverance's landing point, zoom 13
+
+Known issues:
+- Scale bar uses Earth's radius, so its distances are wrong. Fix it (Mars radius 3389.5 km) or hide it before the demo
+- Waypoint tooltip only shows sol + tilt. The panorama URLs in the waypoint properties aren't used yet
+- No elevation data in the app yet. The HiRISE 1 m DTM is not served as tiles, so the GeoTIFF has to be downloaded and processed (see Data sources)
+- Everything sits in one component (`MarsMap.tsx`). Split it into `src/map/` before 2–3 people edit it at once
+
+Next, in order:
+1. Kickoff: fill in "Our decisions" below
+2. Agree on shared data formats: `src/types.ts` (`Waypoint`, `RouteSegment`, `Hazard`, `LayerDef`), which files the scripts write to `public/data`, and who owns which folder
+3. `/ecc:plan` → one GitHub issue per task, each with an owner
+4. Build in parallel. Feature freeze around hour 20. Then polish, README, backup demo video
+
+Folder ownership (to avoid merge conflicts):
+- Dev 1: `src/map/` (layers, controls, drawing the route)
+- Dev 2: `scripts/`, `public/data/`, `src/lib/` (slope/hazard logic, route planning)
+- Dev 3 / Danya: `src/panels/` (stop card with panorama, safety panel, HUD view)
+
 ## Our decisions (fill these in at kickoff and keep them current)
 
-- Site: TBD (Jezero/Perseverance traverse or Gale/Mount Sharp boxwork. Both have rover route data and photos)
+- Site: Jezero is the leading option. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with panoramas and tilt, and thermal coverage. Confirm at kickoff
 - Science goal: TBD
 - Form factor: TBD
 - Data layers (minimum 3): TBD
@@ -28,7 +59,7 @@ What the judges will look for (taken from the challenge text):
 ## Stack
 
 - Frontend: Vite + React + TypeScript, deployed on Vercel
-- Map: Leaflet or OpenLayers with a custom equirectangular CRS. Mars tiles cannot go into a Web Mercator (EPSG:3857) Earth setup unchanged
+- Map: Leaflet with `L.CRS.EPSG4326`. Don't switch to Web Mercator (EPSG:3857): Mars Trek tiles are equirectangular
 - Data prep: Python scripts in `/scripts`. Output is static JSON/GeoJSON in `/public/data`
 - No backend unless one is truly needed. Static files cannot break during the demo
 - Fonts: system fonts only (Arial, Georgia, Verdana, Tahoma). No Google Fonts. The venue Wi-Fi will be bad
