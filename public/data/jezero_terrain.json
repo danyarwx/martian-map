@@ -1,0 +1,13 @@
+{
+  "source": "HiRISE 1 m DTM (USGS Mars 2020 TRN), slope on 2 m baseline, 85th percentile per 10 m cell",
+  "west": 77.22293307697142,
+  "south": 18.400009541527652,
+  "east": 77.47999048319453,
+  "north": 18.520010153883426,
+  "width": 1523,
+  "height": 711,
+  "cellMetersX": 9.485,
+  "cellMetersY": 10.0,
+  "slopeEncoding": "uint8, half degrees, 255 = no data, row 0 = north",
+  "elevEncoding": "int16 little-endian, decimetres, -32768 = no data, row 0 = north"
+}

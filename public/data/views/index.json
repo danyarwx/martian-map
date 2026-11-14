@@ -1,0 +1,65 @@
+{
+  "habitat": {
+    "file": "/data/views/habitat.jpg",
+    "sol": 13,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_0013_0668101832_912ECM_N0030028NCAM00104_01_295J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_0013_0668101832_912ECM_N0030028NCAM00104_01_295J"
+  },
+  "three-forks": {
+    "file": "/data/views/three-forks.jpg",
+    "sol": 641,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_0641_0723862831_012ECM_N0310500NCAM12641_04_195J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_0641_0723862831_012ECM_N0310500NCAM12641_04_195J"
+  },
+  "delta-front": {
+    "file": "/data/views/delta-front.jpg",
+    "sol": 474,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_0474_0709027389_491ECM_N0260850NCAM13474_04_195J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_0474_0709027389_491ECM_N0260850NCAM13474_04_195J"
+  },
+  "seitah": {
+    "file": "/data/views/seitah.jpg",
+    "sol": 288,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_0288_0692488860_190ECM_N0090000NCAM01287_02_095J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_0288_0692488860_190ECM_N0090000NCAM01287_02_095J"
+  },
+  "margin-carbonates": {
+    "file": "/data/views/margin-carbonates.jpg",
+    "sol": 1085,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_1085_0763259989_659ECM_N0510000NCAM13085_04_195J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1085_0763259989_659ECM_N0510000NCAM13085_04_195J"
+  },
+  "cheyava-falls": {
+    "file": "/data/views/cheyava-falls.jpg",
+    "sol": 1219,
+    "camera": "Perseverance front hazard camera",
+    "imageId": "FLF_1219_0775164888_506ECM_N0560784FHAZ02418_01_295J",
+    "distanceM": 0,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/FLF_1219_0775164888_506ECM_N0560784FHAZ02418_01_295J"
+  },
+  "ingenuity": {
+    "file": "/data/views/ingenuity.jpg",
+    "sol": 1114,
+    "camera": "Perseverance navigation camera",
+    "imageId": "NLF_1114_0765833434_395ECM_N0512990NCAM03114_01_195J",
+    "distanceM": 363,
+    "credit": "NASA/JPL-Caltech",
+    "source": "https://mars.nasa.gov/mars2020/multimedia/raw-images/NLF_1114_0765833434_395ECM_N0512990NCAM03114_01_195J"
+  }
+}

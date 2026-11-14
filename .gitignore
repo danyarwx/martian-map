@@ -1,0 +1,13 @@
+node_modules
+dist
+*.local
+.env
+.env.*
+!.env.example
+.DS_Store
+.vercel
+*.log
+
+# data prep: Python env and the raw elevation models (1.8 GB), rebuilt by scripts/fetch_data.sh
+scripts/.venv
+scripts/raw
