@@ -134,3 +134,73 @@
 .helmet-menu dd {
   margin: 0;
 }
+.helmet-minimap {
+  position: absolute;
+  right: max(12px, env(safe-area-inset-right, 0px));
+  bottom: max(44px, calc(env(safe-area-inset-bottom, 0px) + 44px));
+  border: 1px solid var(--hud-dim);
+  border-radius: 10px;
+  background: rgba(10, 18, 18, 0.62);
+  overflow: hidden;
+  pointer-events: none;
+}
+.helmet-minimap canvas {
+  display: block;
+}
+.helmet-legend {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: none;
+  gap: 2px;
+  font-size: 10px;
+  color: var(--text, #e8ecf1);
+}
+.helmet-minimap.is-large .helmet-legend {
+  display: grid;
+}
+.helmet-legend li::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.helmet-legend .hz-safe::before { background: var(--hz-safe); }
+.helmet-legend .hz-rock::before { background: var(--hz-rock); }
+.helmet-legend .hz-sand::before { background: var(--hz-sand); }
+.helmet-legend .hz-steep::before { background: var(--hz-steep); }
+.helmet-legend .hz-drop::before { background: var(--hz-drop); }
+.helmet-cv {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
+  width: min(820px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid var(--hud-dim);
+  border-radius: 10px;
+  background: rgba(10, 18, 18, 0.82);
+  color: var(--hud);
+  font-size: 11px;
+  pointer-events: none;
+}
+.helmet-cv canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border-radius: 4px;
+}
+.helmet-cv-titles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 4px;
+}
+.helmet-cv p {
+  margin: 6px 0 0;
+}

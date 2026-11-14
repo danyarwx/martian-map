@@ -28,10 +28,10 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T3.4 (C) Slope · deps T3.2 · commit 3c92b97
 - [x] T3.5 (C+B) Worker + capture · deps T3.3, T3.4, T2.4 · worker a2e121e; camera rig sim/cvRig.ts done 14 Nov (work/t3.5)
 - [x] T4.1 (D) Hazard grid · deps T0.1 · commit 4b1661c
-- [ ] T4.2 (D+E) Fuse CV into grid + mini-map · deps T3.5, T4.1
+- [x] T4.2 (D+E) Fuse CV into grid + mini-map · deps T3.5, T4.1 · done 14 Nov (work/t4.2); drop-off wiring (contract note) NOT applied yet
 - [x] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · commit 3de3e2c · awaiting Dev 2 review
 - [ ] T4.4 (C) Eval harness + metrics · deps T3.5, T4.2
-- [ ] T4.5 (E) CV view (V) · deps T3.5
+- [x] T4.5 (E) CV view (V) · deps T3.5 · done 14 Nov with T4.2
 - [ ] T4.6 (E) HUD core (port from feat/helmet-hud) · deps T2.4
 
 ## M3 – re-route and guidance
@@ -92,3 +92,4 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T2.2 · subagent · 74c87b8 · world/sky.ts (gradient dome, sun at 10:30 local solar time, equinox assumed, shadow map 2048 ±60 m, FogExp2) and world/farTerrain.ts (10 m grid within 4 km of the session origin, 20/40/80 m rings, ≤ 72k triangles, sunk under the near tiles). The crater rim west of 77.25°E cannot be drawn: the 10 m grid has no data there. Not checked: shadow shimmer in motion, other jump points
 - 14 Nov · T5.0/T5.3 (pure parts) · subagent · 7d74ac6 · nav/follow.ts, nav/localPlanner.ts (A* on the hazard grid, 0.3 ms mean), nav/replan.ts (ReplanDecider + ReplanClient with its own planner worker); 32 tests; not wired yet. Timing test now checks the median (p95 flaked when the test files ran in parallel)
 - 14 Nov · T3.5 · new owner · work/t3.5 · sim/cvRig.ts: two 256 × 192 cameras, 70° HFOV, 0.30 m apart, colour only, rows flipped, linear → display gamma in JS; session sends a frame every 150 ms with one in flight. In the browser at the Three Forks demo boulders from 8 m: worker 37 ms, 7.0 Hz, 70 % valid pixels, 5 rocks found, each within 0.3 m of a real boulder (heights 0.40–0.68 m vs 0.42–0.65 m true); 75 fps main view. The status chip shows CV ms and Hz
+- 14 Nov · T4.2 + T4.5 · new owner · work/t4.2 · mapping/fuse.ts (HazardMap: grid + version + latest detections), hud/MiniMap.tsx (north-up, ±25 m small / ±60 m large with M, route dashed, astronaut arrow, scale bar, legend), hud/CvView.tsx (V: left camera with labelled boxes, disparity ramp, ms / Hz / valid % / pose source). In the browser: walking 5 m toward the Three Forks demo boulders paints 4 rock clusters within ~1 m of the real boulders, safe ground as the seen wedge. Not done here: the contract note (CvResult.groundZ / CvFrame.heights for drop-offs on fused heights) — drop-offs are cut #1, so they wait until the core path is done
