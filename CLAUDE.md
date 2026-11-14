@@ -44,6 +44,20 @@ Done on branch `feat/route-planner` (PR open, not merged yet): the excursion pla
 - Scale bar now uses Mars's radius
 - Code split into folders (see below)
 
+Done on branch `feat/ui-mission-control` (from `feat/route-planner`, not pushed): the "Mission control" UI
+- Design tokens (colours, fonts, spacing, radii) on `:root` in `src/index.css`. Design canvas: https://claude.ai/artifact/Lj6DQao3Z7QXw7hs5jWnnh (private)
+- Sidebar: pinned summary (status, time / distance / dose, Fastest/Gentlest, one main action "Walk through stops"), then steps 1–4. Loading, empty and error states live in the summary
+- Stop card replaces the list and steps through the route (Next / Previous / Remove)
+- A click on a map marker only opens its card; it no longer takes the stop off the route
+- Map refits the route when its container resizes, without animation (fixes the off-centre route on phones)
+
+Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushed):
+- Walk-back lines on the map: walking time straight back to the habitat (30 / 60 / 90 min), computed in the worker from the slope grid (`src/lib/walkback.ts`). 60 min is the emergency reserve, an assumption in `src/lib/safety.ts`. Summary warns when the route goes beyond it; each stop card shows its bail-out time
+- Elevation profile of the route in the Route panel, coloured by slope class
+- Suggested departure time (`src/lib/schedule.ts`): scores every quarter hour by time in the midday gust hours, air temperature and daylight left. A model of a typical sol, not a forecast. Slider to try another time, clock times on every leg, latest turn-back time
+- Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
+- The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
@@ -54,6 +68,7 @@ Known issues:
 - All 6 targets on foot is a 20 km, 14 h trip, so it does not fit one excursion. By rover it takes 5.8 h. The demo needs a selection that fits
 - The delta front target sits on a 20° cell: at the walking limit, and over the rover limit, so the rover stops at the nearest passable cell (within 50 m)
 - Waypoint tooltip only shows sol + tilt
+- The slope overlay image still uses the old red/orange colours, not the new slope tokens. On phones the attribution overlaps the scale bar
 - No README for the submission yet
 
 Next, in order:
@@ -73,7 +88,7 @@ Folders (shared shapes live in `src/types.ts`: `Target`, `Terrain`, `Mobility`, 
 - Site: Jezero crater. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with ground photos and tilt, and thermal coverage
 - Science goal: search for signs of ancient life. Collect the samples Perseverance cached, then revisit the rover's strongest leads
 - Form factor: habitat planning screen
-- Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR). Plus rover ground imagery, and radiation and weather as static cited values
+- Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR), spectral (CRISM mineral indicators). Plus rover ground imagery, and radiation and weather as static cited values
 - Demo story, 3 minutes: TBD
 
 ## Stack
@@ -99,6 +114,7 @@ Confirm every endpoint with a real request before building on it. Write down wha
 | Rover route (Perseverance) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json` (559 segments) and `M20_waypoints.json` (708 points) | Standard GeoJSON [lon, lat, elev]. Waypoints include sol, elevation, rover pitch/roll/tilt, distance, and panorama URLs (relative to `https://mars.nasa.gov/mmgis-maps/M20/`). The panorama URLs return 403, so they can't be used |
 | Helicopter (Ingenuity) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/m20_heli_waypoints.json` | The file name is lowercase (`M20_heli…` returns 403). Saved as `public/data/M20_heli_waypoints.json`. Gives Ingenuity's final position |
 | Ground-level photos | VERIFIED: raw image API `https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&sol=N&search=%7CNAVCAM_LEFT` | `scripts/fetch_views.py` caches one photo per stop into `public/data/views/`, picked by the sol of the nearest waypoint |
+| Spectral / minerals | VERIFIED: CRISM MTRDR browse PNG from PDS Geosciences, observation FRT00005C5E, product `brcarj` (URL in `scripts/fetch_data.sh`) | Mars Trek has NO mineral tiles over Jezero: its CRISM items are footprints only (tiles 404), TES is 16 km/px. Shown as one `imageOverlay`, bounds in `src/map/layers.ts`. Covers about 88% of the planning area. No usable olivine product. Trek catalog search needs `key=`, not `q=` |
 | Geology | USGS Mars maps: https://astrogeology-usgs.hub.arcgis.com/pages/interactive-maps-mars | Geologic units for the science layer |
 | Route visual reference | https://science.nasa.gov/resource/curiositys-proposed-path-up-mount-sharp/ | Shows how NASA presents a route |
 | Atmosphere / radiation | Candidates: Perseverance MEDA, Curiosity REMS and RAD | Not confirmed yet. A static "typical conditions" panel with a cited source counts |

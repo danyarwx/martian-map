@@ -52,8 +52,11 @@ function legFromCells(
   seconds: number,
   fromId: string,
   toId: string,
+  homeSec: Float32Array | null,
 ): RouteLeg {
   const path: LatLon[] = []
+  const elev: (number | null)[] = []
+  const walkHomeMin: number[] = []
   let distanceM = 0
   let ascentM = 0
   let descentM = 0
@@ -63,6 +66,8 @@ function legFromCells(
     const col = i % t.width
     const row = (i / t.width) | 0
     path.push(cellCenter(t, col, row))
+    elev.push(t.elev[i] === ELEV_NO_DATA ? null : t.elev[i] / 10)
+    if (homeSec) walkHomeMin.push(Math.round(homeSec[i] / 6) / 10)
     if (t.slope[i] !== 255) maxSlope = Math.max(maxSlope, t.slope[i] / 2)
     if (k === 0) continue
     const p = cells[k - 1]
@@ -88,6 +93,8 @@ function legFromCells(
     steepM,
     notes,
     sections,
+    elev,
+    walkHomeMin,
   }
 }
 
@@ -100,6 +107,8 @@ function reverseLeg(l: RouteLeg): RouteLeg {
     ascentM: l.descentM,
     descentM: l.ascentM,
     notes: [...l.notes].reverse(),
+    elev: [...l.elev].reverse(),
+    walkHomeMin: [...l.walkHomeMin].reverse(),
     sections: l.sections.map((s) => ({ ...s, path: [...s.path].reverse() })).reverse(),
   }
 }
@@ -122,17 +131,25 @@ interface Footing {
   cells: number[]
   /** Real seconds per metre per cell for this mobility. */
   secPerM: Float32Array
+  /** Seconds on foot back to the habitat per cell, or null when not asked for. */
+  homeSec: Float32Array | null
 }
 
 /** A stop on no-go ground is moved to the nearest passable cell within about 50 m. */
-function findFooting(t: Terrain, m: Mobility, habitat: Target, targets: Target[]): Footing {
+function findFooting(
+  t: Terrain,
+  m: Mobility,
+  habitat: Target,
+  targets: Target[],
+  homeSec: Float32Array | null = null,
+): Footing {
   const secPerM = buildCostGrid(t, m)
   const stops = [habitat, ...targets]
   const cells = stops.map((s) => {
     const { col, row } = toCell(t, s)
     return snapToPassable(secPerM, t.width, t.height, col, row)
   })
-  return { stops, cells, secPerM }
+  return { stops, cells, secPerM, homeSec }
 }
 
 /**
@@ -140,7 +157,7 @@ function findFooting(t: Terrain, m: Mobility, habitat: Target, targets: Target[]
  * or least slope-weighted time) and the visiting order minimises the same thing over the whole trip.
  * The plan reports real times either way.
  */
-function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, secPerM }: Footing): RoutePlan {
+function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, secPerM, homeSec }: Footing): RoutePlan {
   const cost = profile === 'fast' ? secPerM : buildCostGrid(t, m, (deg) => gentlePenalty(m, deg))
   const fastest = secondsPerMetre(m, 0)
 
@@ -155,7 +172,7 @@ function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, 
       const found = findPath(cost, t.width, t.height, t.cellMetersX, t.cellMetersY, cells[a], cells[b], fastest)
       if (!found) continue
       const seconds = profile === 'fast' ? found.seconds : travelSeconds(t, secPerM, found.cells)
-      const leg = legFromCells(t, m, profile, found.cells, seconds, stops[a].id, stops[b].id)
+      const leg = legFromCells(t, m, profile, found.cells, seconds, stops[a].id, stops[b].id, homeSec)
       legs.set(key(a, b), leg)
       legs.set(key(b, a), reverseLeg(leg))
       weight.set(key(a, b), found.seconds / 60)
@@ -233,9 +250,18 @@ export function planRoute(
   return planOn(t, m, profile, findFooting(t, m, habitat, targets))
 }
 
-/** Plans the fastest and the gentlest round trip together, and says whether they differ enough to offer a choice. */
-export function planRoutes(t: Terrain, m: Mobility, habitat: Target, targets: Target[]): RoutePlans {
-  const footing = findFooting(t, m, habitat, targets)
+/**
+ * Plans the fastest and the gentlest round trip together, and says whether they differ enough to offer a choice.
+ * With `homeSec` (see walkback.ts) every leg also carries the walking time straight back to the habitat.
+ */
+export function planRoutes(
+  t: Terrain,
+  m: Mobility,
+  habitat: Target,
+  targets: Target[],
+  homeSec: Float32Array | null = null,
+): RoutePlans {
+  const footing = findFooting(t, m, habitat, targets, homeSec)
   const fast = planOn(t, m, 'fast', footing)
   let gentle = planOn(t, m, 'gentle', footing)
   // A round trip costs the same in both directions: show both routes in the same direction so they compare stop by stop.

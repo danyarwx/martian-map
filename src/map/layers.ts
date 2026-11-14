@@ -34,7 +34,25 @@ function trekLayer(
 const JEZ_HIRISE_BOUNDS: L.LatLngBoundsExpression = [[18.3067994, 77.2229331], [18.669315, 77.583964]]
 const JEZ_CTX_BOUNDS: L.LatLngBoundsExpression = [[18.2110274, 77.1604655], [18.7211945, 77.6991776]]
 
+// Mineral indicators from CRISM (MRO), observation FRT00005C5E, browse product "CAR", 18 m/px.
+// One image cached in public/data (scripts/fetch_data.sh). Equirectangular, so lon/lat bounds place it exactly.
+// Bounds are the pixel edges computed from the product's PDS label. Found 14 Nov; Mars Trek has no such tiles.
+const CRISM_CAR_BOUNDS: L.LatLngBoundsExpression = [[18.36452, 77.27904], [18.6352, 77.55895]]
+/** Name of the mineral layer in the layer list. The map shows its legend while it is on. */
+export const MINERAL_LAYER = 'CRISM minerals (spectral)'
+/** What the colours of the mineral layer point to. Indicators, not identifications. */
+export const MINERAL_LEGEND = [
+  { color: '#7fe07f', label: 'carbonate' },
+  { color: '#e0409a', label: 'Fe/Mg clay' },
+  { color: '#5a7dff', label: 'other hydrated minerals' },
+]
+
 export function createTileLayers() {
+  const minerals = L.imageOverlay('/data/jezero_crism_car.png', CRISM_CAR_BOUNDS, {
+    opacity: 0.75,
+    interactive: false,
+    attribution: 'CRISM: NASA/JPL-Caltech/JHUAPL',
+  })
   const themis = trekLayer('THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018', 'png', 9)
   themis.setOpacity(0.7)
   return {
@@ -53,6 +71,7 @@ export function createTileLayers() {
       ),
     },
     // Thermal: THEMIS daytime IR, 100 m/px, covers 65S-65N
-    extra: { 'THEMIS day IR (thermal)': themis },
+    // Spectral: CRISM mineral indicators, Jezero only
+    extra: { 'THEMIS day IR (thermal)': themis, [MINERAL_LAYER]: minerals },
   }
 }

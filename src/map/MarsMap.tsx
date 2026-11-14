@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta } from '../types.ts'
+import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta, WalkBackImage } from '../types.ts'
 import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
 import { duration } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
-import { createTileLayers, MARS_CRS } from './layers.ts'
+import { WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
+import { createTileLayers, MARS_CRS, MINERAL_LAYER, MINERAL_LEGEND } from './layers.ts'
 
 interface Props {
   site: SiteConfig
@@ -14,6 +15,8 @@ interface Props {
   custom: Target[]
   /** Header of the elevation grid, null until loaded. */
   terrainMeta: TerrainMeta | null
+  /** Lines of equal walking time back to the habitat, null until the first plan. */
+  walkBack: WalkBackImage | null
   /** Ids of the targets chosen for the route. */
   selected: ReadonlySet<string>
   /** The route the user chose. */
@@ -24,7 +27,7 @@ interface Props {
   focusId: string | null
   /** True while the next click on the map adds a point. */
   adding: boolean
-  onToggle: (id: string) => void
+  /** Opens a stop's card. A click on a marker never changes the route. */
   onFocus: (id: string) => void
   /** Called when a marker is dropped. Returns null when the move is accepted, else the reason it is not. */
   onMoveHabitat: (p: LatLon) => string | null
@@ -36,9 +39,9 @@ interface Props {
 }
 
 /** Route line colour per slope class: easy, moderate, close to the limit. */
-const LEVEL_COLORS = ['#35e0ff', '#ffd23f', '#ff7a1a']
+const LEVEL_COLORS = ['#5ce1e6', '#ffd166', '#ff5da2']
 /** Colour per kind of route note, for the line from a turn to the ground it avoids. */
-const NOTE_COLORS = { 'no-go': '#c2382e', slow: '#ffd23f', steep: '#ff7a1a' }
+const NOTE_COLORS = { 'no-go': '#f85149', slow: '#ffd166', steep: '#ff5da2' }
 /** From this zoom on, route notes stay open next to the path instead of showing on hover. */
 const NOTES_OPEN_ZOOM = 15
 
@@ -46,7 +49,7 @@ const NOTES_OPEN_ZOOM = 15
 const deg = (v: number) => String(Math.round(v))
 
 export default function MarsMap(props: Props) {
-  const { site, habitat, custom, terrainMeta, selected, plan, otherPlan, focusId, adding } = props
+  const { site, habitat, custom, terrainMeta, walkBack, selected, plan, otherPlan, focusId, adding } = props
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const stopsRef = useRef<L.LayerGroup | null>(null)
@@ -61,6 +64,8 @@ export default function MarsMap(props: Props) {
   const [drops, setDrops] = useState(0)
   /** The pair of routes last drawn, to tell a switch between the two from a new plan. */
   const drawn = useRef<{ plan: RoutePlan | null; other: RoutePlan | null }>({ plan: null, other: null })
+  /** The route area last fitted into view. Fitted again when the map's container changes size. */
+  const fitted = useRef<L.LatLngBounds | null>(null)
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -84,6 +89,19 @@ export default function MarsMap(props: Props) {
       .addTo(map)
     layersRef.current = control
     L.control.scale({ imperial: false }).addTo(map)
+
+    // The mineral layer explains its colours while it is on.
+    const minerals = new L.Control({ position: 'bottomright' })
+    minerals.onAdd = () => {
+      const el = L.DomUtil.create('div', 'route-legend')
+      el.innerHTML =
+        '<strong>Mineral indicators</strong>' +
+        MINERAL_LEGEND.map(({ color, label }) => `<span><i style="background:${color}"></i>${label}</span>`).join('') +
+        '<span class="legend-note">CRISM band depths, 18 m/px.<br>Hints for where to sample, not proof.</span>'
+      return el
+    }
+    map.on('overlayadd', (e) => e.name === MINERAL_LAYER && minerals.addTo(map))
+    map.on('overlayremove', (e) => e.name === MINERAL_LAYER && minerals.remove())
 
     let alive = true
     const getJson = async <T,>(path: string): Promise<T | null> => {
@@ -121,8 +139,16 @@ export default function MarsMap(props: Props) {
     notesRef.current = L.layerGroup().addTo(map)
     stopsRef.current = L.layerGroup().addTo(map)
 
+    // Leaflet does not notice when its container is resized by the layout; keep the centre where it was.
+    const resize = new ResizeObserver(() => {
+      map.invalidateSize({ pan: false })
+      if (fitted.current) map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+    })
+    resize.observe(ref.current)
+
     return () => {
       alive = false
+      resize.disconnect()
       map.remove()
       mapRef.current = null
       layersRef.current = null
@@ -146,6 +172,40 @@ export default function MarsMap(props: Props) {
       overlay.remove()
     }
   }, [site, terrainMeta])
+
+  // Walk-back lines: how long it takes to walk straight home from anywhere, with the emergency reserve in green.
+  useEffect(() => {
+    const map = mapRef.current
+    const control = layersRef.current
+    if (!map || !control || !terrainMeta || !walkBack) return
+    const canvas = document.createElement('canvas')
+    canvas.width = walkBack.width
+    canvas.height = walkBack.height
+    const pixels = new ImageData(walkBack.width, walkBack.height)
+    pixels.data.set(walkBack.rgba)
+    canvas.getContext('2d')?.putImageData(pixels, 0, 0)
+    const group = L.layerGroup([
+      L.imageOverlay(
+        canvas.toDataURL(),
+        [[terrainMeta.south, terrainMeta.west], [terrainMeta.north, terrainMeta.east]],
+        { interactive: false },
+      ),
+      ...walkBack.labels.map(({ minutes, at }) => {
+        const reserve = minutes === WALK_BACK_RESERVE_MIN
+        const html = `<div class="walkback-label${reserve ? ' walkback-label--reserve' : ''}">${minutes} min${reserve ? ' · reserve' : ''}</div>`
+        return L.marker([at.lat, at.lon], {
+          icon: L.divIcon({ className: '', html, iconSize: [0, 0] }),
+          interactive: false,
+          keyboard: false,
+        })
+      }),
+    ]).addTo(map)
+    control.addOverlay(group, 'Walk-back time (on foot to habitat)')
+    return () => {
+      control.removeLayer(group)
+      group.remove()
+    }
+  }, [terrainMeta, walkBack])
 
   // "Add point on map": crosshair cursor, and the next click on the map itself picks the spot.
   // Clicks on markers do not reach the map, so no point is created under an existing marker.
@@ -188,17 +248,14 @@ export default function MarsMap(props: Props) {
         icon: L.divIcon({
           className: '',
           html: `<div class="${classes}"><span>${label}</span></div>`,
-          iconSize: [28, 28],
+          iconSize: [32, 32],
         }),
         title: hint,
         draggable: isHabitat || isCustom,
         zIndexOffset: isHabitat ? 500 : 0,
       })
-        .bindTooltip(hint, { direction: 'top', offset: [0, -14] })
-        .on('click', () => {
-          handlers.current.onFocus(stop.id)
-          if (!isHabitat) handlers.current.onToggle(stop.id)
-        })
+        .bindTooltip(hint, { direction: 'top', offset: [0, -16] })
+        .on('click', () => handlers.current.onFocus(stop.id))
         .addTo(group)
       if (!isHabitat && !isCustom) continue
       // Nothing is planned while dragging: the new position is reported once, on drop.
@@ -244,12 +301,12 @@ export default function MarsMap(props: Props) {
     }
 
     const lines = linesOf(plan)
-    const outline = L.polyline(lines, { color: '#04222b', weight: 7, opacity: 0.9, interactive: false }).addTo(group)
+    const outline = L.polyline(lines, { color: '#0e1116', weight: 8, opacity: 0.9, interactive: false }).addTo(group)
     LEVEL_COLORS.forEach((color, level) => {
       const runs = plan.legs.flatMap((leg) =>
         leg.sections.filter((s) => s.level === level).map((s) => s.path.map((p) => [p.lat, p.lon] as L.LatLngTuple)),
       )
-      if (runs.length > 0) L.polyline(runs, { color, weight: 3.5, interactive: false }).addTo(group)
+      if (runs.length > 0) L.polyline(runs, { color, weight: 4.5, interactive: false }).addTo(group)
     })
 
     // What each turn avoids: a dashed line from the turn to that ground and a cross on it.
@@ -265,7 +322,7 @@ export default function MarsMap(props: Props) {
         pane: 'notes',
       }).addTo(notes)
       const html = `<div class="obstacle obstacle--${note.kind}">${OBSTACLE_SIGN}</div>`
-      L.marker(to, { icon: L.divIcon({ className: '', html, iconSize: [16, 16] }), pane: 'notes', keyboard: false })
+      L.marker(to, { icon: L.divIcon({ className: '', html, iconSize: [18, 18] }), pane: 'notes', keyboard: false })
         .bindTooltip(note.obstacleText ?? '', { direction: 'top', offset: [0, -8] })
         .addTo(notes)
     }
@@ -274,7 +331,7 @@ export default function MarsMap(props: Props) {
       leg.notes.map((note) => {
         const html = `<div class="note note--${note.kind}">${NOTE_SIGNS[note.kind]}</div>`
         const marker = L.marker([note.at.lat, note.at.lon], {
-          icon: L.divIcon({ className: '', html, iconSize: [18, 18] }),
+          icon: L.divIcon({ className: '', html, iconSize: [20, 20] }),
           pane: 'notes',
           keyboard: false,
         }).addTo(notes)
@@ -304,7 +361,8 @@ export default function MarsMap(props: Props) {
         '<strong>Slope on the route</strong>' +
         labels.map((label, i) => `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('') +
         `<span><b>${NOTE_SIGNS['no-go']}</b> turn <b>${OBSTACLE_SIGN}</b> what it avoids</span>` +
-        (other ? '<span><i class="other"></i>other route (click to choose)</span>' : '')
+        (other ? '<span><i class="other"></i>other route (click to choose)</span>' : '') +
+        `<span><i style="background:#7ee2a0"></i>${WALK_BACK_RESERVE_MIN} min walk back to habitat</span>`
       return el
     }
     legend.addTo(map) // added after the scale bar, so it sits above it
@@ -312,12 +370,25 @@ export default function MarsMap(props: Props) {
     // Fit the view when a new plan arrives, not when the user only switches between the two routes.
     const switched = plan === drawn.current.other && otherPlan === drawn.current.plan
     drawn.current = { plan, other: otherPlan }
-    if (!switched) map.fitBounds(outline.getBounds(), { padding: [50, 50], maxZoom: 15 })
+    if (!switched) {
+      fitted.current = outline.getBounds()
+      // No animation: the view must land on the route even when the tab is in the background.
+      map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+    }
     return () => {
       map.off('zoomend', showNotes)
       legend.remove()
     }
   }, [plan, otherPlan])
+
+  // Opening a stop's card brings it into view, without changing the zoom.
+  useEffect(() => {
+    const map = mapRef.current
+    const stop = [habitat, ...site.targets, ...custom].find((s) => s.id === focusId)
+    if (!map || !stop) return
+    const at = L.latLng(stop.lat, stop.lon)
+    if (!map.getBounds().pad(-0.15).contains(at)) map.panTo(at)
+  }, [focusId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={ref} className="map" />
 }
