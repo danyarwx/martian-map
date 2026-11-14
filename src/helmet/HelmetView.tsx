@@ -309,6 +309,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
+      <p className="visor-touch-note">The helmet view needs a keyboard and a mouse: W A S D to walk, drag to look, Esc to go back.</p>
       <p className="visor-keys">W A S D walk · Shift hurry · drag look · Tab readout · M map · V computer vision · R real photo · J jump · H keys · Esc back</p>
     </div>
   )

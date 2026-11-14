@@ -4,6 +4,27 @@ Written 14 Nov 2026 after a full review: the code on `feat/helmet-3d` (commit `8
 whole demo path in a browser (Mission control → Go outside → boulders → V → re-route → R → Esc), and a design
 session with Danya. For whoever picks this up next. Read `HANDOFF.md` and `PLAN.md` first for the background.
 
+## Status (updated 14 Nov 2026, late, by Sasha's Claude session)
+
+| Item | State | Note |
+|---|---|---|
+| A1 | PR open | https://github.com/danyarwx/martian-map/pull/6, not merged: needs a review |
+| A2 | Done | Recall 80.5 %, precision 81.1 %; small rocks 49 % found. CV cameras 384 × 288, 57 ms per frame |
+| A3 | Done, with a limit | Foreground rocks are found, as one outline round the group, not one per rock |
+| A4, C3, C4 | Done | `hud/SceneOverlay.ts`; built from the decisions table, not from the mockup |
+| A5 | **Open: Danya decides** | The walk-back warning is still permanent on the default demo route |
+| A6 | Done, partly | Note over the map + map goes to the seen ground. The planner does not adopt the helmet's route |
+| B1, B3, B4, B7 | Done | |
+| B2, B8 | Done by the new layout | Suit panel shows only while Tab is held |
+| B5 | Notice only | Touch screens get "needs a keyboard"; no joystick (Danya decides) |
+| B6 | **Open: Danya decides** | Guide still does not steer round sand |
+| B9, B10, B11 | Open | Not touched |
+| C1, C2 | Done, not approved | Visor HUD from the decisions table. The mockup is private and was never opened: Danya to review |
+| C5 | See STATUS log | World realism pass + re-run eval |
+| C6, D | Partly | CLAUDE.md, README (first version), DEMO.md text updated. Backup video not recorded |
+
+Details and numbers for each item: the log at the end of `STATUS.md`.
+
 State when written: 206 tests pass, build green, no console errors in the demo path. The demo runs end to end.
 What follows is what stops it from working *well*.
 
