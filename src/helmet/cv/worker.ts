@@ -41,7 +41,7 @@ export function createCvWorkerHandler(
     try {
       pipeline ??= createCvPipeline(frame.intr, options)
       const res = runFrame(pipeline, frame)
-      post(res, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer])
+      post(res, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer, ...(res.groundZ ? [res.groundZ.buffer] : [])])
     } catch (err) {
       post({ id: typeof frame?.id === 'number' ? frame.id : -1, error: String(err) }, [])
     }

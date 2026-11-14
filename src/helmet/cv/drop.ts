@@ -21,20 +21,35 @@
 // crest whose back slope is steeper than the line of sight, a low-texture patch or the depth limit, so it
 // would paint false drops on ordinary terrain. The scarp rule on fused heights covers the demo case once
 // T4.2 feeds the grid heights in; the occlusion rule can be revisited with the eval harness (T4.4).
-import { HAZARD, type Detection, type HazardPatch, type Pose } from '../contracts.ts'
+import { HAZARD, type Detection, type HazardPatch, type HeightGrid, type Pose } from '../contracts.ts'
 import { GRID_CELL_M } from '../frames.ts'
 import type { GroundContext } from './ground.ts'
 import type { PointCloud } from './points.ts'
 
-/** Ground heights on 0.5 m cells aligned to the hazard grid. */
-export interface HeightGrid {
-  /** Local ENU of the north-west corner. */
-  x0: number
-  y0: number
-  cols: number
-  rows: number
-  /** Height per cell (row-major, row 0 north), metres; NaN = unknown. */
-  z: Float32Array
+export type { HeightGrid }
+
+/**
+ * Fill the unknown cells of `frame` (this frame's heights) from `fused` (heights from earlier frames), looked up
+ * at each cell's centre. Cells this frame saw keep their own value. Returns the number of cells filled.
+ */
+export function fillFromFused(frame: HeightGrid, fused: HeightGrid, cellM = GRID_CELL_M): number {
+  let n = 0
+  for (let r = 0; r < frame.rows; r++) {
+    const fr = Math.floor((fused.y0 - (frame.y0 - (r + 0.5) * cellM)) / cellM)
+    if (fr < 0 || fr >= fused.rows) continue
+    for (let c = 0; c < frame.cols; c++) {
+      const i = r * frame.cols + c
+      if (frame.z[i] === frame.z[i]) continue
+      const fc = Math.floor((frame.x0 + (c + 0.5) * cellM - fused.x0) / cellM)
+      if (fc < 0 || fc >= fused.cols) continue
+      const z = fused.z[fr * fused.cols + fc]
+      if (z === z) {
+        frame.z[i] = z
+        n++
+      }
+    }
+  }
+  return n
 }
 
 export interface DropOptions {

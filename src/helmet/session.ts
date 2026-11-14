@@ -2,6 +2,7 @@
 // creates a session when its data has loaded, draws the HUD from the state the session reports, and disposes it.
 import * as THREE from 'three'
 import { JEZERO } from '../data/jezero.ts'
+import { MOBILITY } from '../lib/mobility.ts'
 import type { LatLon, RoutePlan, Terrain } from '../types.ts'
 import type { CvResult, Detection, HelmetEntry, HelmetExit, Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
@@ -107,6 +108,8 @@ const REPLAN_CHECK_MS = 1000
 const REPLAN_COVERAGE = 0.06
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
+/** Half-side of the fused height window sent with each CV frame, metres (drop-offs matter close by). */
+const DROP_WINDOW_M = 16
 /**
  * When the guide has to leave the planned line by more than this for DETOUR_TICKS CV frames in a row, the line is
  * shut by something wide (a boulder field, not one rock), and the planner is asked for a new route.
@@ -205,7 +208,8 @@ export class HelmetSession {
     if (!standIn) {
       const before = entry.plan.legs.slice(0, entry.legIndex).reduce((m, l) => m + l.minutes, 0)
       const fix = locate(this.track, 0, 0)
-      this.elapsedS = 60 * (before + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
+      const stopsBefore = entry.legIndex * MOBILITY[entry.plan.mobility].stopMinutes
+      this.elapsedS = 60 * (before + stopsBefore + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
     }
     this.guideLine = new GuideLine(this.world.scene)
     this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
@@ -456,6 +460,8 @@ export class HelmetSession {
     if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy) {
       this.cvAt = now
       const frame = this.rig.capture(world.scene, pose)
+      // the CV's own fused ground heights around the astronaut, for drop-offs (never the world's heights)
+      frame.heights = this.hazards.grid.heightWindow(pose.x, pose.y, DROP_WINDOW_M)
       this.cvPoses.set(frame.id, frame.pose)
       if (!this.cv.send(frame)) this.cvPoses.delete(frame.id)
     }

@@ -17,7 +17,7 @@ function makeFrame(id: number): CvFrame {
   return { id, left: pair.left.slice(), right: pair.right.slice(), rgbLeft: new Uint8Array(intr.width * intr.height * 3), intr, pose }
 }
 
-test('worker handler: config posts nothing, a frame posts a CvResult with its three buffers transferred', () => {
+test('worker handler: config posts nothing, a frame posts a CvResult with its four buffers transferred', () => {
   const posts: { msg: CvWorkerResponse; transfer: Transferable[] }[] = []
   const handle = createCvWorkerHandler((msg, transfer) => posts.push({ msg, transfer }))
   handle({ type: 'config', options: { obstacles: { stepM: 0.3 } } })
@@ -27,7 +27,8 @@ test('worker handler: config posts nothing, a frame posts a CvResult with its th
   const res = posts[0].msg as CvResult
   assert.equal(res.id, 3)
   assert.equal(res.detections.filter((d) => d.kind === 'rock').length, 1)
-  assert.deepEqual(posts[0].transfer, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer])
+  assert.ok(res.groundZ && res.groundZ.length === res.patch.cols * res.patch.rows, 'ground heights per patch cell')
+  assert.deepEqual(posts[0].transfer, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer, res.groundZ.buffer])
   // Transfer works (no buffer listed twice, none shared with the pipeline).
   structuredClone(res, { transfer: posts[0].transfer })
   assert.equal(res.disparity.length, 0, 'detached after the transfer')

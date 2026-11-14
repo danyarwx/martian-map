@@ -12,7 +12,7 @@
 // for a walker a missed rock is worse than a false one. Every L stays within ±4 (p 0.018..0.982).
 import type { LatLon, TerrainMeta } from '../../types.ts'
 import { inGrid, toCell } from '../../lib/geo.ts'
-import { HAZARD, type Detection, type HazardClass, type HazardPatch } from '../contracts.ts'
+import { HAZARD, type Detection, type HazardClass, type HazardPatch, type HeightGrid } from '../contracts.ts'
 import { GRID_CELL_M, gridCellCenter, gridIndex, toLatLon } from '../frames.ts'
 
 /** Cells along one side of a block: 128 × 0.5 m = 64 m. */
@@ -190,6 +190,21 @@ export class HazardGrid {
     const { col, row } = gridIndex(x, y, 0, 0)
     const b = this.blockFor(col, row, false)
     return b ? b.groundZ[this.local(col, row)] : NaN
+  }
+
+  /** Fused ground heights of the square of half-side `halfM` around (x, y), aligned to the grid's cells. */
+  heightWindow(x: number, y: number, halfM: number): HeightGrid {
+    const c0 = Math.floor((x - halfM) / GRID_CELL_M)
+    const r0 = Math.floor(-(y + halfM) / GRID_CELL_M)
+    const n = Math.ceil((2 * halfM) / GRID_CELL_M)
+    const z = new Float32Array(n * n).fill(NaN)
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const b = this.blockFor(c0 + c, r0 + r, false)
+        if (b) z[r * n + c] = b.groundZ[this.local(c0 + c, r0 + r)]
+      }
+    }
+    return { x0: c0 * GRID_CELL_M + 0, y0: -r0 * GRID_CELL_M + 0, cols: n, rows: n, z }
   }
 
   /** Frame id of the last observation of the cell holding (x, y), −1 never. */

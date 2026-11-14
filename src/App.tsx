@@ -183,11 +183,12 @@ export default function App() {
     [addPoint],
   )
 
-  /** Suit up: the helmet opens 300 m before the first stop of the chosen route. */
-  const goOutside = () => {
+  /** Suit up: the helmet opens 300 m before a stop of the chosen route (its first stop when none is named). */
+  const goOutside = (stopId?: string) => {
     if (!plan || plan.legs.length === 0) return
-    const start = pointBeforeEnd(plan.legs[0].path, 300)
-    setHelmetEntry({ plan, startAt: start.at, legIndex: 0 })
+    const legIndex = Math.max(0, stopId ? plan.legs.findIndex((l) => l.toId === stopId) : 0)
+    const start = pointBeforeEnd(plan.legs[legIndex].path, 300)
+    setHelmetEntry({ plan, startAt: start.at, legIndex })
     setHelmetOpen(true)
   }
 

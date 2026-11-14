@@ -336,3 +336,17 @@
 .helmet-suit dd { margin: 0; color: var(--text, #e8ecf1); }
 .helmet-status { top: max(54px, calc(env(safe-area-inset-top, 0px) + 54px)); }
 .helmet-nav, .helmet-alerts, .helmet-cv { top: max(94px, calc(env(safe-area-inset-top, 0px) + 94px)); }
+/* Layout: compass top centre; status top right; next stop top left; alerts under the compass; CV view under the
+   next-stop panel; suit bottom left; mini-map bottom right. Nothing shares a corner. */
+.helmet-nav {
+  right: auto;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  top: max(54px, calc(env(safe-area-inset-top, 0px) + 54px));
+}
+.helmet-cv { top: max(160px, calc(env(safe-area-inset-top, 0px) + 160px)); z-index: 1; }
+.helmet-alerts p { white-space: normal; text-align: center; max-width: min(460px, calc(100vw - 32px)); }
+@media (max-width: 900px) {
+  .helmet-status { font-size: 11px; gap: 8px; max-width: calc(100vw - 220px); flex-wrap: wrap; justify-content: flex-end; }
+  .helmet-alerts { top: max(150px, calc(env(safe-area-inset-top, 0px) + 150px)); }
+  .helmet-help { font-size: 10px; max-width: calc(100vw - 16px); overflow: hidden; text-overflow: ellipsis; }
+}

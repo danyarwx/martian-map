@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { HAZARD, type HazardPatch, type Pose } from '../contracts.ts'
 import { gridIndex } from '../frames.ts'
-import { DROP_MARK, createDropContext, detectDrops, groundCellHeights, mergeDrops, type HeightGrid } from './drop.ts'
+import { DROP_MARK, createDropContext, detectDrops, fillFromFused, groundCellHeights, mergeDrops, type HeightGrid } from './drop.ts'
 import { createGroundContext, fitGround } from './ground.ts'
 import { createObstacleContext, detectObstacles } from './obstacles.ts'
 import { backProject, createPointCloud } from './points.ts'
@@ -177,4 +177,23 @@ test('groundCellHeights: one frame of flat ground gives heights near 0 in view, 
   assert.ok(known > 300, `${known} known cells`)
   // A 1.2 m rock next to flat ground is not a drop.
   assert.equal(detectDrops(createDropContext(g.nCells), h, pose).length, 0)
+})
+
+test('fused heights fill what one frame cannot see: the lip in this frame, the low ground from earlier frames', () => {
+  // this frame sees only the plateau north of y = 0 (z = 2); earlier frames saw the low ground south of it
+  const frame: HeightGrid = { x0: -6, y0: 6, cols: 24, rows: 24, z: new Float32Array(24 * 24).fill(NaN) }
+  for (let r = 0; r < 12; r++) for (let c = 0; c < 24; c++) frame.z[r * 24 + c] = 2
+  const before = detectDrops(createDropContext(24 * 24), frame, { x: 0, y: 4 })
+  assert.equal(before.length, 0, 'one side only: no drop yet')
+  // the fused grid is bigger, offset, and knows both sides (its plateau value differs: the frame's own must win)
+  const fused: HeightGrid = { x0: -10, y0: 9, cols: 40, rows: 40, z: new Float32Array(40 * 40).fill(NaN) }
+  for (let r = 0; r < 40; r++) for (let c = 0; c < 40; c++) fused.z[r * 40 + c] = 9 - (r + 0.5) * 0.5 > 0 ? 2.5 : 0
+  const filled = fillFromFused(frame, fused)
+  assert.equal(filled, 12 * 24)
+  assert.equal(frame.z[0], 2)
+  assert.equal(frame.z[12 * 24], 0)
+  const drops = detectDrops(createDropContext(24 * 24), frame, { x: 0, y: 4 })
+  assert.equal(drops.length, 1)
+  assert.equal(drops[0].kind, 'drop')
+  assert.ok(Math.abs(drops[0].y - 0.25) < 0.26, `lip at y = ${drops[0].y}`)
 })

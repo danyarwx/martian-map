@@ -8,7 +8,7 @@
 //
 // Pure TypeScript, no DOM: the worker (worker.ts) runs it in the browser, the tests run it in Node.
 import type { CvFrame, CvResult, Detection, StereoIntrinsics } from '../contracts.ts'
-import { createDropContext, detectDrops, groundCellHeights, mergeDrops, type DropContext, type DropOptions, type HeightGrid } from './drop.ts'
+import { createDropContext, detectDrops, fillFromFused, groundCellHeights, mergeDrops, type DropContext, type DropOptions, type HeightGrid } from './drop.ts'
 import { createGroundContext, fitGround, type GroundContext, type GroundOptions } from './ground.ts'
 import { createObstacleContext, detectObstacles, type ObstacleContext, type ObstacleOptions } from './obstacles.ts'
 import { MAX_POINTS, backProject, createPointCloud, type PointCloud } from './points.ts'
@@ -105,6 +105,10 @@ export function runFrame(p: CvPipeline, frame: CvFrame): CvResult {
   const slopes = detectSlopes(p.slope, p.ground, p.cloud, pose)
   const sand = (p.opts.sandHook ?? noSand)(frame, p)
   groundCellHeights(p.ground, p.cloud, pose, p.heights, p.drop.opts)
+  // what this frame saw of the ground goes back to the fused grid; the drop rule then also uses what earlier
+  // frames saw (a lip and the ground below it are rarely in one frame from 1.65 m)
+  const groundZ = p.heights.z.slice(0, p.ground.nCells)
+  if (frame.heights) fillFromFused(p.heights, frame.heights)
   const drops = detectDrops(p.drop, p.heights, pose)
   mergeDrops(p.drop, p.heights, p.ground.patch)
   p.frames++
@@ -116,6 +120,7 @@ export function runFrame(p: CvPipeline, frame: CvFrame): CvResult {
     disparity: disparity.slice(),
     detections: [...rocks, ...slopes, ...sand, ...drops],
     patch: { x0: patch.x0, y0: patch.y0, cols: patch.cols, rows: patch.rows, cls: patch.cls.slice(), conf: patch.conf.slice() },
+    groundZ,
   }
   result.ms = performance.now() - t0
   return result

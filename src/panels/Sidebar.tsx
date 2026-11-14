@@ -78,8 +78,8 @@ interface Props {
   onProfile: (profile: RouteProfile) => void
   /** Back to the route the first screen shows. */
   onDemo: () => void
-  /** Opens the helmet view on this route. Absent when the crew is not on foot. */
-  onGoOutside?: () => void
+  /** Opens the helmet view on this route, 300 m before the given stop (the first stop when none is given). Absent when the crew is not on foot. */
+  onGoOutside?: (stopId?: string) => void
 }
 
 export default function Sidebar(p: Props) {
@@ -119,6 +119,7 @@ export default function Sidebar(p: Props) {
           mobility={p.mobility}
           schedule={schedule}
           onFocus={p.onFocus}
+          onGoOutside={p.onGoOutside}
           onToggle={p.onToggle}
           onRemovePoint={p.onRemovePoint}
         />
@@ -361,7 +362,7 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         </button>
       )}
       {p.onGoOutside && routed && !planning && (
-        <button type="button" className="btn btn--block" onClick={p.onGoOutside} title="Helmet view: walk the route in 3D with live hazard detection">
+        <button type="button" className="btn btn--block" onClick={() => p.onGoOutside?.()} title="Helmet view: walk the route in 3D with live hazard detection">
           Go outside (helmet view)
         </button>
       )}
@@ -794,6 +795,7 @@ function StopCard(p: {
   mobility: MobilityId
   schedule: Schedule | null
   onFocus: (id: string | null) => void
+  onGoOutside?: (stopId?: string) => void
   onToggle: (id: string) => void
   onRemovePoint: (id: string) => void
 }) {
@@ -920,6 +922,11 @@ function StopCard(p: {
         {inRoute && (
           <button type="button" className="btn btn--primary" onClick={() => p.onFocus(next ?? plan!.order[0])}>
             {next ? `Next: ${p.stops.get(next)?.name}` : 'Back to habitat'} <Arrow />
+          </button>
+        )}
+        {inRoute && p.onGoOutside && (
+          <button type="button" className="btn btn--block" onClick={() => p.onGoOutside?.(stop.id)} title="Helmet view: start 300 m before this stop">
+            Go outside here (helmet view)
           </button>
         )}
         {!inRoute && !p.isHabitat && !p.selected && (
