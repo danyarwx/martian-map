@@ -1,9 +1,9 @@
 // Follows the crew along the route: where they are on it, what comes next, when they arrive, and what
 // to do when they leave it. Feeds the announcer and publishes everything on the navigation bus.
 import type { LatLon, Mobility, RoutePlan, Target } from '../types.ts'
-import { WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
+import { HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } from '../lib/safety.ts'
 import { distanceM } from '../lib/geo.ts'
-import { duration } from '../lib/format.ts'
+import { saidDuration, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import type { NavBus, NavEventType, NavPriority, NavState, NavStatus, UpcomingManeuver } from './events.ts'
 import { cumulativeM, projectOntoPath, type PathProjection } from './geometry.ts'
@@ -44,6 +44,11 @@ export interface NavigatorOptions {
   requestReroute?: (from: LatLon, stopIds: string[]) => Promise<RoutePlan>
   /** Date.now() milliseconds of the latest time to turn back, if the schedule has one. */
   turnBackAtMs?: number
+  /**
+   * Mars time of day (LMST minutes) when navigation starts. With it, gust and daylight warnings are said
+   * as the mission clock passes them.
+   */
+  departLmst?: number
   /** Clock for the ETA. Positions carry their own time. Default Date.now. */
   now?: () => number
 }
@@ -55,6 +60,11 @@ export interface Navigator {
   update(fix: PositionFix): void
   /** Leaves the stop the crew is at and starts the next leg. */
   continueFromStop(): void
+  /**
+   * A hazard ends the excursion: the warning is said and the route is planned straight back to the
+   * habitat from here, skipping the stops left. Only the first call counts. Returns whether it did anything.
+   */
+  abortToHabitat(kind: HazardKind): boolean
   /** Ends navigation. */
   stop(): void
   getState(): NavState
@@ -64,7 +74,7 @@ export interface Navigator {
 }
 
 export function createNavigator(options: NavigatorOptions): Navigator {
-  const { stops, mobility, bus, requestReroute, turnBackAtMs } = options
+  const { stops, mobility, bus, requestReroute, turnBackAtMs, departLmst } = options
   const clock = options.now ?? Date.now
   const announcer = createAnnouncer(bus, mobility.id)
 
@@ -87,7 +97,11 @@ export function createNavigator(options: NavigatorOptions): Navigator {
   let rerouteBlockedUntil = -Infinity
   let walkBackWarned = false
   let turnBackSaid = false
+  let abort: HazardKind | null = null
   let lastNow = clock()
+  /** Mission time when navigation started, and the Mars time already checked for time-of-day warnings. */
+  let startedAt = lastNow
+  let checkedLmst = departLmst ?? 0
   /** Which side the route is on, from the last position: for "head back to the route ... to your left". */
   let lastSide: 'left' | 'right' = 'left'
 
@@ -169,6 +183,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       etaMs: status === 'idle' ? null : lastNow + routeRemainingMin * 60000,
       walkHomeMin,
       rerouteCount,
+      abort,
     }
   }
 
@@ -207,15 +222,23 @@ export function createNavigator(options: NavigatorOptions): Navigator {
     emit('arrive', m?.id ?? `arrive-${legIndex}`, m?.text ?? `${name(leg.toId)} reached.`, 'high', {
       stopId: leg.toId,
     })
+    const science = stops[leg.toId]?.science
+    if (!last && science) {
+      emit('stop_briefing', `briefing-${rerouteCount}-${legIndex}`, science, 'normal', { stopId: leg.toId })
+    }
     if (last) emit('nav_ended', 'nav-ended', 'Navigation ended.', 'low')
   }
 
-  function reroute(fix: PositionFix) {
+  /**
+   * Plans a new route from `fix`. Off the route, it goes through the stops still ahead; for a hazard
+   * abort (`home`), straight back to the habitat.
+   */
+  function reroute(fix: PositionFix, home = false) {
     if (!requestReroute) return
     status = 'rerouting'
     const token = ++rerouteToken
-    const remaining = plan.legs.slice(legIndex).map((l) => l.toId).filter((id) => id !== homeId())
-    emit('off_route', `reroute-${token}-${fix.t}`, 'Off route. Replanning.', 'high')
+    const remaining = home ? [] : plan.legs.slice(legIndex).map((l) => l.toId).filter((id) => id !== homeId())
+    if (!home) emit('off_route', `reroute-${token}-${fix.t}`, 'Off route. Replanning.', 'high')
     requestReroute({ lat: fix.lat, lon: fix.lon }, remaining).then(
       (p) => {
         if (token !== rerouteToken || status !== 'rerouting') return
@@ -230,8 +253,10 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         emit(
           'rerouted',
           `rerouted-${rerouteCount}`,
-          `New route: ${saidDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
-          'normal',
+          home
+            ? `Return route: ${saidDistance(first.distanceM)} to ${name(first.toId)}, about ${saidDuration(first.minutes)}.`
+            : `New route: ${saidDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
+          home ? 'high' : 'normal',
         )
         publish()
       },
@@ -243,7 +268,9 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       emit(
         'off_route',
         `reroute-failed-${token}`,
-        `No safe route. Head back to the route, ${saidDistance(offsetM)} to your ${lastSide}.`,
+        home
+          ? 'No safe return route found from here. Follow the planned route back.'
+          : `No safe route. Head back to the route, ${saidDistance(offsetM)} to your ${lastSide}.`,
         'high',
       )
       publish()
@@ -254,12 +281,13 @@ export function createNavigator(options: NavigatorOptions): Navigator {
     start() {
       if (status !== 'idle') return
       lastNow = clock()
+      startedAt = lastNow
       status = 'navigating'
       const targets = plan.legs.filter((l) => l.toId !== homeId()).length
       emit(
         'nav_started',
         'nav-started',
-        `Navigation started. ${targets} stop${targets === 1 ? '' : 's'}, ${saidDistance(plan.distanceM)}, about ${duration(plan.totalMinutes)}.`,
+        `Navigation started. ${targets} stop${targets === 1 ? '' : 's'}, ${saidDistance(plan.distanceM)}, about ${saidDuration(plan.totalMinutes)}.`,
         'normal',
       )
     },
@@ -330,7 +358,12 @@ export function createNavigator(options: NavigatorOptions): Navigator {
           'high',
         )
       }
-      if (!turnBackSaid && turnBackAtMs !== undefined && fix.t >= turnBackAtMs) {
+      if (departLmst !== undefined) {
+        const lmst = departLmst + (fix.t - startedAt) / 60000
+        for (const a of timeAlertsBetween(checkedLmst, lmst)) emit('time_alert', a.id, a.text, a.priority)
+        checkedLmst = Math.max(checkedLmst, lmst)
+      }
+      if (!turnBackSaid && !abort && turnBackAtMs !== undefined && fix.t >= turnBackAtMs) {
         turnBackSaid = true
         emit('turn_back_time', 'turn-back-time', 'Turn-back time reached. Head back to the habitat now.', 'high')
       }
@@ -353,6 +386,15 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       status = 'navigating'
       announcer.resetNext()
       publish()
+    },
+
+    abortToHabitat(kind) {
+      if (abort || status === 'idle' || status === 'finished') return false
+      abort = kind
+      emit('hazard_event', `hazard-${kind}`, HAZARD_EVENTS[kind].text, 'high')
+      if (position) reroute(position, true)
+      publish()
+      return true
     },
 
     stop() {

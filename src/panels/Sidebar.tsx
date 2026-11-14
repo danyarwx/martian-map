@@ -21,6 +21,7 @@ import {
   farthestWalkHome,
   temperatureC,
   timeline,
+  turnBackBy,
   type DepartureOption,
   type TimelineStep,
 } from '../lib/schedule.ts'
@@ -92,14 +93,12 @@ export default function Sidebar(p: Props) {
   if (plan && plan.legs.length > 0) {
     const best = bestDeparture(plan.totalMinutes)
     const chosen = startAt === null ? best : assessDeparture(startAt, plan.totalMinutes)
-    const farthest = farthestWalkHome(plan)
-    const homeBy = Math.min(chosen.start + MOBILITY[p.mobility].maxEvaHours * 60, DAY.sunset)
     schedule = {
       best,
       chosen,
       steps: timeline(plan, chosen.start),
-      farthest,
-      turnBackBy: farthest ? homeBy - farthest.minutes : null,
+      farthest: farthestWalkHome(plan),
+      turnBackBy: turnBackBy(plan, chosen.start),
     }
   }
 

@@ -89,6 +89,8 @@
 }
 .sim-bar .sim-fold, .sim-pill { color: var(--warn); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
 .sim-bar .sim-fold { border-color: transparent; background: none; }
+.sim-bar .sim-hazard { border-color: var(--danger-line); color: var(--danger); }
+.sim-bar button:disabled { opacity: .45; }
 .sim-pill { min-height: 56px; padding: 0 var(--s4); }
 .confirm { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
 .voice-toggle[aria-pressed="true"] { color: var(--text-3); border-style: dashed; }

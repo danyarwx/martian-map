@@ -34,7 +34,8 @@ You can also poll: `getState()` returns the current `NavState`, and `getUpcoming
 interface NavEvent {
   id: string          // unique per announcement
   type: 'instruction' | 'hazard' | 'arrive' | 'off_route' | 'rerouted' | 'back_on_route'
-      | 'walkback_warning' | 'turn_back_time' | 'nav_started' | 'nav_ended' | 'state'
+      | 'walkback_warning' | 'turn_back_time' | 'time_alert' | 'hazard_event' | 'status'
+      | 'stop_briefing' | 'nav_started' | 'nav_ended' | 'state'
   text: string        // finished English sentence: speak this
   priority: 'low' | 'normal' | 'high'
   maneuver?: Maneuver // structured data, if you want to phrase it yourself
@@ -54,7 +55,7 @@ Rules for the voice:
 Example texts, from a real run:
 
 ```
-nav_started      Navigation started. 3 stops, 7.1 kilometers, about 5 h 10 min.
+nav_started      Navigation started. 3 stops, 7.1 kilometers, about 5 hours 10 minutes.
 instruction      Head north-west for 550 meters.
 instruction low  Bear left in 200 meters.
 instruction high Bear left.
@@ -63,10 +64,17 @@ hazard           Steep ground ahead, 18 degrees, 20 meters. Slow down.
 instruction      Bear right in 50 meters, to avoid a 22° slope.
 instruction low  Delta front (Hawksbill Gap) in 50 meters.
 arrive      high Delta front (Hawksbill Gap) reached. Task: Sample the fine-grained layers by hand, bed by bed.
+stop_briefing    Fine lake-bottom layers are where organic matter and traces of microbes are most likely to be preserved.
+time_alert       Gust hours start in 15 minutes. Expect strong gusts and dust devils until 15:00.
+time_alert  high Thirty minutes of daylight left. Head for the habitat.
+status           Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.
+hazard_event high Dust storm warning. Gusts above 20 meters per second and visibility dropping. Abort the excursion. Return to the habitat now.
+rerouted    high Return route: 1.2 kilometers to Habitat, about 25 minutes.
 off_route        Head back to the route, 30 meters to your right.
 off_route   high Off route. Replanning.
 rerouted         New route: 2.7 kilometers to Delta front (Hawksbill Gap).
-walkback_warning (beyond the 60-minute walk-back reserve)
+walkback_warning Caution. Habitat is more than 60 minutes away on foot. Beyond the emergency reserve.
+turn_back_time   Turn-back time reached. Head back to the habitat now.
 nav_ended        Navigation ended.
 ```
 

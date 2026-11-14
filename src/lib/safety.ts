@@ -34,3 +34,24 @@ export const JEZERO_CONDITIONS = [
   { label: 'Wind', value: '2–10 m/s', note: 'afternoon gusts above 20 m/s' },
   { label: 'Daylight', value: '≈ 12 h', note: 'one sol lasts 24 h 39 min' },
 ]
+
+export type HazardKind = 'dust_storm' | 'solar_particle_event'
+
+/**
+ * Hazards that end an excursion early. In the app they are simulated (a button), not forecast.
+ * - Dust storm: afternoon gusts above 20 m/s and dust devils are measured at Jezero by MEDA
+ *   (Rodriguez-Manfredi et al. 2023, Nature Geoscience 16; Newman et al. 2022, Science Advances 8).
+ * - Solar particle event: Curiosity's RAD has recorded solar particle events at the surface on top of the
+ *   cosmic-ray background (Hassler et al. 2014, Science 343). Returning to shelter when one is announced is
+ *   our planning assumption, after NASA's rule for crews in space to shelter during such events.
+ */
+export const HAZARD_EVENTS: Record<HazardKind, { label: string; text: string }> = {
+  dust_storm: {
+    label: 'Dust storm',
+    text: 'Dust storm warning. Gusts above 20 meters per second and visibility dropping. Abort the excursion. Return to the habitat now.',
+  },
+  solar_particle_event: {
+    label: 'Solar flare',
+    text: 'Solar particle event warning. Radiation rising. Abort the excursion. Return to the habitat now and take shelter.',
+  },
+}

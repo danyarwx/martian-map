@@ -72,6 +72,14 @@ Branch `feat/voice-browser-tts` (from `feat/tablet-nav`): built-in voice for `/n
 
 Branch `feat/voice-openai-tts` (from `feat/tablet-nav`, same voice work plus): OpenAI `gpt-4o-mini-tts` through the Vercel function `api/tts.js` (key in Vercel env `OPENAI_API_KEY`, same-site requests and 300 characters max). Falls back to the browser voice when offline or after 1.5 s. No radio click before lines (removed: it sounded like crackling). This adds a backend: agree as a team before merging. OpenAI shuts this model down on 6 Jan 2027. Piper is parked.
 
+On `feat/tablet-nav` (both voice branches merged in, then task B): safety alerts for `/nav`
+- Mars clock: the excursion leaves at the planner's suggested departure (`bestDeparture`); the panel shows Mars time (LMST)
+- Spoken time alerts (`src/nav/alerts.ts`): gust hours 15 min ahead and at 11:00, daylight 60 and 30 min before sunset. Turn-back time now fires (`turnBackBy` in `src/lib/schedule.ts`, shared with the web app)
+- SIMULATION bar: "Dust storm" and "Solar flare" abort the excursion: warning, then a route straight home (`abortToHabitat` in `tracker.ts`). Texts and sources in `HAZARD_EVENTS`, `src/lib/safety.ts`
+- "Status" button: Mars time, time out, walk home, air temperature, dose so far
+- On arrival, the stop's science sentence is said after the task
+- Next: task C (talk-back buttons and hold-to-talk), D (heading-up map, Earth GPS), E (MEDA/RAD data, demo mode)
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)

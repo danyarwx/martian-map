@@ -138,6 +138,17 @@ export function farthestWalkHome(plan: RoutePlan): { minutes: number; legIndex: 
   return best
 }
 
+/**
+ * Latest minute of the day to turn back from the farthest point and still be home in time: by the end of
+ * the longest allowed excursion and by sunset. Null when the walk-back times were not computed.
+ */
+export function turnBackBy(plan: RoutePlan, start: number): number | null {
+  const farthest = farthestWalkHome(plan)
+  if (!farthest) return null
+  const homeBy = Math.min(start + MOBILITY[plan.mobility].maxEvaHours * 60, DAY.sunset)
+  return homeBy - farthest.minutes
+}
+
 /** Minute of the day as HH:MM. */
 export function clock(minute: number): string {
   const day = 24 * 60

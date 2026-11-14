@@ -2,14 +2,13 @@ import { useEffect, useState, type ReactNode } from 'react'
 import type { MobilityId, RoutePlan, RoutePlans, RouteProfile, StopView, Target } from '../types.ts'
 import { duration, km } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
-import { evaDoseMsv, WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
-import { farthestWalkHome } from '../lib/schedule.ts'
+import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } from '../lib/safety.ts'
+import { clock, farthestWalkHome } from '../lib/schedule.ts'
 import type { NavState, UpcomingManeuver } from '../nav/events.ts'
 import { spokenDistance, type Maneuver } from '../nav/instructions.ts'
 import type { NavRunControls, NavRunView } from './useNavRun.ts'
 
 /** Clock time of a Date.now() value, hh:mm. */
-const clockOf = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
 
 const TURN_ANGLE: Record<string, number> = {
   slight_left: -45, left: -90, sharp_left: -135, slight_right: 45, right: 90, sharp_right: 135,
@@ -192,19 +191,18 @@ interface NavPanelProps {
 export function NavPanel({ view, stops }: NavPanelProps) {
   const { state } = view
   const nextStop = state.nextStopId ? stops[state.nextStopId] : null
-  const legEta = view.missionNow + state.legRemainingMin * 60000
   const far = state.walkHomeMin !== null && state.walkHomeMin > WALK_BACK_RESERVE_MIN
   return (
     <div className="nav-scroll">
       <div className="nav-head">
         <StatusChip state={state} />
-        <span className="muted num">Mission clock {clockOf(view.missionNow)}</span>
+        <span className="muted num" title="Local mean solar time at Jezero">Mars time {clock(view.lmst)}</span>
       </div>
       <section className="next-stop">
         <span className="label">Next stop</span>
         <strong>{nextStop?.name ?? '—'}</strong>
         <p className="num">
-          {km(state.legRemainingM)} · ETA {clockOf(legEta)}
+          {km(state.legRemainingM)} · ETA {clock(view.lmst + state.legRemainingMin)}
         </p>
       </section>
       <div className="figures-big">
@@ -282,6 +280,17 @@ export function SimBar({ view, controls }: { view: NavRunView; controls: NavRunC
       <button type="button" onClick={() => controls.drift(40)}>Drift 40</button>
       <button type="button" onClick={() => controls.drift(90)}>Drift 90</button>
       <button type="button" onClick={controls.backToRoute}>Back</button>
+      {(Object.keys(HAZARD_EVENTS) as HazardKind[]).map((kind) => (
+        <button
+          key={kind}
+          type="button"
+          className="sim-hazard"
+          disabled={view.state.abort !== null}
+          onClick={() => controls.hazard(kind)}
+        >
+          {HAZARD_EVENTS[kind].label}
+        </button>
+      ))}
     </section>
   )
 }

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Mobility, RoutePlan, SiteConfig, Target } from '../types.ts'
 import { distanceM } from '../lib/geo.ts'
+import { evaDoseMsv, type HazardKind } from '../lib/safety.ts'
+import { bestDeparture, temperatureC, turnBackBy } from '../lib/schedule.ts'
+import { statusText } from '../nav/alerts.ts'
 import { getNavBus, IDLE_STATE, type NavEvent, type NavState, type UpcomingManeuver } from '../nav/events.ts'
 import type { Maneuver } from '../nav/instructions.ts'
 import { SimulatedSource } from '../nav/position.ts'
@@ -30,6 +33,8 @@ export interface NavRunView {
   /** Mission clock, Date.now() milliseconds. Runs faster than real time with the simulation speed-up. */
   missionNow: number
   missionStart: number
+  /** Mars time of day now, LMST minutes since midnight. The excursion leaves at the suggested departure. */
+  lmst: number
   /** Mission time of the arrival at the current stop, null when not at a stop. */
   arrivedAt: number | null
   /** Distance actually covered, metres. */
@@ -46,6 +51,10 @@ export interface NavRunControls {
   drift(metres: number): void
   backToRoute(): void
   continueFromStop(): void
+  /** Simulates a hazard that ends the excursion: warning, then the route home. */
+  hazard(kind: HazardKind): void
+  /** Says the status readout: Mars time, time out, walk home, air temperature, dose so far. */
+  status(): void
 }
 
 /** Screen updates per second at most. */
@@ -64,6 +73,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
   const nav = useRef<Navigator | null>(null)
   const sim = useRef<SimulatedSource | null>(null)
   const clock = useRef({ playing: true, speed: START_SPEED })
+  /** Reads the mission clock for the Status button. */
+  const mission = useRef<{ start: number; now: () => number; departLmst: number } | null>(null)
 
   useEffect(() => {
     if (!input) {
@@ -75,6 +86,11 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     let missionNow = missionStart
     let lastReal = missionStart
     clock.current = { playing: true, speed: START_SPEED }
+    // The Mars clock: the excursion leaves at the planner's suggested departure, as on the planning screen.
+    const departLmst = bestDeparture(input.plan.totalMinutes).start
+    const turnBack = turnBackBy(input.plan, departLmst)
+    const lmstAt = (t: number) => departLmst + (t - missionStart) / 60000
+    mission.current = { start: missionStart, now: () => missionNow, departLmst }
 
     const rerouter = createWorkerRerouter({
       site: input.site,
@@ -92,6 +108,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       bus,
       requestReroute: (from, ids) => rerouter.requestReroute(from, ids).then((p) => displayPlan(p)),
       now: () => missionNow,
+      departLmst,
+      turnBackAtMs: turnBack === null ? undefined : missionStart + (turnBack - departLmst) * 60000,
     })
     const walker = new SimulatedSource({ legs: plan.legs, mobility: input.mobility })
     walker.setSpeedMultiplier(START_SPEED)
@@ -144,6 +162,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
         maneuvers: tracker.getManeuvers(),
         missionNow,
         missionStart,
+        lmst: lmstAt(missionNow),
         arrivedAt: latest.state.status === 'at_stop' ? arrivedAt : null,
         walkedM,
         ...clock.current,
@@ -168,6 +187,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       wake?.release().catch(() => {})
       nav.current = null
       sim.current = null
+      mission.current = null
     }
   }, [input])
 
@@ -189,6 +209,25 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     continueFromStop: useCallback(() => {
       nav.current?.continueFromStop()
       sim.current?.continueFromStop()
+    }, []),
+    hazard: useCallback((kind: HazardKind) => {
+      nav.current?.abortToHabitat(kind)
+    }, []),
+    status: useCallback(() => {
+      const m = mission.current
+      const n = nav.current
+      if (!m || !n) return
+      const now = m.now()
+      const minutesOut = (now - m.start) / 60000
+      const lmst = m.departLmst + minutesOut
+      const text = statusText({
+        minutesOut,
+        walkHomeMin: n.getState().walkHomeMin,
+        lmst,
+        tempC: temperatureC(lmst),
+        doseMsv: evaDoseMsv(minutesOut / 60),
+      })
+      getNavBus().emit({ id: `status-${now}`, type: 'status', text, priority: 'normal', at: now })
     }, []),
   }
   return { view, controls }

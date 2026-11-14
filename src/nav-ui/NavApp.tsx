@@ -209,6 +209,11 @@ export default function NavApp() {
         </div>
         <div className="nav-foot">
           {run && s?.status !== 'finished' && <EndControl onEnd={end} />}
+          {run && view && s?.status !== 'finished' && (
+            <button type="button" className="big" onClick={controls.status}>
+              Status
+            </button>
+          )}
           <button type="button" className="big voice-toggle" aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
             {muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
           </button>

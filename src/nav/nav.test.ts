@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { LatLon, RouteLeg, RoutePlan, Target } from '../types.ts'
 import { MOBILITY } from '../lib/mobility.ts'
+import { DAY } from '../lib/schedule.ts'
+import { saidDuration, statusText, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import { createNavBus, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
@@ -325,4 +327,69 @@ test('voice fallback: the browser voice speaks when the cloud voice cannot, and 
   slow = false
   await voice.speak('f')
   assert.equal(said.at(-1), 'cloud:f')
+})
+
+test('time-of-day alerts: gust hours and daylight are said once, as the Mars clock passes them', () => {
+  assert.deepEqual(timeAlertsBetween(DAY.gustsFrom - 20, DAY.gustsFrom - 10).map((a) => a.id), ['gusts-soon'])
+  assert.deepEqual(timeAlertsBetween(DAY.gustsFrom - 10, DAY.gustsFrom - 5), [])
+  assert.deepEqual(timeAlertsBetween(DAY.sunset - 61, DAY.sunset - 29).map((a) => a.id), ['daylight-60', 'daylight-30'])
+
+  const bus = createNavBus({ channel: false })
+  const said: string[] = []
+  bus.subscribe('time_alert', (e) => said.push(e.id))
+  const nav = createNavigator({
+    plan: plan(leg('habitat', 'a', path([0, 0], [1000, 0])), leg('a', 'habitat', path([1000, 0], [0, 0]))),
+    stops, mobility: MOBILITY.walk, bus, now: () => 0, departLmst: DAY.gustsFrom - 20,
+  })
+  nav.start()
+  const minute = 60000
+  nav.update({ ...at(10, 0), headingDeg: 90, speedMps: 0.7, accuracyM: 1, t: 4 * minute })
+  assert.deepEqual(said, [])
+  nav.update({ ...at(20, 0), headingDeg: 90, speedMps: 0.7, accuracyM: 1, t: 6 * minute })
+  nav.update({ ...at(30, 0), headingDeg: 90, speedMps: 0.7, accuracyM: 1, t: 7 * minute })
+  assert.deepEqual(said, ['gusts-soon'])
+})
+
+test('the status readout spells out what a voice needs', () => {
+  assert.equal(saidDuration(80), '1 hour 20 minutes')
+  assert.equal(saidDuration(120), '2 hours')
+  assert.equal(
+    statusText({ minutesOut: 80, walkHomeMin: 35.2, lmst: 10 * 60 + 45, tempC: -31.6, doseMsv: 0.0356 }),
+    'Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.',
+  )
+})
+
+test('a hazard aborts the excursion: warning first, then a route straight home; only once', async () => {
+  const calls: string[][] = []
+  const home = plan(leg('here', 'habitat', path([100, 0], [0, 0])))
+  const { nav, events, fix } = straightNav(async (_from, ids) => {
+    calls.push(ids)
+    return home
+  })
+  fix(100, 0, 0)
+  assert.equal(nav.abortToHabitat('dust_storm'), true)
+  assert.deepEqual(calls, [[]], 'no stops: straight to the habitat')
+  assert.equal(nav.getState().abort, 'dust_storm')
+  assert.equal(nav.abortToHabitat('solar_particle_event'), false)
+  await new Promise((r) => setTimeout(r, 0))
+  const order = events.map((e) => e.type).filter((t) => t === 'hazard_event' || t === 'rerouted')
+  assert.deepEqual(order, ['hazard_event', 'rerouted'])
+  assert.match(events.find((e) => e.type === 'rerouted')!.text, /^Return route: .+ to Habitat, about 10 minutes\.$/)
+  assert.equal(nav.getPlan(), home)
+})
+
+test('on arrival the science reason follows the task', () => {
+  const bus = createNavBus({ channel: false })
+  const said: NavEvent[] = []
+  bus.subscribe('*', (e) => e.type !== 'state' && said.push(e))
+  const science = { ...stops, a: { ...stops.a, science: 'Lake mud keeps organics.' } }
+  const nav = createNavigator({
+    plan: plan(leg('habitat', 'a', path([0, 0], [100, 0])), leg('a', 'habitat', path([100, 0], [0, 0]))),
+    stops: science, mobility: MOBILITY.walk, bus, now: () => 0,
+  })
+  nav.start()
+  nav.update({ ...at(100, 0), headingDeg: 90, speedMps: 0.7, accuracyM: 1, t: 1000 })
+  const i = said.findIndex((e) => e.type === 'arrive')
+  assert.equal(said[i + 1]?.type, 'stop_briefing')
+  assert.equal(said[i + 1]?.text, 'Lake mud keeps organics.')
 })

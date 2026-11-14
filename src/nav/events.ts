@@ -13,6 +13,7 @@
  * 'state' events come with every position update (about 5 per second) and are not meant to be spoken.
  * @module
  */
+import type { HazardKind } from '../lib/safety.ts'
 import type { LatLon } from '../types.ts'
 import type { Maneuver } from './instructions.ts'
 
@@ -32,6 +33,14 @@ export type NavEventType =
   | 'walkback_warning'
   /** The latest time to turn back has come. */
   | 'turn_back_time'
+  /** A time-of-day warning: gust hours ahead, daylight running out. */
+  | 'time_alert'
+  /** A hazard (dust storm, solar particle event) ends the excursion; a 'rerouted' home follows. */
+  | 'hazard_event'
+  /** The status readout, on request. */
+  | 'status'
+  /** The science reason of the stop just reached, said after the arrival. */
+  | 'stop_briefing'
   | 'nav_started'
   | 'nav_ended'
   /** A NavState snapshot, sent with every position update. Not for speaking. */
@@ -101,6 +110,8 @@ export interface NavState {
   walkHomeMin: number | null
   /** How many times the route has been replanned during this navigation. */
   rerouteCount: number
+  /** The hazard that ended the excursion early, or null. */
+  abort: HazardKind | null
 }
 
 export const IDLE_STATE: NavState = {
@@ -123,6 +134,7 @@ export const IDLE_STATE: NavState = {
   etaMs: null,
   walkHomeMin: null,
   rerouteCount: 0,
+  abort: null,
 }
 
 /** What `emit` takes: an event without its timestamp, which the bus adds. */
