@@ -35,6 +35,17 @@ export interface StereoIntrinsics {
   baselineM: number
 }
 
+/** Ground heights on 0.5 m cells aligned to the hazard grid. */
+export interface HeightGrid {
+  /** Local ENU of the north-west corner. */
+  x0: number
+  y0: number
+  cols: number
+  rows: number
+  /** Height per cell (row-major, row 0 north), metres; NaN = unknown. */
+  z: Float32Array
+}
+
 /** One stereo frame, main thread → CV worker. Images are rectified: same intrinsics, parallel axes. */
 export interface CvFrame {
   id: number
@@ -46,6 +57,12 @@ export interface CvFrame {
   intr: StereoIntrinsics
   /** Pose of the LEFT camera. */
   pose: Pose
+  /**
+   * Ground heights the helmet has already fused from earlier frames, around the astronaut (PLAN §5.6). They fill
+   * the cells this frame cannot see, so a drop-off is found from what several frames saw of its two sides.
+   * These are the CV's own earlier outputs, never the world's truth.
+   */
+  heights?: HeightGrid
 }
 
 export interface Detection {
@@ -84,6 +101,8 @@ export interface CvResult {
   disparity: Float32Array
   detections: Detection[]
   patch: HazardPatch
+  /** This frame's ground height per patch cell (same layout as `patch`), metres, NaN = not seen. For the fused grid. */
+  groundZ?: Float32Array
 }
 
 /** What Mission control hands to the helmet. */

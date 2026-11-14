@@ -13,6 +13,8 @@ const site = JEZERO
 /** The helmet (three.js) loads only when someone goes outside, so the planner's first load stays small. */
 const HelmetView = lazy(() => import('./helmet/HelmetView.tsx'))
 const isHelmetHash = () => window.location.hash === '#helmet'
+/** Dev page: scores the helmet's computer vision against the simulated world (src/helmet/eval). */
+const HelmetEval = lazy(() => import('./helmet/eval/EvalView.tsx'))
 // A walk that fits one excursion, so the first screen already shows a planned route.
 const INITIAL = ['three-forks', 'delta-front', 'seitah']
 /** Most targets on one route. The visiting order is found by trying every order, which grows fast. */
@@ -183,14 +185,22 @@ export default function App() {
     [addPoint],
   )
 
-  /** Suit up: the helmet opens 300 m before the first stop of the chosen route. */
-  const goOutside = () => {
+  /** Suit up: the helmet opens 300 m before a stop of the chosen route (its first stop when none is named). */
+  const goOutside = (stopId?: string) => {
     if (!plan || plan.legs.length === 0) return
-    const start = pointBeforeEnd(plan.legs[0].path, 300)
-    setHelmetEntry({ plan, startAt: start.at, legIndex: 0 })
+    const legIndex = Math.max(0, stopId ? plan.legs.findIndex((l) => l.toId === stopId) : 0)
+    const start = pointBeforeEnd(plan.legs[legIndex].path, 300)
+    setHelmetEntry({ plan, startAt: start.at, legIndex })
     setHelmetOpen(true)
   }
 
+  if (window.location.hash === '#helmet-eval') {
+    return (
+      <Suspense fallback={null}>
+        <HelmetEval />
+      </Suspense>
+    )
+  }
   if (helmetOpen) {
     return (
       <Suspense fallback={<div className="helmet-loading">Suiting up…</div>}>

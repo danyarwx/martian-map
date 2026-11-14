@@ -1,8 +1,8 @@
 // The astronaut's body: walking speed, what stops them (docs/helmet/PLAN.md §6.3). Pure: no three.js, no DOM.
 //
 // Assumptions (not measurements): eye height 1.65 m; 1.0 m/s on the level, slowed on slopes like the planner
-// (slopeSpeedFactor); a suited astronaut steps over anything up to 0.30 m (the same step height the CV uses for
-// "rock") and cannot climb ground steeper than 25°.
+// (slopeSpeedFactor); a suited astronaut steps over anything up to 0.40 m (the CV already calls 0.30 m a
+// "rock": warn early, stop late) and cannot climb ground steeper than 25°.
 import { slopeSpeedFactor } from '../../lib/mobility.ts'
 import type { Pose } from '../contracts.ts'
 import { headingToDir } from '../frames.ts'
@@ -15,8 +15,11 @@ export const FAST_FACTOR = 4
 export const MAX_CLIMB_DEG = 25
 /** Body radius for collisions, metres. */
 export const BODY_R_M = 0.3
-/** Rocks standing less than this above the ground are stepped over, metres. */
-export const STEP_OVER_M = 0.3
+/**
+ * Rocks standing less than this above the ground are stepped over, metres. The CV warns from 0.30 m (the safe
+ * step); the body is only stopped from 0.40 m, so a low rock the camera missed costs a warning, not a dead stop.
+ */
+export const STEP_OVER_M = 0.4
 
 export interface RockLike {
   x: number

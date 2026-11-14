@@ -222,10 +222,56 @@ export function makeDetailNormalMap(size = 256): THREE.DataTexture {
 export const ORTHO_TINT = new THREE.Color().setRGB(1.38, 0.74, 0.44)
 
 /**
- * Material for a real 1 m tile: grayscale ortho as `map`, re-coloured in the fragment shader (gray × Mars tint),
- * plus the detail normal map. Stays a MeshStandardMaterial so lights, fog and shadows work unchanged.
+ * How sand looks in the helmet world. SIMULATED (public/data/SOURCES.md): where a tile's sand mask says sand, the
+ * ground is drawn the way wind-blown sand looks to the rovers, since the 25 cm ortho cannot show it up close:
+ * - a little darker and less red than the dusty ground (dark basaltic sand under thin dust): SAND_TINT, about −8 %;
+ * - smooth: only SAND_GRIT of the pebble-and-grit detail normal map is left;
+ * - fine wind ripples: straight crests SAND_RIPPLE_M apart, their normal SAND_RIPPLE_DIR_DEG clockwise from east
+ *   (one assumed wind direction for the whole site), bent a little by the ortho's own brightness, and faded out
+ *   where they would be finer than a pixel.
+ * The ripple pattern has a whole number of waves per tile along both axes, so it continues across tile edges.
  */
-export function makeOrthoMaterial(ortho: THREE.Texture, detail: THREE.Texture): THREE.MeshStandardMaterial {
+export const SAND_TINT = new THREE.Color().setRGB(0.86, 0.93, 1.0)
+export const SAND_GRIT = 0.3
+/** Waves per 128 m tile along east and along south: 567 and 100 give crests 0.222 m apart, 10° off east. */
+export const SAND_RIPPLE_WAVES: readonly [number, number] = [567, 100]
+export const SAND_RIPPLE_M = 128 / Math.hypot(SAND_RIPPLE_WAVES[0], SAND_RIPPLE_WAVES[1])
+export const SAND_RIPPLE_DIR_DEG = (Math.atan2(SAND_RIPPLE_WAVES[1], SAND_RIPPLE_WAVES[0]) * 180) / Math.PI
+/** Tilt of the ripple slopes in the normal map's units. */
+export const SAND_RIPPLE_STRENGTH = 0.14
+/** The ortho's own brightness bends the crests by up to this many waves, so they are not ruler-straight. */
+export const SAND_RIPPLE_WARP = 4
+
+let noSand: THREE.DataTexture | null = null
+/** A 1 × 1 "no sand anywhere" mask for tiles without one. */
+function noSandTexture(): THREE.DataTexture {
+  if (!noSand) {
+    noSand = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat)
+    noSand.needsUpdate = true
+  }
+  return noSand
+}
+
+/** A tile's sand mask (n × n, 1 = sand, row 0 north) as a texture laid over the tile like the ortho. */
+export function makeSandTexture(mask: Uint8Array): THREE.DataTexture {
+  const n = Math.round(Math.sqrt(mask.length))
+  const data = new Uint8Array(n * n)
+  for (let k = 0; k < data.length; k++) data[k] = mask[k] ? 255 : 0
+  const t = new THREE.DataTexture(data, n, n, THREE.RedFormat)
+  t.magFilter = THREE.LinearFilter // soft edges: sand thins out over about half a metre
+  t.minFilter = THREE.LinearFilter
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping
+  t.colorSpace = THREE.NoColorSpace
+  t.needsUpdate = true
+  return t
+}
+
+/**
+ * Material for a real 1 m tile: grayscale ortho as `map`, re-coloured in the fragment shader (gray × Mars tint),
+ * plus the detail normal map, and the simulated look of sand where `sand` (makeSandTexture) says so.
+ * Stays a MeshStandardMaterial so lights, fog and shadows work unchanged.
+ */
+export function makeOrthoMaterial(ortho: THREE.Texture, detail: THREE.Texture, sand: THREE.Texture | null = null): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({
     map: ortho,
     normalMap: detail,
@@ -233,20 +279,43 @@ export function makeOrthoMaterial(ortho: THREE.Texture, detail: THREE.Texture): 
     roughness: 0.96,
     metalness: 0,
   })
+  const [wavesE, wavesS] = SAND_RIPPLE_WAVES
+  const len = Math.hypot(wavesE, wavesS)
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uMarsTint = { value: ORTHO_TINT }
+    shader.uniforms.uSandMask = { value: sand ?? noSandTexture() }
+    shader.uniforms.uSandTint = { value: SAND_TINT }
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uMarsTint;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uMarsTint;\nuniform sampler2D uSandMask;\nuniform vec3 uSandTint;')
       .replace(
         '#include <map_fragment>',
         `#include <map_fragment>
+  float marsSand = 0.0;
+  float marsGray = 0.0;
 #ifdef USE_MAP
-  float marsGray = diffuseColor.r;
+  marsGray = diffuseColor.r;
   diffuseColor.rgb = vec3(marsGray) * uMarsTint;
+  marsSand = texture2D(uSandMask, vMapUv).r;
+  diffuseColor.rgb *= mix(vec3(1.0), uSandTint, marsSand);
+#endif`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#ifdef USE_NORMALMAP_TANGENTSPACE
+  vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
+  mapN.xy *= normalScale * (1.0 - ${(1 - SAND_GRIT).toFixed(2)} * marsSand);
+  #ifdef USE_MAP
+  {
+    float sandWaves = ${wavesE.toFixed(1)} * vMapUv.x + ${wavesS.toFixed(1)} * vMapUv.y + ${SAND_RIPPLE_WARP.toFixed(1)} * marsGray;
+    float sandFade = 1.0 - smoothstep(0.6, 1.6, fwidth(sandWaves) * 6.2832);
+    mapN.xy += vec2(${(wavesE / len).toFixed(4)}, ${(wavesS / len).toFixed(4)}) * (${SAND_RIPPLE_STRENGTH.toFixed(2)} * marsSand * sandFade * cos(fract(sandWaves) * 6.2832));
+  }
+  #endif
+  normal = normalize( tbn * mapN );
 #endif`,
       )
   }
-  m.customProgramCacheKey = () => 'mars-ortho-v1'
+  m.customProgramCacheKey = () => 'mars-ortho-v3'
   return m
 }
 

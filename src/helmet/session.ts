@@ -2,11 +2,12 @@
 // creates a session when its data has loaded, draws the HUD from the state the session reports, and disposes it.
 import * as THREE from 'three'
 import { JEZERO } from '../data/jezero.ts'
+import { MOBILITY } from '../lib/mobility.ts'
 import type { LatLon, RoutePlan, Terrain } from '../types.ts'
-import type { CvResult, Detection, HelmetEntry, HelmetExit, Pose } from './contracts.ts'
+import { HAZARD, type CvResult, type Detection, type HelmetEntry, type HelmetExit, type Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
-import { buildTrack, locate, remainingM, type RouteTrack } from './nav/follow.ts'
+import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './nav/follow.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
 import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
@@ -64,6 +65,8 @@ export interface NavState {
   /** Nearest rock / steep ground / drop-off on the route line within 15 m. */
   hazardAheadM: number | null
   hazardAheadKind: Detection['kind'] | null
+  /** Loose sand lies on the planned line a few metres ahead (and the astronaut is not on sand yet). */
+  sandAhead: boolean
   /** A re-route is being computed. */
   replanning: boolean
   /** The last re-route: minutes added, and when (performance.now()). */
@@ -107,12 +110,18 @@ const REPLAN_CHECK_MS = 1000
 const REPLAN_COVERAGE = 0.06
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
+/** Half-side of the fused height window sent with each CV frame, metres (drop-offs matter close by). */
+const DROP_WINDOW_M = 16
 /**
  * When the guide has to leave the planned line by more than this for DETOUR_TICKS CV frames in a row, the line is
  * shut by something wide (a boulder field, not one rock), and the planner is asked for a new route.
  */
 const DETOUR_M = 4
 const DETOUR_TICKS = 4
+/** A rock / steep / drop cell on the planned line counts for the detour rule this long after it was last seen, ms. */
+const HARD_AHEAD_MEMORY_MS = 4000
+/** "Loose sand ahead" looks this far along the planned line, metres. */
+const SAND_AHEAD_M = 6
 /** Time between CV frames, ms (PLAN §4: about every 150 ms, at least 4 Hz). */
 export const CV_EVERY_MS = 150
 
@@ -148,6 +157,8 @@ export class HelmetSession {
   private rerouted: NavState['rerouted'] = null
   private arrived = false
   private detourTicks = 0
+  private hardAheadAt = -Infinity
+  private sandAhead = false
   private elapsedS = 0
   private onPlan: (plan: RoutePlan) => void
   legIndex: number
@@ -205,7 +216,8 @@ export class HelmetSession {
     if (!standIn) {
       const before = entry.plan.legs.slice(0, entry.legIndex).reduce((m, l) => m + l.minutes, 0)
       const fix = locate(this.track, 0, 0)
-      this.elapsedS = 60 * (before + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
+      const stopsBefore = entry.legIndex * MOBILITY[entry.plan.mobility].stopMinutes
+      this.elapsedS = 60 * (before + stopsBefore + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
     }
     this.guideLine = new GuideLine(this.world.scene)
     this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
@@ -325,7 +337,14 @@ export class HelmetSession {
         detourAt = { x: f.x, y: f.y }
       }
     }
-    this.detourTicks = !guide.blocked && detour > DETOUR_M && guide.fix.distM < DETOUR_M ? this.detourTicks + 1 : 0
+    // Only rock, steep ground and drop-offs shut a route. Sand makes the guide prefer firm ground, which can also
+    // take it off the line, so the detour counts only while a hard hazard was seen on the line itself.
+    if (guide.hazardAheadM !== null) this.hardAheadAt = now
+    const hardAhead = now - this.hardAheadAt < HARD_AHEAD_MEMORY_MS
+    this.detourTicks = !guide.blocked && hardAhead && detour > DETOUR_M && guide.fix.distM < DETOUR_M ? this.detourTicks + 1 : 0
+    // loose sand on the planned line a few steps ahead
+    const ahead = pointAhead(this.track, guide.fix.s, SAND_AHEAD_M)
+    this.sandAhead = this.hazards.grid.classAt(ahead.x, ahead.y) === HAZARD.sand && this.hazards.grid.classAt(pose.x, pose.y) !== HAZARD.sand
     const shut = guide.blocked || this.detourTicks >= DETOUR_TICKS
     const shutAt = guide.blocked ? guide.blockedAt : detourAt
 
@@ -384,7 +403,11 @@ export class HelmetSession {
     }
     return {
       seen,
-      hazards: grid.hazardsList().map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
+      // sand is ground, not an obstacle: it is in the picture (yellow), not in the marker list
+      hazards: grid
+        .hazardsList()
+        .filter((h) => h.kind !== 'sand')
+        .map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
       plan: this.replanned ? this.plan : null,
     }
   }
@@ -400,6 +423,7 @@ export class HelmetSession {
       blocked: g?.blocked ?? false,
       hazardAheadM: g?.hazardAheadM ?? null,
       hazardAheadKind: g?.hazardAheadKind ?? null,
+      sandAhead: this.sandAhead,
       replanning: this.replanner.busy,
       rerouted: this.rerouted,
       arrived: this.arrived,
@@ -430,7 +454,7 @@ export class HelmetSession {
   }
 
   private frame(now: number): void {
-    const dt = Math.min(0.1, (now - this.last) / 1000)
+    const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
     this.last = now
     const { pose, world } = this
 
@@ -456,6 +480,8 @@ export class HelmetSession {
     if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy) {
       this.cvAt = now
       const frame = this.rig.capture(world.scene, pose)
+      // the CV's own fused ground heights around the astronaut, for drop-offs (never the world's heights)
+      frame.heights = this.hazards.grid.heightWindow(pose.x, pose.y, DROP_WINDOW_M)
       this.cvPoses.set(frame.id, frame.pose)
       if (!this.cv.send(frame)) this.cvPoses.delete(frame.id)
     }

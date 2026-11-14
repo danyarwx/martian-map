@@ -12,7 +12,7 @@
 // for a walker a missed rock is worse than a false one. Every L stays within ±4 (p 0.018..0.982).
 import type { LatLon, TerrainMeta } from '../../types.ts'
 import { inGrid, toCell } from '../../lib/geo.ts'
-import { HAZARD, type Detection, type HazardClass, type HazardPatch } from '../contracts.ts'
+import { HAZARD, type Detection, type HazardClass, type HazardPatch, type HeightGrid } from '../contracts.ts'
 import { GRID_CELL_M, gridCellCenter, gridIndex, toLatLon } from '../frames.ts'
 
 /** Cells along one side of a block: 128 × 0.5 m = 64 m. */
@@ -28,6 +28,10 @@ const P_MIN = 0.05
 const P_MAX = 0.95
 /** Weight of a new ground height against the fused one. */
 const GROUND_BLEND = 0.3
+/** A new height within this of the stored one confirms it, metres; further off, the count of agreeing frames restarts. */
+const GROUND_AGREE_M = 0.4
+/** Frames that must agree before a fused height is trusted for drop-offs (`heightWindow`). */
+export const GROUND_TRUST_FRAMES = 3
 
 /** Classes with a log-odds slot, in slot order (slot = class − 1). */
 const CLASSES = [HAZARD.safe, HAZARD.rock, HAZARD.sand, HAZARD.steep, HAZARD.drop] as const
@@ -81,6 +85,8 @@ interface Block {
   L: Float32Array[]
   /** Fused ground height, metres, NaN unknown. */
   groundZ: Float32Array
+  /** Frames in a row that agreed with `groundZ` (capped). One stray stereo mismatch never gets past 1. */
+  groundN: Uint8Array
   /** Frame id of the last observation, −1 never seen. */
   seenAt: Int32Array
 }
@@ -158,7 +164,15 @@ export class HazardGrid {
           const z = groundZ[k]
           if (Number.isFinite(z)) {
             const old = b.groundZ[i]
-            b.groundZ[i] = Number.isNaN(old) ? z : old + GROUND_BLEND * (z - old)
+            if (Number.isNaN(old)) {
+              b.groundZ[i] = z
+              b.groundN[i] = 1
+            } else {
+              b.groundZ[i] = old + GROUND_BLEND * (z - old)
+              // a height that contradicts the stored one takes the cell's trust away until frames agree again
+              if (Math.abs(z - old) > GROUND_AGREE_M) b.groundN[i] = 0
+              else if (b.groundN[i] < 255) b.groundN[i]++
+            }
           }
         }
         if (col < this.minCol) this.minCol = col
@@ -190,6 +204,26 @@ export class HazardGrid {
     const { col, row } = gridIndex(x, y, 0, 0)
     const b = this.blockFor(col, row, false)
     return b ? b.groundZ[this.local(col, row)] : NaN
+  }
+
+  /**
+   * Fused ground heights of the square of half-side `halfM` around (x, y), aligned to the grid's cells. Only
+   * heights that GROUND_TRUST_FRAMES frames agreed on: a drop-off must not come from one bad stereo match.
+   */
+  heightWindow(x: number, y: number, halfM: number): HeightGrid {
+    const c0 = Math.floor((x - halfM) / GRID_CELL_M)
+    const r0 = Math.floor(-(y + halfM) / GRID_CELL_M)
+    const n = Math.ceil((2 * halfM) / GRID_CELL_M)
+    const z = new Float32Array(n * n).fill(NaN)
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        const b = this.blockFor(c0 + c, r0 + r, false)
+        if (!b) continue
+        const i = this.local(c0 + c, r0 + r)
+        if (b.groundN[i] >= GROUND_TRUST_FRAMES) z[r * n + c] = b.groundZ[i]
+      }
+    }
+    return { x0: c0 * GRID_CELL_M + 0, y0: -r0 * GRID_CELL_M + 0, cols: n, rows: n, z }
   }
 
   /** Frame id of the last observation of the cell holding (x, y), −1 never. */
@@ -346,6 +380,7 @@ export class HazardGrid {
       b = {
         L: CLASSES.map(() => new Float32Array(BLOCK_N)),
         groundZ: new Float32Array(BLOCK_N).fill(NaN),
+        groundN: new Uint8Array(BLOCK_N),
         seenAt: new Int32Array(BLOCK_N).fill(-1),
       }
       this.blocks.set(key, b)

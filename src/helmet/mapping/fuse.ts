@@ -13,7 +13,7 @@ export class HazardMap {
   frames = 0
 
   fuse(result: CvResult): void {
-    this.grid.update(result.patch, result.id)
+    this.grid.update(result.patch, result.id, result.groundZ)
     this.detections = result.detections
     this.frames++
     this.version++

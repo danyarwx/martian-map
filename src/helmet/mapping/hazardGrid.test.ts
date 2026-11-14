@@ -198,3 +198,23 @@ test('blockedPlannerCells marks a planner cell only above the coverage threshold
   g.update(patch(500, 0, 20, 20, HAZARD.drop), 2)
   assert.equal(g.blockedPlannerCells(m, ORIGIN).size, 2)
 })
+
+test('heightWindow hands out a fused height only after three frames agreed on it', () => {
+  const g = new HazardGrid()
+  const patch = { x0: 0, y0: 2, cols: 4, rows: 4, cls: new Uint8Array(16).fill(HAZARD.safe), conf: new Float32Array(16).fill(0.8) }
+  const z = (v: number) => new Float32Array(16).fill(v)
+  const known = () => g.heightWindow(1, 1, 2).z.filter((v) => v === v)
+  g.update(patch, 1, z(5))
+  g.update(patch, 2, z(5.1))
+  assert.equal(known().length, 0, 'two frames are not enough')
+  g.update(patch, 3, z(5.05))
+  assert.equal(known().length, 16)
+  assert.ok(known().every((v) => Math.abs(v - 5.05) < 0.1))
+  // one stray height (a stereo mismatch 1.2 m low) takes the trust away until three frames agree again
+  g.update(patch, 4, z(3.8))
+  assert.equal(known().length, 0)
+  g.update(patch, 5, z(5.05))
+  g.update(patch, 6, z(5.05))
+  g.update(patch, 7, z(5.05))
+  assert.ok(known().length === 16 && known().every((v) => Math.abs(v - 5.05) < 0.2))
+})

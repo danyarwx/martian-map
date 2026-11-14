@@ -6,6 +6,7 @@
 // or { id, error } when a frame fails. The handler is exported so Node tests can drive it without a Worker.
 import type { CvFrame, CvResult } from '../contracts.ts'
 import { createCvPipeline, runFrame, type CvPipeline, type CvPipelineConfig } from './pipeline.ts'
+import { createSandHook } from './sand.ts'
 
 export interface CvConfigMessage {
   type: 'config'
@@ -39,9 +40,10 @@ export function createCvWorkerHandler(
     }
     const frame = msg as CvFrame
     try {
-      pipeline ??= createCvPipeline(frame.intr, options)
+      // the sand stage (sand.ts) is the pipeline's sand hook; a new pipeline starts with no sand history
+      pipeline ??= createCvPipeline(frame.intr, { ...options, sandHook: createSandHook() })
       const res = runFrame(pipeline, frame)
-      post(res, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer])
+      post(res, [res.disparity.buffer, res.patch.cls.buffer, res.patch.conf.buffer, ...(res.groundZ ? [res.groundZ.buffer] : [])])
     } catch (err) {
       post({ id: typeof frame?.id === 'number' ? frame.id : -1, error: String(err) }, [])
     }

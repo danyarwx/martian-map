@@ -10,7 +10,7 @@ import * as THREE from 'three'
 import type { LatLon } from '../../types.ts'
 import { toLatLon, toLocal } from '../frames.ts'
 import { coarseTileHeights, inCoarseGrid, type CoarseGrid, type HeightField } from './heightField.ts'
-import { buildTileGeometry, makeCoarseMaterial, makeOrthoMaterial, type Stride } from './terrainMesh.ts'
+import { buildTileGeometry, makeCoarseMaterial, makeOrthoMaterial, makeSandTexture, type Stride } from './terrainMesh.ts'
 import { decodeTileHeights, tileBounds, tileId, tileKey, tileOf, type TileEntry, type TileIndex } from './tileGrid.ts'
 
 export const INDEX_URL = '/data/helmet/index.json'
@@ -57,6 +57,8 @@ export interface TileSlot {
   heights: Float32Array | null
   /** Sand mask, 256 × 256 at 0.5 m, 1 = sand. Real tiles only. */
   sand: Uint8Array | null
+  /** The sand mask as a texture, for the simulated look of sand (terrainMesh.ts). */
+  sandTex: THREE.DataTexture | null
   /** RGBA pixels of the ortho, 512 × 512, while the tile is being built (released afterwards). */
   orthoPixels: Uint8ClampedArray | null
   ortho: THREE.Texture | null
@@ -197,6 +199,7 @@ export class TileStreamer {
             state: entry ? 'queued' : 'fetched',
             heights: null,
             sand: null,
+            sandTex: null,
             orthoPixels: null,
             ortho: null,
             bitmap: null,
@@ -252,6 +255,7 @@ export class TileStreamer {
         const m = new Uint8Array(sand.width * sand.height)
         for (let k = 0; k < m.length; k++) m[k] = px[k * 4] > 127 ? 1 : 0
         s.sand = m
+        s.sandTex = makeSandTexture(m)
         sand.close()
       }
       const tex = new THREE.Texture(ortho)
@@ -302,7 +306,7 @@ export class TileStreamer {
     heights.setTile(s.row, s.col, s.heights, s.entry !== null)
     this.opts.onBuilt?.(s)
     s.orthoPixels = null
-    if (s.ortho) s.material = makeOrthoMaterial(s.ortho, detail)
+    if (s.ortho) s.material = makeOrthoMaterial(s.ortho, detail, s.sandTex)
     const mesh = new THREE.Mesh(this.geometry(s), s.material ?? this.coarseMaterial)
     mesh.receiveShadow = true
     mesh.matrixAutoUpdate = false
@@ -358,9 +362,11 @@ export class TileStreamer {
     }
     s.material?.dispose()
     s.ortho?.dispose()
+    s.sandTex?.dispose()
     s.bitmap?.close()
     s.material = null
     s.ortho = null
+    s.sandTex = null
     s.bitmap = null
     s.orthoPixels = null
   }

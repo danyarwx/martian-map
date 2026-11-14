@@ -225,6 +225,11 @@ export default function HelmetView({ entry, onExit }: Props) {
         )}
         {nav?.replanning && <p className="is-info">Re-routing round the hazard…</p>}
         {nav?.blocked && !nav.replanning && <p className="is-danger">No way through ahead</p>}
+        {nav?.sandAhead && (
+          <p className="is-caution" title="Helmet hazard map (camera): ground classified as loose sand. The classifier is trained on the simulated sand look">
+            Loose sand ahead: the guide keeps to firm ground
+          </p>
+        )}
         {warnings.map((w) => (
           <p key={w.id} className={`is-${w.severity}`} title={w.source}>
             {w.text}
