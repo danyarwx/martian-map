@@ -13,7 +13,7 @@ GPU, and keep the window in front (a background tab renders 1 frame per second).
 | 3 | Keep walking about 50 m. Boulders appear across the route. The mini-map (bottom right) paints them red; press **M** for the large map | "Orbit cannot see rocks under about 1.5 m. These are simulated, and the helmet has never been told where they are: it finds them from two camera images." | `03-boulders-minimap.jpg` |
 | 4 | Press **V** | "This is what the helmet computes, live, 5–7 times a second: the left camera with what it found, and depth from the stereo pair." | `04-cv-view.jpg` |
 | 5 | Press **V** again and walk on. About 15 m before the boulders the alert "Route updated" appears and the dashed line on the mini-map moves | "The planned line is shut, so the mission planner, the same one as on the big screen, gives a new route from where the astronaut stands. The teal line steers round the rocks." | `05-reroute.jpg` |
-| 6 | Walk on along the guide past the boulders | "Loose sand shows yellow on the map; the guide prefers firm ground." (only if sand cells are visible: see STATUS.md for the sand classifier's score) | `06-past-the-boulders.jpg` |
+| 6 | Walk on along the guide past the boulders | "Loose sand shows yellow on the map and raises a caution; the guide prefers firm ground." (The sand detector is trained on the simulated sand look: say so if asked) | `06-past-the-boulders.jpg` |
 | 7 | Press **R** | "The same detector, unchanged, on a real Perseverance stereo photo from Cheyava Falls. Rocks lower than a step are left alone on purpose." Press **R** to close | `07-real-photo.jpg` |
 | 8 | Press **Esc** | "Back inside, the ground the helmet saw and the hazards it found are on the planning map for the next crew." | `08-back-on-the-map.jpg` |
 
