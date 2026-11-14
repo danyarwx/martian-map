@@ -5,6 +5,8 @@ import { usePlanner } from './lib/usePlanner.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar, { type Notice } from './panels/Sidebar.tsx'
+import type { HelmetEntry, HelmetExit } from './helmet/contracts.ts'
+import { pointBeforeEnd } from './helmet/world/path.ts'
 import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
 
 const site = JEZERO
@@ -23,8 +25,15 @@ const coordinates = (p: LatLon) => `${p.lat.toFixed(5)}° N, ${p.lon.toFixed(5)}
 
 export default function App() {
   const [helmetOpen, setHelmetOpen] = useState(isHelmetHash)
+  /** The plan handed to the helmet by "Go outside"; null when the helmet was opened by #helmet (its own demo route). */
+  const [helmetEntry, setHelmetEntry] = useState<HelmetEntry | null>(null)
+  /** What the helmet brought back: the ground it saw, the hazards it found, its re-routed plan. */
+  const [helmetExit, setHelmetExit] = useState<HelmetExit | null>(null)
   useEffect(() => {
-    const onHash = () => setHelmetOpen(isHelmetHash())
+    const onHash = () => {
+      setHelmetOpen(isHelmetHash())
+      if (!isHelmetHash()) setHelmetEntry(null)
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -174,13 +183,23 @@ export default function App() {
     [addPoint],
   )
 
+  /** Suit up: the helmet opens 300 m before the first stop of the chosen route. */
+  const goOutside = () => {
+    if (!plan || plan.legs.length === 0) return
+    const start = pointBeforeEnd(plan.legs[0].path, 300)
+    setHelmetEntry({ plan, startAt: start.at, legIndex: 0 })
+    setHelmetOpen(true)
+  }
+
   if (helmetOpen) {
     return (
       <Suspense fallback={<div className="helmet-loading">Suiting up…</div>}>
         <HelmetView
-          entry={null}
-          onExit={() => {
+          entry={helmetEntry}
+          onExit={(exit) => {
             history.replaceState(null, '', window.location.pathname + window.location.search)
+            if (exit.seen || exit.hazards.length || exit.plan) setHelmetExit(exit)
+            setHelmetEntry(null)
             setHelmetOpen(false)
           }}
         />
@@ -222,6 +241,9 @@ export default function App() {
           onMovePoint={movePoint}
           onPick={pickOnMap}
           onProfile={setProfile}
+          seenLayer={helmetExit?.seen ?? null}
+          helmetHazards={helmetExit?.hazards}
+          helmetRoute={helmetExit?.plan ? helmetExit.plan.legs.map((l) => l.path) : undefined}
         />
         <Sidebar
           site={site}
@@ -240,6 +262,7 @@ export default function App() {
           notice={notice}
           maxSelected={MAX_SELECTED}
           onDemo={demo}
+          onGoOutside={mobility === 'walk' ? goOutside : undefined}
           onMobility={setMobility}
           onToggle={toggle}
           onFocus={setFocusId}

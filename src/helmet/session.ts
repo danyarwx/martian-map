@@ -9,13 +9,13 @@ import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, remainingM, type RouteTrack } from './nav/follow.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
-import { headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
+import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
 import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
 import { CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
-import { EYE_M, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
+import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
 import { makeCoarseGrid } from './world/heightField.ts'
 import { headingAlong } from './world/path.ts'
 import type { RoutesFile } from './world/routes.ts'
@@ -45,6 +45,8 @@ export interface HudState {
   paused: boolean
   cv: CvStats
   nav: NavState
+  /** Minutes outside so far: the planned walk to the start point plus the time in the helmet (Shift counts ×4). */
+  elapsedMin: number
 }
 
 /** Where the astronaut is on the route and what the guide says. */
@@ -68,6 +70,10 @@ export interface NavState {
   rerouted: { deltaMin: number; at: number } | null
   /** The astronaut is at the last stop of the plan. */
   arrived: boolean
+  /** Bearing of the active leg's stop from here, degrees clockwise from north. */
+  stopBearingDeg: number
+  /** Walking minutes back to the habitat from the nearest point of the planned leg; null when the plan has none. */
+  walkBackMin: number | null
 }
 
 /** How the live computer vision is doing. */
@@ -101,6 +107,12 @@ const REPLAN_CHECK_MS = 1000
 const REPLAN_COVERAGE = 0.06
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
+/**
+ * When the guide has to leave the planned line by more than this for DETOUR_TICKS CV frames in a row, the line is
+ * shut by something wide (a boulder field, not one rock), and the planner is asked for a new route.
+ */
+const DETOUR_M = 4
+const DETOUR_TICKS = 4
 /** Time between CV frames, ms (PLAN §4: about every 150 ms, at least 4 Hz). */
 export const CV_EVERY_MS = 150
 
@@ -135,6 +147,8 @@ export class HelmetSession {
   private replanAt = 0
   private rerouted: NavState['rerouted'] = null
   private arrived = false
+  private detourTicks = 0
+  private elapsedS = 0
   private onPlan: (plan: RoutePlan) => void
   legIndex: number
   paused = false
@@ -173,7 +187,7 @@ export class HelmetSession {
     this.camera = new THREE.PerspectiveCamera(70, host.clientWidth / Math.max(1, host.clientHeight), 0.1, 6000)
     this.camera.layers.enable(HUD_LAYER)
 
-    this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs })
+    this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs, planLegs: standIn ? undefined : entry.plan.legs })
     const heights = this.world.heights
     const rocks = this.world.rocks.field
     this.ground = {
@@ -187,6 +201,12 @@ export class HelmetSession {
     this.controls = new Controls(renderer.domElement, this.pose)
 
     this.track = buildTrack(entry.plan.legs[entry.legIndex].path, this.origin)
+    // the walk from the habitat to the start point already took time (a real plan's legs carry real minutes)
+    if (!standIn) {
+      const before = entry.plan.legs.slice(0, entry.legIndex).reduce((m, l) => m + l.minutes, 0)
+      const fix = locate(this.track, 0, 0)
+      this.elapsedS = 60 * (before + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
+    }
     this.guideLine = new GuideLine(this.world.scene)
     this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
@@ -295,14 +315,28 @@ export class HelmetSession {
       this.arrived = true
     }
 
+    // how far the guide strays from the planned line, and where
+    let detour = 0
+    let detourAt: { x: number; y: number } | null = null
+    for (let k = 0; k < guide.path.length; k += 3) {
+      const f = locate(this.track, guide.path[k].x, guide.path[k].y, guide.fix.s)
+      if (f.distM > detour && f.s > guide.fix.s) {
+        detour = f.distM
+        detourAt = { x: f.x, y: f.y }
+      }
+    }
+    this.detourTicks = !guide.blocked && detour > DETOUR_M && guide.fix.distM < DETOUR_M ? this.detourTicks + 1 : 0
+    const shut = guide.blocked || this.detourTicks >= DETOUR_TICKS
+    const shutAt = guide.blocked ? guide.blockedAt : detourAt
+
     if (now - this.replanAt < REPLAN_CHECK_MS || this.replanner.busy) return
     this.replanAt = now
     const at = toLatLon(pose.x, pose.y, this.origin)
     const decision = this.decider.check({
       grid: this.hazards.grid,
       at,
-      localBlocked: guide.blocked,
-      localBlockedAt: guide.blockedAt ? toLatLon(guide.blockedAt.x, guide.blockedAt.y, this.origin) : null,
+      localBlocked: shut,
+      localBlockedAt: shut && shutAt ? toLatLon(shutAt.x, shutAt.y, this.origin) : null,
       nowMs: now,
     })
     if (!decision.replan) return
@@ -329,6 +363,7 @@ export class HelmetSession {
         this.replanned = true
         this.setLeg(0)
         this.guide = null
+        this.detourTicks = 0
         if (!same) this.rerouted = { deltaMin: res.deltaMinutes, at: performance.now() }
         this.onPlan(res.plan)
       })
@@ -368,7 +403,16 @@ export class HelmetSession {
       replanning: this.replanner.busy,
       rerouted: this.rerouted,
       arrived: this.arrived,
+      stopBearingDeg: dirToHeading(this.track.x[this.track.n - 1] - this.pose.x, this.track.y[this.track.n - 1] - this.pose.y),
+      walkBackMin: this.walkBackMin(fix.s),
     }
+  }
+
+  private walkBackMin(s: number): number | null {
+    const home = this.plan.legs[this.legIndex].walkHomeMin
+    if (!home.length || this.track.lengthM <= 0) return null
+    const v = home[Math.min(home.length - 1, Math.round((s / this.track.lengthM) * (home.length - 1)))]
+    return Number.isFinite(v) ? v : null
   }
 
   dispose(): void {
@@ -396,6 +440,7 @@ export class HelmetSession {
     // no walking before the ground under the feet exists, or the player would start inside it
     const still = this.paused || !ready
     const res = stepPlayer(pose, still ? { fwd: 0, side: 0, fast: false } : inp, still ? 0 : dt, this.ground)
+    if (!still) this.elapsedS += dt * (this.fast ? FAST_FACTOR : 1)
     if (res.moved > 0 || res.blocked || (!inp.fwd && !inp.side)) this.move = res
     else this.move = { ...res, blocked: this.move.blocked }
     pose.z += this.lift
@@ -440,6 +485,7 @@ export class HelmetSession {
         paused: this.paused,
         cv: { ...this.cvStats },
         nav: this.navState(),
+        elapsedMin: this.elapsedS / 60,
       })
     }
   }

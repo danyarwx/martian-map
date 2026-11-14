@@ -58,7 +58,7 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
-Helmet view (Level 2), branch `feat/helmet-3d`, core path works at `#helmet` (walk, rocks, live CV, hazard mini-map, guide line, re-route; keys J V M H P). Still open: Go outside button, compass / suit panels, real-photo view, map hand-back. Board: `docs/helmet/STATUS.md`:
+Helmet view (Level 2), branch `feat/helmet-3d`, core path works at `#helmet` (walk, rocks, live CV, hazard mini-map, guide line, re-route; keys J V M H P). Mission control has a "Go outside" button; Esc brings the seen ground and hazards back onto the map. Keys also R (real-photo test). Still open: eval metrics (T4.4), sand, drop-off wiring, real-photo detections (camera roll), demo script, teammates' reviews of `src/lib` and `src/map` changes. Board: `docs/helmet/STATUS.md`:
 - Spec, decisions and task list for agents: `docs/helmet/PLAN.md`. Progress board: `docs/helmet/STATUS.md`. Loop prompts: `docs/helmet/LOOP_PROMPT.md`
 - Adds `three` (agreed). Touches `src/lib/` only for a "blocked cells" planner input (Dev 2 reviews) and `src/map/` only for two optional props (Dev 1 reviews)
 - Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)

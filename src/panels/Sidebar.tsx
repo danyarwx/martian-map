@@ -78,6 +78,8 @@ interface Props {
   onProfile: (profile: RouteProfile) => void
   /** Back to the route the first screen shows. */
   onDemo: () => void
+  /** Opens the helmet view on this route. Absent when the crew is not on foot. */
+  onGoOutside?: () => void
 }
 
 export default function Sidebar(p: Props) {
@@ -356,6 +358,11 @@ function Summary(p: Props & { schedule: Schedule | null }) {
           onClick={() => firstStop && p.onFocus(firstStop)}
         >
           Walk through stops <Arrow />
+        </button>
+      )}
+      {p.onGoOutside && routed && !planning && (
+        <button type="button" className="btn btn--block" onClick={p.onGoOutside} title="Helmet view: walk the route in 3D with live hazard detection">
+          Go outside (helmet view)
         </button>
       )}
     </section>

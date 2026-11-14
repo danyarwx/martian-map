@@ -20,6 +20,8 @@ export interface WorldInit {
   renderer: THREE.WebGLRenderer
   /** routes.json legs: where the demo boulder fields go. */
   legs: readonly RoutesFileLeg[]
+  /** Legs of the plan being walked (demo boulder fields go on them). */
+  planLegs?: readonly { toId: string; path: LatLon[] }[]
 }
 
 export class World {
@@ -41,7 +43,7 @@ export class World {
     this.scene.add(this.terrainGroup)
     this.rockGroup.name = 'rocks'
     this.scene.add(this.rockGroup)
-    this.rocks = new RockLayer({ group: this.rockGroup, index: init.index, origin: init.origin, legs: init.legs })
+    this.rocks = new RockLayer({ group: this.rockGroup, index: init.index, origin: init.origin, legs: init.legs, planLegs: init.planLegs })
 
     this.atmosphere = new Atmosphere(this.scene, init.renderer, { latDeg: init.origin.lat })
     this.far = buildFarTerrain(init.coarse, init.origin)
