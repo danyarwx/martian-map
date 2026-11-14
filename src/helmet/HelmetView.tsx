@@ -147,6 +147,8 @@ export default function HelmetView({ entry, onExit }: Props) {
       const k = e.key.toLowerCase()
       if (k === 'escape') {
         if (menu) setMenu(null)
+        else if (realPhoto) setRealPhoto(false)
+        else if (cvView) setCvView(false)
         else exitRef.current(session.current?.exit() ?? { seen: null, hazards: [], plan: null })
       } else if (k === 'j') setMenu((m) => (m === 'jump' ? null : 'jump'))
       else if (k === 'h') setMenu((m) => (m === 'help' ? null : 'help'))
@@ -157,7 +159,7 @@ export default function HelmetView({ entry, onExit }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [menu])
+  }, [menu, realPhoto, cvView])
 
   useEffect(() => {
     const s = session.current
