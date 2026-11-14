@@ -2,7 +2,8 @@
 
 The 3-minute story of `PLAN.md` §1.1, with the keys to press. Screenshots are in `docs/helmet/img/`
 (taken 14 Nov 2026 from the dev server in the Claude desktop Browser pane, 756 px wide; a laptop screen has more room).
-**The screenshots show the look before the visor redesign of 14 Nov (late); the steps and keys below are current.**
+**Screenshots 01–08 show the look before the visor redesign; the steps and keys below are current.** The current
+look (visor HUD, outlined rocks, sand hatch, new world): `img/09-visor-current.jpg`.
 
 Before the demo: open the site once with the network on so the data is cached, use Chrome on a laptop with a real
 GPU, and keep the window in front (a background tab renders 1 frame per second).
