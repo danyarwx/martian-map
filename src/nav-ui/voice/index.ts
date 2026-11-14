@@ -6,7 +6,7 @@ import { createBrowserEngine } from './browserEngine.ts'
 import { withFallback } from './fallback.ts'
 import { createOpenAiEngine } from './openaiEngine.ts'
 import { createSpeechQueue, type SpeechEngine } from './queue.ts'
-import { playSquelch, unlockAudio } from './squelch.ts'
+import { unlockAudio } from './audio.ts'
 
 export interface Voice {
   /** Mutes or unmutes. Muting stops the line being spoken. Captions are not affected. */
@@ -17,28 +17,17 @@ export interface Voice {
   stop(): void
 }
 
-/** The OpenAI voice with the browser voice behind it. Each plays the radio click right before it speaks. */
+/** The OpenAI voice with the browser voice behind it. */
 function chooseEngine(): SpeechEngine {
   const browser = createBrowserEngine()
   let last = ''
-  return withFallback(createOpenAiEngine(), browser && withSquelch(browser), {
+  return withFallback(createOpenAiEngine(), browser, {
     available: () => navigator.onLine,
     onEngine(which) {
       if (which !== last) console.info(`[voice] speaking with the ${which === 'primary' ? 'OpenAI' : 'browser'} voice`)
       last = which
     },
   })
-}
-
-/** Wraps an engine so every line starts with the radio click. */
-function withSquelch(engine: SpeechEngine): SpeechEngine {
-  return {
-    async speak(text) {
-      await playSquelch()
-      await engine.speak(text)
-    },
-    cancel: () => engine.cancel(),
-  }
 }
 
 export function startVoice(bus: NavBus, muted = false): Voice {

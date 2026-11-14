@@ -3,7 +3,7 @@
 The tablet screen at `/nav` produces the turn-by-turn announcements as events. It shows them as captions, and the built-in voice speaks them. The built-in voice is the reference subscriber: another voice model subscribes to the same events in the same way. You don't need to touch the navigation code.
 
 Source of truth: [`src/nav/events.ts`](../src/nav/events.ts) (types, documented) and [`src/nav/instructions.ts`](../src/nav/instructions.ts) (`Maneuver`).
-Reference subscriber: [`src/nav-ui/voice/`](../src/nav-ui/voice/). `index.ts` listens to the bus, `queue.ts` holds the priority rules below, `openaiEngine.ts` plays OpenAI speech fetched from our Vercel function `api/tts.js` (the key stays on the server), `fallback.ts` switches to `browserEngine.ts`, the browser's own voice, when offline or when OpenAI does not answer within 1.5 s, and `squelch.ts` is the radio click before each line. To add an engine, implement `SpeechEngine` from `queue.ts` (`speak(text)` and `cancel()`).
+Reference subscriber: [`src/nav-ui/voice/`](../src/nav-ui/voice/). `index.ts` listens to the bus, `queue.ts` holds the priority rules below, `openaiEngine.ts` plays OpenAI speech fetched from our Vercel function `api/tts.js` (the key stays on the server), `fallback.ts` switches to `browserEngine.ts`, the browser's own voice, when offline or when OpenAI does not answer within 1.5 s. There is no radio click on this branch. To add an engine, implement `SpeechEngine` from `queue.ts` (`speak(text)` and `cancel()`).
 
 The texts are written in a terse radio style and spell out units ("meters", "degrees"), so a speech engine reads them correctly.
 

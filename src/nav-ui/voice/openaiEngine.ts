@@ -1,7 +1,7 @@
 // The OpenAI voice. The audio comes from our own /api/tts function (api/tts.js), which holds the key.
 // Needs a network: when the audio is not there in time, `trySpeak` gives up and the browser voice speaks.
 import type { TryEngine } from './fallback.ts'
-import { audioContext, playSquelch } from './squelch.ts'
+import { audioContext } from './audio.ts'
 
 const ENDPOINT = '/api/tts'
 
@@ -49,7 +49,6 @@ export function createOpenAiEngine(): TryEngine {
         }
         void audioFor(text, ctx).then(resolve).finally(() => clearTimeout(timer))
       })
-      if (!cancelled && buffer) await playSquelch() // the radio click, right before the voice
       stopWaiting = null
       if (cancelled) return true // nothing more to say for this line
       if (!buffer) return false
