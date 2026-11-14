@@ -188,6 +188,7 @@ export default function App() {
           habitat={habitat}
           custom={custom}
           terrainMeta={terrainMeta}
+          walkBack={planner.walkBack}
           selected={selected}
           plan={plan}
           otherPlan={otherPlan}

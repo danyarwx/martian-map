@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MobilityId, RoutePlans, SiteConfig, Target } from '../types.ts'
+import type { MobilityId, RoutePlans, SiteConfig, Target, WalkBackImage } from '../types.ts'
 import type { PlanRequest, PlanResponse } from './planner.worker.ts'
 
 export interface PlannerState {
@@ -9,6 +9,8 @@ export interface PlannerState {
   error: string | null
   /** Which elevation model the route was computed on. */
   terrainSource: string | null
+  /** Lines of equal walking time back to the habitat, for the map. Null until the first plan. */
+  walkBack: WalkBackImage | null
 }
 
 /**
@@ -18,7 +20,13 @@ export interface PlannerState {
 export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Target, targets: Target[]): PlannerState {
   const worker = useRef<Worker | null>(null)
   const latest = useRef(0)
-  const [state, setState] = useState<PlannerState>({ plans: null, planning: false, error: null, terrainSource: null })
+  const [state, setState] = useState<PlannerState>({
+    plans: null,
+    planning: false,
+    error: null,
+    terrainSource: null,
+    walkBack: null,
+  })
 
   useEffect(() => {
     const w = new Worker(new URL('./planner.worker.ts', import.meta.url), { type: 'module' })
@@ -28,7 +36,13 @@ export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Targ
       if (res.id !== latest.current) return // an older request finished late
       setState((s) =>
         res.ok
-          ? { plans: res.plans, planning: false, error: null, terrainSource: res.terrainSource }
+          ? {
+              plans: res.plans,
+              planning: false,
+              error: null,
+              terrainSource: res.terrainSource,
+              walkBack: res.walkBack ?? s.walkBack,
+            }
           : { ...s, plans: null, planning: false, error: res.error },
       )
     }

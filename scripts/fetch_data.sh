@@ -12,6 +12,11 @@ curl -fsSL -o public/data/M20_traverse.json       $M20/M20_traverse.json
 curl -fsSL -o public/data/M20_waypoints.json      $M20/M20_waypoints.json
 curl -fsSL -o public/data/M20_heli_waypoints.json $M20/m20_heli_waypoints.json
 
+# Mineral indicators: CRISM map-projected browse image "CAR" (carbonates, clays, hydrated minerals) of
+# observation FRT00005C5E, from the PDS Geosciences Node. Shown as one image overlay; bounds are in src/map/layers.ts.
+CRISM=https://pds-geosciences.wustl.edu/mro/mro-m-crism-5-rdr-mptargeted-v1/mrocr_4001/browse/2007/2007_139/frt00005c5e
+curl -fsSL -o public/data/jezero_crism_car.png $CRISM/frt00005c5e_07_brcarj_mtr3.png
+
 # Python env for the processing scripts
 [ -d scripts/.venv ] || python3 -m venv scripts/.venv
 scripts/.venv/bin/pip install -q -r scripts/requirements.txt

@@ -182,3 +182,41 @@ test('the gentlest route explains a detour by the slope it stays under', () => {
     ['Turns here: up to 16° on the direct line. This way stays under 1°.'],
   )
 })
+
+test('walk-back time grows with distance from the habitat and is carried on every leg', async () => {
+  const { walkHomeSeconds } = await import('./walkback.ts')
+  const t = terrain()
+  const home = walkHomeSeconds(t, habitat)
+  const perMetre = secondsPerMetre(MOBILITY.walk, 0)
+  // 20 cells east on flat ground: 200 m at walking speed.
+  assert.ok(Math.abs(home[20 * W + 25] - 200 * perMetre) < 1, `${home[20 * W + 25]}`)
+  const plans = planRoutes(t, MOBILITY.walk, habitat, [stop('a', 25, 20)], home)
+  const out = plans.fast.legs[0]
+  assert.equal(out.walkHomeMin.length, out.path.length)
+  assert.equal(out.elev.length, out.path.length)
+  assert.ok(Math.abs(out.walkHomeMin.at(-1)! - (200 * perMetre) / 60) < 0.1)
+  assert.equal(plans.fast.legs[1].walkHomeMin.at(-1), 0)
+})
+
+test('walk-back time is infinite behind ground nobody can walk on', async () => {
+  const { walkHomeSeconds } = await import('./walkback.ts')
+  // A wall of 30 degree slope across the whole grid at column 30.
+  const home = walkHomeSeconds(terrain((c) => (c === 30 ? 30 : 0)), habitat)
+  assert.equal(home[20 * W + 40], Infinity)
+})
+
+test('the suggested departure keeps the excursion in daylight and out of the midday gusts when it can', async () => {
+  const { assessDeparture, bestDeparture, DAY, temperatureC, timeline } = await import('./schedule.ts')
+  assert.equal(Math.round(temperatureC(DAY.coldestAt)), DAY.coldestC)
+  assert.equal(Math.round(temperatureC(DAY.warmestAt)), DAY.warmestC)
+  const short = bestDeparture(120)
+  assert.ok(short.inDaylight)
+  assert.equal(short.gustMinutes, 0)
+  const long = bestDeparture(8 * 60)
+  assert.ok(long.inDaylight, 'an 8 h excursion still fits a 12 h day')
+  assert.ok(!assessDeparture(15 * 60, 5 * 60).inDaylight, 'leaving at 15:00 for 5 h ends after sunset')
+  const plan = planRoute(terrain(), MOBILITY.walk, habitat, [stop('a', 25, 20)])
+  const steps = timeline(plan, 8 * 60)
+  assert.deepEqual(steps.map((s) => s.kind), ['leave', 'arrive', 'return'])
+  assert.ok(Math.abs(steps.at(-1)!.at - (8 * 60 + plan.totalMinutes)) < 0.01)
+})

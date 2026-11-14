@@ -45,7 +45,7 @@ export function snapToPassable(
 }
 
 /** Binary min-heap of cell indices keyed by a float priority. */
-class Heap {
+export class Heap {
   private ids: number[] = []
   private keys: number[] = []
 
@@ -178,4 +178,59 @@ export function findPath(
   for (let i = goal; i !== -1; i = from[i]) cells.push(i)
   cells.reverse()
   return { cells, seconds: g[goal] }
+}
+
+/**
+ * Travel time in seconds from `start` to every cell it can reach (Infinity elsewhere), over the same
+ * 8-connected grid and step cost as `findPath`. The cost is symmetric, so this is also the time back to `start`.
+ */
+export function timeField(
+  cost: Float32Array,
+  width: number,
+  height: number,
+  cellX: number,
+  cellY: number,
+  start: number,
+): Float32Array {
+  const g = new Float32Array(width * height).fill(Infinity)
+  if (start < 0 || cost[start] === Infinity) return g
+  const closed = new Uint8Array(width * height)
+  const diag = Math.hypot(cellX, cellY)
+  const open = new Heap()
+  g[start] = 0
+  open.push(start, 0)
+  while (open.size > 0) {
+    const cur = open.pop()
+    if (closed[cur]) continue
+    closed[cur] = 1
+    const col = cur % width
+    const row = (cur / width) | 0
+    const gc = g[cur]
+    const cc = cost[cur]
+    for (let dr = -1; dr <= 1; dr++) {
+      const r = row + dr
+      if (r < 0 || r >= height) continue
+      for (let dc = -1; dc <= 1; dc++) {
+        if (dc === 0 && dr === 0) continue
+        const c = col + dc
+        if (c < 0 || c >= width) continue
+        const nb = r * width + c
+        const cn = cost[nb]
+        if (cn === Infinity || closed[nb]) continue
+        let len: number
+        if (dc !== 0 && dr !== 0) {
+          if (cost[row * width + c] === Infinity || cost[r * width + col] === Infinity) continue
+          len = diag
+        } else {
+          len = dc !== 0 ? cellX : cellY
+        }
+        const ng = gc + len * 0.5 * (cc + cn)
+        if (ng < g[nb]) {
+          g[nb] = ng
+          open.push(nb, ng)
+        }
+      }
+    }
+  }
+  return g
 }
