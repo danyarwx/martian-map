@@ -7,7 +7,7 @@ const BASE = '/data/helmet/real_stereo/'
 
 interface Calib extends StereoIntrinsics {
   files: { left: string; right: string; rgbLeft?: string }
-  pose: { headingDeg: number; pitchDeg: number; heightAboveRoverOriginM: number }
+  pose: { headingDeg: number; pitchDeg: number; rollDeg?: number; heightAboveRoverOriginM: number }
   source: { sol: number; place: string; credit: string }
 }
 
@@ -61,8 +61,9 @@ export default function RealPhotoTest() {
         left: gray(l),
         right: gray(r),
         intr,
-        // the camera's own heading and tilt, at its height above the ground; position is arbitrary
-        pose: { x: 0, y: 0, z: calib.pose.heightAboveRoverOriginM, headingDeg: calib.pose.headingDeg, pitchDeg: calib.pose.pitchDeg },
+        // the camera's own heading, tilt and roll (calib.json: −11.5° = right side higher, the sign Pose.rollDeg uses),
+        // at its height above the ground; position is arbitrary
+        pose: { x: 0, y: 0, z: calib.pose.heightAboveRoverOriginM, headingDeg: calib.pose.headingDeg, pitchDeg: calib.pose.pitchDeg, rollDeg: calib.pose.rollDeg ?? 0 },
       })
     })().catch((err) => !dead && setError(String(err?.message ?? err)))
     return () => {
@@ -82,7 +83,7 @@ export default function RealPhotoTest() {
         {error
           ? `Could not run the test: ${error}`
           : state
-            ? `Perseverance Navcam, sol ${state.calib.source.sol}, ${state.calib.source.place.split(',')[0]}. Same detector as the helmet: ${state.result.ms.toFixed(0)} ms, ${(state.valid * 100).toFixed(0)} % of pixels with depth, ${state.result.detections.length} detection${state.result.detections.length === 1 ? '' : 's'}. Image: ${state.calib.source.credit}. The rover's camera is rolled 12°, which the helmet's no-roll model reads as a cross slope.`
+            ? `Perseverance Navcam, sol ${state.calib.source.sol}, ${state.calib.source.place.split(',')[0]}. Same detector as the helmet: ${state.result.ms.toFixed(0)} ms, ${(state.valid * 100).toFixed(0)} % of pixels with depth, ${state.result.detections.length} detection${state.result.detections.length === 1 ? '' : 's'}. Rocks lower than the 0.30 m step height are left unmarked on purpose. Image: ${state.calib.source.credit}.`
             : 'Running the detector on the real stereo pair…'}
       </p>
     </div>

@@ -16,6 +16,11 @@ export interface Pose {
   headingDeg: number
   /** Degrees, positive looking up. */
   pitchDeg: number
+  /**
+   * Camera roll about its viewing direction, degrees; positive = the camera's right side lower. Absent = level,
+   * which is what the helmet's own cameras are. Only the CV reads it (a real rover photo is rarely level).
+   */
+  rollDeg?: number
 }
 
 /** Pinhole model shared by both cameras of a rectified stereo pair. */
