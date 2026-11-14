@@ -27,9 +27,9 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [~] T3.3 (C) Obstacles · deps T3.2 · worker lane C (queued), started 14 Nov
 - [~] T3.4 (C) Slope · deps T3.2 · worker lane C (queued), started 14 Nov
 - [ ] T3.5 (C+B) Worker + capture · deps T3.3, T3.4, T2.4
-- [~] T4.1 (D) Hazard grid · deps T0.1 · worker lane D, started 14 Nov
+- [x] T4.1 (D) Hazard grid · deps T0.1 · commit 4b1661c
 - [ ] T4.2 (D+E) Fuse CV into grid + mini-map · deps T3.5, T4.1
-- [~] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · worker lane D (queued after T4.1), started 14 Nov
+- [x] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · commit 3de3e2c · awaiting Dev 2 review
 - [ ] T4.4 (C) Eval harness + metrics · deps T3.5, T4.2
 - [ ] T4.5 (E) CV view (V) · deps T3.5
 - [ ] T4.6 (E) HUD core (port from feat/helmet-hud) · deps T2.4
@@ -58,7 +58,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 |---|---|---|---|---|---|---|
 
 ## Questions for the human
-- (none yet)
+- Dev 2 (review of T4.3): `usePlanner`'s worker `onmessage` does not check `type`, so replans must go to a separate worker instance (T5.3 will do that, loading the terrain a second time, ~3 MB) unless Dev 2 adds `if ('type' in res) return` in `src/lib/usePlanner.ts`. Detours around blocked cells get no route note from `explainLeg`; walk-back times ignore blocked cells. Details in the T4.3 log line
 
 ## Log
 <!-- One line per finished or blocked task: date, task, agent, commit, note. Newest at the bottom. -->
@@ -66,3 +66,6 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T0.2 · orchestrator · 35c771e · three 0.170.0 + @types/three pinned; npm test runs 'src/lib/*.test.ts' 'src/helmet/**/*.test.ts' (Node expands the quoted globs, nested folders verified)
 - 14 Nov · T0.3 · orchestrator · 910dd7c · firewall test; verified it fails on a planted cv→world import
 - 14 Nov · T0.4 · orchestrator · 68e303c · #helmet lazy-loads HelmetView (three.js in its own 472 kB chunk), flat scene ~50 fps on software GL, Esc returns to Mission control. Movement lives in HelmetView for now; T2.4 moves it to sim/
+- 14 Nov · T4.1 · lane D · 4b1661c · mapping/hazardGrid.ts: 0.5 m grid in 64 m blocks, log-odds fusion (decay 0.98, a safe view clears hazards at half weight, clamp ±4), toImage (§7.3 colours) + toLatLonBounds, hazardsList (8-connected clusters), blockedPlannerCells(meta, origin, 0.3); 12 tests
+- 14 Nov · T4.3 · lane D · 3de3e2c · src/lib: buildCostGrid(…, blocked?), PlanOptions as last arg of planRoute/planRoutes, planFrom(t, m, from, stops, habitat, {blocked, profile, homeSec}) with order starting 'start', worker 'replan' message (existing messages unchanged); 8 new tests, existing 21 green · @Dev 2 please review
+- 14 Nov · merge · orchestrator · lane D merged into feat/helmet-3d; scope checked (6 files, all listed), 48/48 tests, build green
