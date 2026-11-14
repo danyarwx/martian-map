@@ -8,7 +8,7 @@ GPU, and keep the window in front (a background tab renders 1 frame per second).
 
 | # | Do | Say | Screenshot |
 |---|---|---|---|
-| 1 | Open Mission control (`/`). The default route is planned. Click **Go outside (helmet view)** in the summary (or **Go outside here** on a stop card) | "The crew planned this route from orbit data. Now one of them goes outside." | `01-mission-control.jpg` |
+| 1 | Open the planner at `/#plan` (the default route is planned). From the landing page `/`, "Plan my route" starts an empty route instead: pick the stops first. Click **Go outside (helmet view)** in the summary (or **Go outside here** on a stop card) | "The crew planned this route from orbit data. Now one of them goes outside." | `01-mission-control.jpg` |
 | 2 | The helmet opens 300 m before the first stop. Walk with **W** (hold **Shift** to hurry: the chip shows "time ×4"). Follow the teal line on the ground | "Everything the astronaut gets is in the helmet: compass, next stop, suit, weather from Perseverance's last reading. The ground is the real 1 m elevation model and the 25 cm HiRISE photo." | `02-helmet-hud.jpg` |
 | 3 | Keep walking about 50 m. Boulders appear across the route. The mini-map (bottom right) paints them red; press **M** for the large map | "Orbit cannot see rocks under about 1.5 m. These are simulated, and the helmet has never been told where they are: it finds them from two camera images." | `03-boulders-minimap.jpg` |
 | 4 | Press **V** | "This is what the helmet computes, live, 5–7 times a second: the left camera with what it found, and depth from the stereo pair." | `04-cv-view.jpg` |
