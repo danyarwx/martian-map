@@ -13,12 +13,12 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T0.4 Skeleton `#helmet` · deps T0.2 · commit 68e303c
 
 ## M1 – real terrain
-- [~] T1.0 (A) Export route polylines · deps T0.2 · worker lane A, started 14 Nov
-- [~] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov · worker lane A (queued after T1.0), started 14 Nov
-- [ ] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1
-- [ ] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1
-- [ ] T2.3 (B) Rocks · deps T2.1
-- [ ] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3
+- [x] T1.0 (A) Export route polylines · deps T0.2 · commit 55b2155
+- [x] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov · commit 2d558d1
+- [~] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1 · worker lane B, started 14 Nov
+- [~] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1 · worker lane B, started 14 Nov
+- [~] T2.3 (B) Rocks · deps T2.1 · worker lane B, started 14 Nov
+- [~] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3 · worker lane B, started 14 Nov
 - [ ] T2.5 (E) Go outside from Mission control · deps T2.4
 
 ## M2 – live CV and hazard map
@@ -69,3 +69,6 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T4.1 · lane D · 4b1661c · mapping/hazardGrid.ts: 0.5 m grid in 64 m blocks, log-odds fusion (decay 0.98, a safe view clears hazards at half weight, clamp ±4), toImage (§7.3 colours) + toLatLonBounds, hazardsList (8-connected clusters), blockedPlannerCells(meta, origin, 0.3); 12 tests
 - 14 Nov · T4.3 · lane D · 3de3e2c · src/lib: buildCostGrid(…, blocked?), PlanOptions as last arg of planRoute/planRoutes, planFrom(t, m, from, stops, habitat, {blocked, profile, homeSec}) with order starting 'start', worker 'replan' message (existing messages unchanged); 8 new tests, existing 21 green · @Dev 2 please review
 - 14 Nov · merge · orchestrator · lane D merged into feat/helmet-3d; scope checked (6 files, all listed), 48/48 tests, build green
+- 14 Nov · T1.0 · lane A · 55b2155 · 21/21 legs, 0 unreachable, public/data/helmet/routes.json (220 KB), node scripts/export_routes.ts ~2 s
+- 14 Nov · T1.1 · lane A · 2d558d1 · 241 tiles, 14.3 MB (budget 40); per window: cheyava 23, delta-front 56, habitat 43, ingenuity 47, margin-carbonates 46, seitah 53, three-forks 61; elevation check 0 failures (max 0.14 m vs 10 m grid); 0 Trek 404s; windowed /vsicurl/ DTM reads (no full download); ortho is GRAYSCALE (tint in shader); index.json adds row/col/sandFrac and a `windows` list per stop; sand mask is an orbital heuristic (gaps on bright crests, small false patches); --all-corridor would be 496 tiles ~30 MB (not built)
+- 14 Nov · merge · orchestrator · lane A merged; scope checked (728 files, all listed paths), 48/48 tests, build green
