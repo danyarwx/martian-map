@@ -64,6 +64,8 @@ export interface RockLayerOptions {
   origin: LatLon
   /** routes.json legs, for the demo boulder fields. */
   legs: readonly RoutesFileLeg[]
+  /** Legs of the plan being walked: a demo boulder field goes on the leg into each of its stops. */
+  planLegs?: readonly { toId: string; path: LatLon[] }[]
 }
 
 export class RockLayer {
@@ -86,7 +88,11 @@ export class RockLayer {
 
   constructor(opts: RockLayerOptions) {
     this.opts = opts
-    this.demoFields = demoBoulderFields(opts.index.windows ?? [], opts.legs)
+    const planned = (stopId: string) => {
+      const leg = opts.planLegs?.find((l) => l.toId === stopId && l.path.length > 1)
+      return leg ? { legId: `plan>${stopId}`, path: leg.path } : null
+    }
+    this.demoFields = demoBoulderFields(opts.index.windows ?? [], opts.legs, planned)
     this.demoByTile = demoRocksByTile(this.demoFields, opts.index)
     this.material = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, metalness: 0, flatShading: true })
     for (let v = 0; v < VARIANTS; v++) {

@@ -366,3 +366,4 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   color: var(--text-2);
   font-family: var(--mono);
 }
+.helmet-seen { image-rendering: pixelated; }

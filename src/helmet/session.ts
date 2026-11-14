@@ -101,6 +101,12 @@ const REPLAN_CHECK_MS = 1000
 const REPLAN_COVERAGE = 0.06
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
+/**
+ * When the guide has to leave the planned line by more than this for DETOUR_TICKS CV frames in a row, the line is
+ * shut by something wide (a boulder field, not one rock), and the planner is asked for a new route.
+ */
+const DETOUR_M = 4
+const DETOUR_TICKS = 4
 /** Time between CV frames, ms (PLAN §4: about every 150 ms, at least 4 Hz). */
 export const CV_EVERY_MS = 150
 
@@ -135,6 +141,7 @@ export class HelmetSession {
   private replanAt = 0
   private rerouted: NavState['rerouted'] = null
   private arrived = false
+  private detourTicks = 0
   private onPlan: (plan: RoutePlan) => void
   legIndex: number
   paused = false
@@ -173,7 +180,7 @@ export class HelmetSession {
     this.camera = new THREE.PerspectiveCamera(70, host.clientWidth / Math.max(1, host.clientHeight), 0.1, 6000)
     this.camera.layers.enable(HUD_LAYER)
 
-    this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs })
+    this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs, planLegs: standIn ? undefined : entry.plan.legs })
     const heights = this.world.heights
     const rocks = this.world.rocks.field
     this.ground = {
@@ -295,14 +302,28 @@ export class HelmetSession {
       this.arrived = true
     }
 
+    // how far the guide strays from the planned line, and where
+    let detour = 0
+    let detourAt: { x: number; y: number } | null = null
+    for (let k = 0; k < guide.path.length; k += 3) {
+      const f = locate(this.track, guide.path[k].x, guide.path[k].y, guide.fix.s)
+      if (f.distM > detour && f.s > guide.fix.s) {
+        detour = f.distM
+        detourAt = { x: f.x, y: f.y }
+      }
+    }
+    this.detourTicks = !guide.blocked && detour > DETOUR_M && guide.fix.distM < DETOUR_M ? this.detourTicks + 1 : 0
+    const shut = guide.blocked || this.detourTicks >= DETOUR_TICKS
+    const shutAt = guide.blocked ? guide.blockedAt : detourAt
+
     if (now - this.replanAt < REPLAN_CHECK_MS || this.replanner.busy) return
     this.replanAt = now
     const at = toLatLon(pose.x, pose.y, this.origin)
     const decision = this.decider.check({
       grid: this.hazards.grid,
       at,
-      localBlocked: guide.blocked,
-      localBlockedAt: guide.blockedAt ? toLatLon(guide.blockedAt.x, guide.blockedAt.y, this.origin) : null,
+      localBlocked: shut,
+      localBlockedAt: shut && shutAt ? toLatLon(shutAt.x, shutAt.y, this.origin) : null,
       nowMs: now,
     })
     if (!decision.replan) return
@@ -329,6 +350,7 @@ export class HelmetSession {
         this.replanned = true
         this.setLeg(0)
         this.guide = null
+        this.detourTicks = 0
         if (!same) this.rerouted = { deltaMin: res.deltaMinutes, at: performance.now() }
         this.onPlan(res.plan)
       })

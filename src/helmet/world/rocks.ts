@@ -14,8 +14,9 @@
 // the tile id, so every session, the collision code and the eval harness get the same rocks.
 //
 // Demo boulder field ("placed for the demo", not from statistics): for each demo window, 8–14 rocks of 0.5–1.2 m
-// in a band across the planned path 240 m before the stop (60 % into the last 600 m), so the CV sees an obstacle
-// on the route and the re-route moment always happens.
+// (tall for their width, so every one stands more than a step high) in a band across the planned path 240 m before the stop (60 % into the last 600 m), so the CV sees an obstacle
+// on the route and the re-route moment always happens. The path is the active plan's leg into that stop when the
+// helmet was opened from Mission control, else the demo excursion's (routes.ts).
 import type { LatLon } from '../../types.ts'
 import { headingToDir, toLatLon, toLocal } from '../frames.ts'
 import { hashString, mulberry32 } from './noise.ts'
@@ -172,10 +173,15 @@ export const DEMO_BEFORE_STOP_M = 240
 export const DEMO_HALF_WIDTH_M = 6
 
 /** One demo boulder field per window (see the header). Deterministic. */
-export function demoBoulderFields(windows: readonly TileWindow[], legs: readonly RoutesFileLeg[]): DemoField[] {
+export function demoBoulderFields(
+  windows: readonly TileWindow[],
+  legs: readonly RoutesFileLeg[],
+  /** The path the crew really walks into a stop (from the active plan); wins over the routes.json approach. */
+  planned?: (stopId: string) => { legId: string; path: LatLon[] } | null,
+): DemoField[] {
   const out: DemoField[] = []
   for (const w of windows) {
-    const ap = approachPath(w.id, legs)
+    const ap = planned?.(w.id) ?? approachPath(w.id, legs)
     if (!ap || ap.path.length < 2) continue
     const cum = cumulativeM(ap.path)
     const at = pointAtDistance(ap.path, cum[cum.length - 1] - DEMO_BEFORE_STOP_M, cum)
@@ -189,7 +195,7 @@ export function demoBoulderFields(windows: readonly TileWindow[], legs: readonly
       const along = (rnd() - 0.5) * 4
       const d = 0.5 + 0.7 * rnd()
       const p = toLatLon(right.x * across + fwd.x * along, right.y * across + fwd.y * along, at.at)
-      rocks.push({ lat: p.lat, lon: p.lon, d, h: d * (0.6 + 0.2 * rnd()), w: 0.75 + 0.25 * rnd(), rot: rnd() * Math.PI * 2, variant: Math.floor(rnd() * VARIANTS) })
+      rocks.push({ lat: p.lat, lon: p.lon, d, h: d * (0.9 + 0.1 * rnd()), w: 0.75 + 0.25 * rnd(), rot: rnd() * Math.PI * 2, variant: Math.floor(rnd() * VARIANTS) })
     }
     out.push({ stopId: w.id, legId: ap.legId, center: at.at, headingDeg: at.headingDeg, rocks })
   }
