@@ -119,8 +119,8 @@ goes outside. **Everything they see and get is in the helmet**:
 
 ### 3.1 Environment facts (cloud sessions)
 
-- Allowed hosts so far: `mars.nasa.gov`, `trek.nasa.gov`, npm/PyPI. **`planetarymaps.usgs.gov` is NOT
-  allowed yet**; T1.1 needs it. If blocked, write in STATUS.md "ask human to allow planetarymaps.usgs.gov".
+- Allowed hosts (cloud environment `martian-map`): `mars.nasa.gov`, `trek.nasa.gov`,
+  `planetarymaps.usgs.gov` (added 14 Nov for T1.1), npm/PyPI. Anything else: ask the human.
 - The 1 m DTM is 1.8 GB. Prefer windowed reads over HTTP (`rasterio.open('/vsicurl/<url>')` +
   `from_bounds` windows) so only the tiles we need are downloaded. Fall back to the full download only
   if windowed reads fail, and delete `scripts/raw/*.tif` afterwards if disk is short.

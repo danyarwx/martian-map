@@ -14,7 +14,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 
 ## M1 – real terrain
 - [ ] T1.0 (A) Export route polylines · deps T0.2
-- [ ] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · needs host planetarymaps.usgs.gov
+- [ ] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov
 - [ ] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1
 - [ ] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1
 - [ ] T2.3 (B) Rocks · deps T2.1

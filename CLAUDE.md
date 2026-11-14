@@ -61,7 +61,7 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 Helmet view (Level 2), branch `feat/helmet-3d`, not started yet:
 - Spec, decisions and task list for agents: `docs/helmet/PLAN.md`. Progress board: `docs/helmet/STATUS.md`. Loop prompts: `docs/helmet/LOOP_PROMPT.md`
 - Adds `three` (agreed). Touches `src/lib/` only for a "blocked cells" planner input (Dev 2 reviews) and `src/map/` only for two optional props (Dev 1 reviews)
-- Needs network host `planetarymaps.usgs.gov` for the 1 m DTM tiles (task T1.1)
+- Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)
 - Backup: the earlier scripted helmet with real rover panoramas, branch `feat/helmet-hud`
 
 Commands:
