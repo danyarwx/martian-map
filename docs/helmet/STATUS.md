@@ -116,3 +116,4 @@ Why recall misses: demo boulders stand ~1 m apart, their 0.5 m cells touch, and 
 - 14 Nov · B1 · Sasha + Claude · steering arrow is now an SVG arrow with a shaft (head + tail), so its direction reads at any angle
 - 14 Nov · B3 · Sasha + Claude · Esc closes the menu, then the real photo, then the CV view; only with nothing open does it leave the helmet
 - 14 Nov · B4 · Sasha + Claude · CV ms / Hz and fps left the status chip; key I shows them again (listed in the help). The CV view (V) still has its own numbers
+- 14 Nov · B7 · Sasha + Claude · the "too cold" rule reads the air temperature model at the current local solar time, not at departure

@@ -192,7 +192,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         daylightLeftMin: wx?.daylightLeftMin ?? null,
         doseMsv: doseSoFarMsv(hud.elapsedMin),
         plannedDoseMsv: plan ? evaDoseMsv(plan.totalMinutes / 60) : null,
-        airTempC: weather ? weatherNow(weather, DEPARTURE_LST_H)?.airTempC ?? null : null,
+        airTempC: wx?.airTempC ?? null,
         weatherSol: wx?.sol ?? null,
       })
     : []
