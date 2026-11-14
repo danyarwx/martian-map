@@ -12,3 +12,11 @@ body {
 }
 .muted { color: #b89a8a; font-size: 13px; }
 .map { flex: 1; background: #000; }
+.viewtabs { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.viewtabs button {
+  font: 13px Verdana, Tahoma, Arial, sans-serif; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid #3a2419; background: transparent; color: #b89a8a;
+}
+.viewtabs button[aria-pressed="true"] { background: #8fe3d6; border-color: #8fe3d6; color: #120b08; }
+.viewtabs button:focus-visible { outline: 2px solid #f4e9e2; outline-offset: 2px; }
+.topbar { flex-wrap: wrap; align-items: center; }

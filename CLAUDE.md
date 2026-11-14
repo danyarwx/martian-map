@@ -43,6 +43,11 @@ Next, in order:
 3. `/ecc:plan` → one GitHub issue per task, each with an owner
 4. Build in parallel. Feature freeze around hour 20. Then polish, README, backup demo video
 
+Helmet view (branch `feat/helmet-hud`):
+- `#hud` or the "Helmet view" tab opens it. Scripted 25 s walk: habitat (invented) → stops sol 1224, 1219 → Cheyava Falls, with a boulder-field hazard (invented) found on the way
+- Contract with the map/planner: `src/types.ts` (`Hazard`, `Stop`, `LatLon`...). `HelmetHUD` takes `onHazard(h)` (App keeps the list; MarsMap should draw it) and `replan(route, walkedM, hazard)` (defaults to a simple detour in `walkScript.ts` until the real planner exists)
+- Panoramas load from `public/data/panoramas/` (`npm run fetch-panoramas`), then NASA's server, then a plain backdrop. If the view looks rotated against the map, set `PANO_AZ_OFFSET_DEG` in `src/panels/hud/Panorama.tsx`
+
 Folder ownership (to avoid merge conflicts):
 - Dev 1: `src/map/` (layers, controls, drawing the route)
 - Dev 2: `scripts/`, `public/data/`, `src/lib/` (slope/hazard logic, route planning)
@@ -51,8 +56,8 @@ Folder ownership (to avoid merge conflicts):
 ## Our decisions (fill these in at kickoff and keep them current)
 
 - Site: Jezero is the leading option. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with panoramas and tilt, and thermal coverage. Confirm at kickoff
-- Science goal: TBD
-- Form factor: TBD
+- Science goal: astronauts walk to Cheyava Falls (Bright Angel area, Neretva Vallis, rover stop sol 1210, 18.4975°N 77.3052°E) to sample the rock with the possible biosignature ("leopard spots", Sapphire Canyon sample). Decided 14 Nov
+- Form factor: Level 1 = habitat planning map (Dev 1/2). Level 2 = helmet HUD that adds hazards found during the walk to the map and triggers a re-route (Danya, `src/panels/`, branch `feat/helmet-hud`)
 - Data layers (minimum 3): TBD
 - Demo story, 3 minutes: TBD
 
