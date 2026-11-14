@@ -91,8 +91,7 @@
 .sim-bar .sim-fold { border-color: transparent; background: none; }
 .sim-pill { min-height: 56px; padding: 0 var(--s4); }
 .confirm { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
-.voice { display: flex; align-items: center; gap: var(--s2); min-height: 48px; font-size: 16px; }
-.voice input { width: 24px; height: 24px; }
+.voice-toggle[aria-pressed="true"] { color: var(--text-3); border-style: dashed; }
 
 /* Instruction banner on the map */
 .banner {

@@ -7,7 +7,7 @@ import { duration } from '../lib/format.ts'
 import { createAnnouncer } from './announcer.ts'
 import type { NavBus, NavEventType, NavPriority, NavState, NavStatus, UpcomingManeuver } from './events.ts'
 import { cumulativeM, projectOntoPath, type PathProjection } from './geometry.ts'
-import { buildManeuvers, spokenDistance, type Maneuver } from './instructions.ts'
+import { buildManeuvers, saidDistance, type Maneuver } from './instructions.ts'
 import type { PositionFix } from './position.ts'
 
 /** Farther than this from the route counts as off it, metres. */
@@ -204,7 +204,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
     visited.push(leg.toId)
     status = last ? 'finished' : 'at_stop'
     legAlong = legLength(legIndex)
-    emit('arrive', m?.id ?? `arrive-${legIndex}`, m?.text ?? `You have arrived at ${name(leg.toId)}.`, 'high', {
+    emit('arrive', m?.id ?? `arrive-${legIndex}`, m?.text ?? `${name(leg.toId)} reached.`, 'high', {
       stopId: leg.toId,
     })
     if (last) emit('nav_ended', 'nav-ended', 'Navigation ended.', 'low')
@@ -215,7 +215,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
     status = 'rerouting'
     const token = ++rerouteToken
     const remaining = plan.legs.slice(legIndex).map((l) => l.toId).filter((id) => id !== homeId())
-    emit('off_route', `reroute-${token}-${fix.t}`, 'You are off the route. Planning a new route from here.', 'high')
+    emit('off_route', `reroute-${token}-${fix.t}`, 'Off route. Replanning.', 'high')
     requestReroute({ lat: fix.lat, lon: fix.lon }, remaining).then(
       (p) => {
         if (token !== rerouteToken || status !== 'rerouting') return
@@ -230,7 +230,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         emit(
           'rerouted',
           `rerouted-${rerouteCount}`,
-          `New route: ${spokenDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
+          `New route: ${saidDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
           'normal',
         )
         publish()
@@ -243,7 +243,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       emit(
         'off_route',
         `reroute-failed-${token}`,
-        `No safe new route from here. Head back to the route, ${spokenDistance(offsetM)} to your ${lastSide}.`,
+        `No safe route. Head back to the route, ${saidDistance(offsetM)} to your ${lastSide}.`,
         'high',
       )
       publish()
@@ -259,7 +259,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       emit(
         'nav_started',
         'nav-started',
-        `Navigation started: ${targets} stop${targets === 1 ? '' : 's'}, ${spokenDistance(plan.distanceM)}, about ${duration(plan.totalMinutes)}.`,
+        `Navigation started. ${targets} stop${targets === 1 ? '' : 's'}, ${saidDistance(plan.distanceM)}, about ${duration(plan.totalMinutes)}.`,
         'normal',
       )
     },
@@ -307,7 +307,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
             emit(
               'off_route',
               `off-route-${fix.t}`,
-              `Head back to the route, ${spokenDistance(offsetM)} to your ${lastSide}.`,
+              `Head back to the route, ${saidDistance(offsetM)} to your ${lastSide}.`,
               'high',
             )
           }
@@ -317,7 +317,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         if (status === 'off_route' && offsetM < BACK_ON_ROUTE_M) {
           status = 'navigating'
           announcer.resetNext()
-          emit('back_on_route', `back-on-route-${fix.t}`, 'You are back on the route.', 'normal')
+          emit('back_on_route', `back-on-route-${fix.t}`, 'Back on route.', 'normal')
         }
       }
 
@@ -326,7 +326,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         emit(
           'walkback_warning',
           'walkback-warning',
-          `Caution: you are now more than ${WALK_BACK_RESERVE_MIN} minutes' walk from the habitat, beyond the emergency reserve.`,
+          `Caution. Habitat is more than ${WALK_BACK_RESERVE_MIN} minutes away on foot. Beyond the emergency reserve.`,
           'high',
         )
       }

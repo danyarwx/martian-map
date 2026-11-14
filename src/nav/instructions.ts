@@ -80,6 +80,11 @@ export function spokenDistance(m: number): string {
   return `${Number.isInteger(km) ? km.toFixed(0) : km.toFixed(1)} km`
 }
 
+/** Distance as a voice says it, without abbreviations a speech engine would misread: "40 meters", "1.2 kilometers". */
+export function saidDistance(m: number): string {
+  return spokenDistance(m).replace(/ m$/, ' meters').replace(/ km$/, ' kilometers')
+}
+
 /** Turn class for a signed angle, or null when it is straight on. */
 export function classifyTurn(angleDeg: number): TurnModifier | null {
   const a = Math.abs(angleDeg)
@@ -231,7 +236,7 @@ function legManeuvers(
       alongM: 0,
       legAlongM: startM,
       distanceToNextM: 0,
-      text: `Steep stretch ahead: ${deg}°, about ${spokenDistance(lengthM)}. Slow down.`,
+      text: `Steep ground ahead, ${deg} degrees, ${saidDistance(lengthM)}. Slow down.`,
       slopeDeg: deg,
       lengthM,
     })
@@ -249,8 +254,8 @@ function legManeuvers(
     legAlongM: length,
     distanceToNextM: 0,
     text: home
-      ? `You are back at the ${name.toLowerCase()}. Excursion complete.`
-      : `You have arrived at ${name}.${stop?.task ? ` Task: ${stop.task}` : ''}`,
+      ? `${name} reached. Excursion complete.`
+      : `${name} reached.${stop?.task ? ` Task: ${stop.task}` : ''}`,
     stopId: leg.toId,
     stopName: name,
   })
@@ -281,7 +286,7 @@ export function buildManeuvers(plan: RoutePlan, stops: Record<string, Target>, i
     if (next) m.distanceToNextM = next.alongM - m.alongM
     out.push(m)
     if (m.kind === 'depart' && next) {
-      m.text = `${m.text} for ${spokenDistance(m.distanceToNextM)}`
+      m.text = `${m.text} for ${saidDistance(m.distanceToNextM)}`
     }
     if (m.kind === 'turn' && next && m.distanceToNextM > CONTINUE_MIN_M) {
       // Placed just after the turn, so it is said once the turn is done.
@@ -297,7 +302,7 @@ export function buildManeuvers(plan: RoutePlan, stops: Record<string, Target>, i
         alongM: m.alongM + CONTINUE_AFTER_M,
         legAlongM,
         distanceToNextM: left,
-        text: `${verb(plan.mobility)} straight for ${spokenDistance(left)}`,
+        text: `${verb(plan.mobility)} straight for ${saidDistance(left)}`,
       })
     }
   }
@@ -310,24 +315,30 @@ export type AnnounceStage = 'far' | 'near' | 'now'
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1)
 const sentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`)
 
+/** "Turn left in 200 meters, to avoid a 24° slope": the distance goes right after the action, the reason last. */
+function inDistance(m: Maneuver, distanceM: number): string {
+  const action = m.reason ? m.text.slice(0, -m.reason.length).trim() : m.text
+  return `${action} in ${saidDistance(distanceM)}${m.reason ? `, ${m.reason}` : ''}`
+}
+
 /**
  * The sentence to speak for a maneuver at one stage: "In 200 m, turn left to avoid a 24° slope."
  * `then` is the maneuver right after it, named when it follows closely ("..., then bear right.").
  */
 export function phrase(m: Maneuver, stage: AnnounceStage, distanceM: number, then?: Maneuver): string {
   const tail = then && (then.kind === 'turn' || then.kind === 'arrive' || then.kind === 'arrive_home')
-    ? `, then ${then.kind === 'turn' ? lowerFirst(then.text) : 'you arrive'}`
+    ? `, then ${then.kind === 'turn' ? lowerFirst(then.text) : 'stop'}`
     : ''
   switch (m.kind) {
     case 'turn':
       return stage === 'now'
         ? sentence(`${m.text}${tail}`)
-        : sentence(`In ${spokenDistance(distanceM)}, ${lowerFirst(m.text)}`)
+        : sentence(inDistance(m, distanceM))
     case 'arrive':
     case 'arrive_home': {
       if (stage === 'now') return m.text
-      const name = m.kind === 'arrive_home' ? 'the habitat' : (m.stopName ?? 'the stop')
-      return `In ${spokenDistance(distanceM)}, you reach ${name}.`
+      const name = m.stopName ?? (m.kind === 'arrive_home' ? 'Habitat' : 'Stop')
+      return `${name} in ${saidDistance(distanceM)}.`
     }
     case 'depart':
     case 'continue':

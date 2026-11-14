@@ -6,7 +6,8 @@ import { MOBILITY } from '../lib/mobility.ts'
 import { createAnnouncer } from './announcer.ts'
 import { createNavBus, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
-import { buildManeuvers, classifyTurn, spokenDistance, type Maneuver } from './instructions.ts'
+import { createSpeechQueue, STALE_MS } from '../nav-ui/voice/queue.ts'
+import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { SimulatedSource } from './position.ts'
 import { createNavigator } from './tracker.ts'
 
@@ -55,6 +56,8 @@ test('turn angles are signed and classed by size', () => {
   assert.equal(spokenDistance(43), '40 m')
   assert.equal(spokenDistance(380), '400 m')
   assert.equal(spokenDistance(1240), '1.2 km')
+  assert.equal(saidDistance(43), '40 meters')
+  assert.equal(saidDistance(1240), '1.2 kilometers')
 })
 
 test('a position is projected onto the path with its distance along, offset and side', () => {
@@ -69,10 +72,10 @@ test('a position is projected onto the path with its distance along, offset and 
 test('an L-shaped path gives depart, one left turn, a long straight and arrival', () => {
   const ms = buildManeuvers(plan(leg('habitat', 'a', path([0, 0], [300, 0], [300, 500]))), stops)
   assert.deepEqual(ms.map((m) => m.kind), ['depart', 'turn', 'continue', 'arrive_home'])
-  assert.equal(ms[0].text, 'Head east for 300 m')
+  assert.equal(ms[0].text, 'Head east for 300 meters')
   assert.equal(ms[1].modifier, 'left')
   assert.ok(Math.abs(ms[1].alongM - 300) < 15, `${ms[1].alongM}`)
-  assert.equal(ms[2].text, 'Walk straight for 500 m')
+  assert.equal(ms[2].text, 'Walk straight for 500 meters')
 })
 
 test('cell-scale zig-zags give no turns', () => {
@@ -97,8 +100,8 @@ test('two stops: each leg departs, and the stop is announced with its task', () 
     stops,
   )
   assert.deepEqual(ms.map((m) => m.kind), ['depart', 'arrive', 'depart', 'arrive_home'])
-  assert.equal(ms[1].text, 'You have arrived at Rock A. Task: Take a sample.')
-  assert.equal(ms[2].text, 'Head west for 200 m')
+  assert.equal(ms[1].text, 'Rock A reached. Task: Take a sample.')
+  assert.equal(ms[2].text, 'Head west for 200 meters')
   assert.ok(Math.abs(ms[3].alongM - 400) < 1)
 })
 
@@ -112,13 +115,13 @@ test('a turn is announced far, near and now, each once; one that comes up close 
   for (const d of [300, 250, 199, 150, 100, 60, 49, 30, 11, 8, 5, 1]) {
     announcer.update([{ maneuver: turn, distanceM: d }], (now += 3000))
   }
-  assert.deepEqual(said.map((e) => e.text), ['In 200 m, turn left.', 'In 50 m, turn left.', 'Turn left.'])
+  assert.deepEqual(said.map((e) => e.text), ['Turn left in 200 meters.', 'Turn left in 50 meters.', 'Turn left.'])
   assert.deepEqual(said.map((e) => e.priority), ['low', 'normal', 'high'])
 
   said.length = 0
   const close = { ...turn, id: 't2', text: 'Turn right', modifier: 'right' } as Maneuver
   for (const d of [120, 80, 45, 10]) announcer.update([{ maneuver: close, distanceM: d }], (now += 3000))
-  assert.deepEqual(said.map((e) => e.text), ['In 50 m, turn right.', 'Turn right.'])
+  assert.deepEqual(said.map((e) => e.text), ['Turn right in 50 meters.', 'Turn right.'])
 })
 
 test('announcements are at least 2 s apart unless urgent', () => {
@@ -126,7 +129,7 @@ test('announcements are at least 2 s apart unless urgent', () => {
   const said: NavEvent[] = []
   bus.subscribe('*', (e) => said.push(e))
   const announcer = createAnnouncer(bus, 'walk')
-  const hazard = { id: 'h', kind: 'hazard', text: 'Steep stretch ahead: 16°, about 40 m. Slow down.' } as Maneuver
+  const hazard = { id: 'h', kind: 'hazard', text: 'Steep ground ahead, 16 degrees, 40 meters. Slow down.' } as Maneuver
   const turn = { id: 't', kind: 'turn', modifier: 'left', text: 'Turn left' } as Maneuver
   announcer.update([{ maneuver: hazard, distanceM: 70 }, { maneuver: turn, distanceM: 45 }], 0)
   assert.deepEqual(said.map((e) => e.type), ['hazard'])
@@ -164,7 +167,7 @@ test('off the route by 25-50 m for 5 s: guided back, then back on the route', ()
   fix(120, 35, 6500)
   assert.equal(nav.getState().status, 'off_route')
   const off = events.find((e) => e.type === 'off_route')!
-  assert.equal(off.text, 'Head back to the route, 40 m to your right.')
+  assert.equal(off.text, 'Head back to the route, 40 meters to your right.')
   fix(130, 20, 8000)
   assert.equal(nav.getState().status, 'off_route', 'still farther than 15 m')
   fix(140, 5, 9000)
@@ -225,4 +228,55 @@ test('the simulated walker stops at the stop, and drifting off is noticed', () =
   sim.step(0.2)
   assert.equal(nav.getState().status, 'navigating')
   assert.equal(nav.getState().legIndex, 1)
+})
+
+// The speech queue lives with the tablet UI, but its rules are pure logic and are tested here.
+function fakeEngine() {
+  const spoken: string[] = []
+  let end: (() => void) | null = null
+  return {
+    spoken,
+    /** Ends the line being spoken, as the engine does when the audio is over. */
+    finish: async () => {
+      end?.()
+      await new Promise((r) => setTimeout(r, 0))
+    },
+    engine: {
+      speak: (text: string) => new Promise<void>((resolve) => {
+        spoken.push(text)
+        end = () => { end = null; resolve() }
+      }),
+      cancel: () => end?.(),
+    },
+  }
+}
+
+test('speech queue: normal lines wait their turn, a high one interrupts and clears the rest', async () => {
+  const f = fakeEngine()
+  const q = createSpeechQueue(f.engine, () => 0)
+  q.push('one', 'normal')
+  q.push('two', 'normal')
+  assert.deepEqual(f.spoken, ['one'])
+  q.push('Turn left.', 'high')
+  await f.finish()
+  assert.deepEqual(f.spoken, ['one', 'Turn left.'], '"two" was dropped by the urgent line')
+})
+
+test('speech queue: a line that waited too long is dropped, and nothing is said while muted', async () => {
+  const f = fakeEngine()
+  let now = 0
+  const q = createSpeechQueue(f.engine, () => now)
+  q.push('long line', 'normal')
+  q.push('keep going', 'low')
+  q.push('still useful', 'normal')
+  now = STALE_MS.low + 1
+  await f.finish()
+  assert.deepEqual(f.spoken, ['long line', 'still useful'])
+  q.setMuted(true)
+  q.push('silent', 'high')
+  await f.finish()
+  assert.equal(f.spoken.length, 2)
+  q.setMuted(false)
+  q.push('back', 'normal')
+  assert.equal(f.spoken.at(-1), 'back')
 })

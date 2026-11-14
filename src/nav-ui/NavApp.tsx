@@ -1,5 +1,5 @@
 // Tablet navigation screen at /nav: plan the excursion, then follow it turn by turn.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { JEZERO } from '../data/jezero.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import { usePlanner } from '../lib/usePlanner.ts'
@@ -7,12 +7,12 @@ import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
 import { getNavBus } from '../nav/events.ts'
 import type { MobilityId, RouteProfile, StopView, Target } from '../types.ts'
-import { canSpeak, startBrowserVoice } from './browserVoice.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
 import { Banner, EndControl, FinishedCard, NavPanel, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput } from './useNavRun.ts'
+import { canSpeak, startVoice, type Voice } from './voice/index.ts'
 import './nav.css'
 
 const site = JEZERO
@@ -56,7 +56,8 @@ export default function NavApp() {
   const [run, setRun] = useState<NavRunInput | null>(null)
   const [follow, setFollow] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
-  const [speak, setSpeak] = useState(false)
+  const [muted, setMuted] = useState(false)
+  const voice = useRef<Voice | null>(null)
   const online = useOnline()
   const terrainMeta = useTerrainMeta(site)
   useEffect(registerServiceWorker, [])
@@ -84,7 +85,16 @@ export default function NavApp() {
       .catch(() => setViews({}))
   }, [])
 
-  useEffect(() => (speak ? startBrowserVoice(getNavBus()) : undefined), [speak])
+  // The voice listens to the bus for the whole session; muting only silences it, captions stay.
+  useEffect(() => {
+    const v = startVoice(getNavBus())
+    voice.current = v
+    return () => {
+      voice.current = null
+      v.stop()
+    }
+  }, [])
+  useEffect(() => voice.current?.setMuted(muted), [muted])
 
   const toggle = useCallback(
     (id: string) =>
@@ -96,6 +106,7 @@ export default function NavApp() {
 
   const start = useCallback(() => {
     if (!plan) return
+    voice.current?.radioCheck() // this tap is what unlocks audio in the browser
     setFollow(true)
     setAutoZoom(true)
     setRun({ site, plan, habitat, stops: stopsById, mobility: MOBILITY[plan.mobility] })
@@ -199,10 +210,9 @@ export default function NavApp() {
         <div className="nav-foot">
           {run && s?.status !== 'finished' && <EndControl onEnd={end} />}
           {canSpeak() && (
-            <label className="voice">
-              <input type="checkbox" checked={speak} onChange={(e) => setSpeak(e.target.checked)} />
-              Speak (browser TTS)
-            </label>
+            <button type="button" className="big voice-toggle" aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
+              {muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
+            </button>
           )}
         </div>
       </aside>
