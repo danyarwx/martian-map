@@ -248,7 +248,9 @@ export default function HelmetView({ entry, onExit }: Props) {
           {turn !== null && !nav.arrived && (
             <span className="helmet-steer" aria-label={`Guide: turn ${Math.round(Math.abs(turn))} degrees ${turn < 0 ? 'left' : 'right'}`}>
               <span className="helmet-steer-arrow" style={{ transform: `rotate(${turn}deg)` }} aria-hidden="true">
-                ▲
+                <svg viewBox="0 0 20 28" width="14" height="20">
+                  <path d="M10 1 L18 12 H12.5 V27 H7.5 V12 H2 Z" fill="currentColor" />
+                </svg>
               </span>
               {Math.abs(turn) < 8 ? 'on the guide' : `${Math.round(Math.abs(turn))}° ${turn < 0 ? 'left' : 'right'}`}
             </span>
