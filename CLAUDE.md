@@ -30,7 +30,7 @@ Done on branch `pre-hackathon` (`main` is empty for now):
 - Layers: Viking color + MOLA relief (global), CTX 6 m + HiRISE 25 cm (Jezero), THEMIS day IR (thermal)
 - Perseverance traverse + 708 waypoints from `public/data/*.json`
 
-Done on branch `feat/route-planner` (not committed or merged yet): the excursion planner
+Done on branch `feat/route-planner` (PR open, not merged yet): the excursion planner
 - Habitat at Perseverance's landing site, 6 selectable science targets (`src/data/jezero.ts`)
 - Fastest safe round trip through the chosen targets, planned from the slope grid (A* per leg, best visiting order). Runs in a web worker
 - Two modes: on foot (2.5 km/h, 20° limit) and crew rover (10 km/h, 15° limit). Assumptions and sources are in `src/lib/mobility.ts`
