@@ -8,6 +8,7 @@ import { HAZARD, type CvResult, type Detection, type HelmetEntry, type HelmetExi
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './nav/follow.ts'
+import { GuideKeeper } from './nav/guide.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
 import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
@@ -150,6 +151,8 @@ export class HelmetSession {
   /** The local planner's latest guide round the hazards (null before the first one). */
   guide: LocalPlan | null = null
   private localPlanner = new LocalPlanner()
+  /** Keeps the shown guide steady: the planned line while it is clear, one kept detour round hazards (nav/guide.ts). */
+  private keeper = new GuideKeeper()
   private guideLine: GuideLine
   private decider: ReplanDecider
   private replanner: ReplanClient
@@ -307,13 +310,15 @@ export class HelmetSession {
     this.legIndex = Math.min(k, this.plan.legs.length - 1)
     this.track = buildTrack(this.plan.legs[this.legIndex].path, this.origin)
     this.arrived = false
+    this.keeper.reset()
   }
 
   /** After every CV frame: the guide round the hazards, leg changes, and the global re-route check. */
   private navigate(): void {
     const { pose } = this
     const now = performance.now()
-    const guide = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
+    const fresh = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
+    const guide = this.keeper.update(fresh, this.hazards.grid, this.track, pose.x, pose.y)
     this.guide = guide
     this.guideLine.set(guide.path, this.ground.heightAt, guide.blocked)
 
