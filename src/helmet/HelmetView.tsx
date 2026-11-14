@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { JEZERO } from '../data/jezero.ts'
 import { loadTerrain } from '../lib/terrain.ts'
 import type { HelmetEntry, HelmetExit } from './contracts.ts'
+import CvView from './hud/CvView.tsx'
+import MiniMap from './hud/MiniMap.tsx'
 import { HelmetSession, type HudState } from './session.ts'
 import { defaultEntry, loadRoutes } from './sim/defaultEntry.ts'
 import { jumpTargets, routeLengths, routePoint, type JumpTarget } from './sim/jump.ts'
@@ -21,6 +23,8 @@ const KEYS: [string, string][] = [
   ['Shift', 'hurry (time ×4)'],
   ['Drag', 'look around'],
   ['J', 'jump to a point of the route'],
+  ['V', 'computer vision view: what the helmet computes'],
+  ['M', 'hazard map small / large'],
   ['P', 'pause'],
   ['H', 'this help'],
   ['Esc', 'back to Mission control'],
@@ -45,6 +49,8 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [menu, setMenu] = useState<Menu>(null)
   const [paused, setPaused] = useState(false)
   const [km, setKm] = useState(0)
+  const [cvView, setCvView] = useState(false)
+  const [bigMap, setBigMap] = useState(false)
   const exitRef = useRef(onExit)
   exitRef.current = onExit
   const entryRef = useRef(entry)
@@ -107,6 +113,8 @@ export default function HelmetView({ entry, onExit }: Props) {
       } else if (k === 'j') setMenu((m) => (m === 'jump' ? null : 'jump'))
       else if (k === 'h') setMenu((m) => (m === 'help' ? null : 'help'))
       else if (k === 'p') setPaused((p) => !p)
+      else if (k === 'v') setCvView((v) => !v)
+      else if (k === 'm') setBigMap((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -156,6 +164,9 @@ export default function HelmetView({ entry, onExit }: Props) {
         <span>{hud?.fps ?? 0} fps</span>
       </div>
 
+      {hud && session.current && cvView && <CvView session={session.current} hud={hud} />}
+      {hud && session.current && <MiniMap session={session.current} hud={hud} large={bigMap} />}
+
       {menu === 'jump' && plan && (
         <div className="helmet-menu" role="dialog" aria-label="Jump to a point of the route">
           <h2>Jump to</h2>
@@ -192,7 +203,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
-      <p className="helmet-help">W A S D walk · Shift hurry · drag to look · J jump · H help · Esc back</p>
+      <p className="helmet-help">W A S D walk · Shift hurry · drag to look · J jump · V computer vision · M map · H help · Esc back</p>
     </div>
   )
 }

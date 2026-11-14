@@ -4,6 +4,9 @@ import * as THREE from 'three'
 import type { LatLon, Terrain } from '../types.ts'
 import type { CvResult, HelmetEntry, Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
+import { HazardMap } from './mapping/fuse.ts'
+import { buildTrack, type RouteTrack } from './nav/follow.ts'
+import type { LocalPlan } from './nav/localPlanner.ts'
 import { headingToDir, localToThree, toLocal } from './frames.ts'
 import { Controls } from './sim/controls.ts'
 import { CvRig } from './sim/cvRig.ts'
@@ -77,6 +80,12 @@ export class HelmetSession {
   readonly cvStats: CvStats = { ms: 0, hz: 0, valid: 0, detections: 0, frames: 0, error: null }
   /** The latest CV result (for the CV view). */
   lastCv: CvTick | null = null
+  /** Top-down map of what the camera has seen. */
+  readonly hazards = new HazardMap()
+  /** The active leg as a 1 m track in local ENU. */
+  track: RouteTrack
+  /** The local planner's latest guide round the hazards (null before the first one). */
+  guide: LocalPlan | null = null
   legIndex: number
   paused = false
   /** Extra metres above the eye, for looking at the world from above while debugging (dev only). */
@@ -124,6 +133,8 @@ export class HelmetSession {
     this.pose = { x: 0, y: 0, z: EYE_M, headingDeg: headingAlong(entry.plan.legs[entry.legIndex].path, entry.startAt), pitchDeg: -5 }
     this.controls = new Controls(renderer.domElement, this.pose)
 
+    this.track = buildTrack(entry.plan.legs[entry.legIndex].path, this.origin)
+
     this.rig = new CvRig(renderer)
     this.cv = new CvClient()
     this.cv.onResult((result) => this.onCvResult(result))
@@ -148,7 +159,11 @@ export class HelmetSession {
     this.pose.x = p.x
     this.pose.y = p.y
     this.pose.headingDeg = t.headingDeg
-    this.legIndex = t.legIndex
+    if (t.legIndex !== this.legIndex) {
+      this.legIndex = t.legIndex
+      this.track = buildTrack(this.entry.plan.legs[t.legIndex].path, this.origin)
+    }
+    this.guide = null
     this.hudAt = 0
   }
 
@@ -178,6 +193,7 @@ export class HelmetSession {
     st.error = null
     this.cvCount++
     this.lastCv = { result, pose }
+    this.hazards.fuse(result)
     for (const cb of this.cvListeners) cb(this.lastCv)
   }
 
