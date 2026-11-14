@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import type { Target, Terrain } from '../types.ts'
 import { distanceM, parsePoint } from './geo.ts'
 import { MOBILITY, secondsPerMetre } from './mobility.ts'
-import { planRoute } from './planner.ts'
+import { planRoute, planRoutes } from './planner.ts'
 
 const W = 60
 const H = 40
@@ -154,4 +154,31 @@ test('typed coordinates are accepted only as numbers inside the elevation data',
   assert.deepEqual(parsePoint(b, '18.6', '77.4'), { ok: false, error: 'Latitude must be between 18.401 and 18.520.' })
   assert.deepEqual(parsePoint(b, '18.45', 'east'), { ok: false, error: 'Longitude must be a number.' })
   assert.deepEqual(parsePoint(b, '', '77.4'), { ok: false, error: 'Latitude must be a number.' })
+})
+
+/** A 16 degree band, 30 m wide, across the grid except for a flat gap at its northern end. */
+const steepBand = () => terrain((c, r) => (c >= 25 && c <= 27 && r >= 5 ? 16 : 0))
+
+test('the fastest route crosses a short steep band, the gentlest goes around and reports real time', () => {
+  const { fast, gentle, gentleIsSame } = planRoutes(steepBand(), MOBILITY.walk, habitat, [stop('a', 45, 20)])
+  assert.equal(fast.maxSlopeDeg, 16)
+  assert.equal(gentle.maxSlopeDeg, 0)
+  assert.equal(gentle.steepM, 0)
+  assert.ok(fast.steepM >= 30, `${fast.steepM}`)
+  assert.ok(gentle.travelMinutes > fast.travelMinutes)
+  // all of the gentle route is level ground, so its time is simply distance at 2.5 km/h
+  assert.ok(Math.abs(gentle.travelMinutes - (gentle.distanceM / 2500) * 60) < 0.01, `${gentle.travelMinutes}`)
+  assert.equal(gentleIsSame, false)
+})
+
+test('on flat ground there is no gentler route to offer', () => {
+  assert.equal(planRoutes(terrain(), MOBILITY.walk, habitat, [stop('a', 45, 20)]).gentleIsSame, true)
+})
+
+test('the gentlest route explains a detour by the slope it stays under', () => {
+  const leg = planRoute(steepBand(), MOBILITY.walk, habitat, [stop('a', 45, 20)], 'gentle').legs[0]
+  assert.deepEqual(
+    leg.notes.map((n) => n.text),
+    ['Turns here: up to 16° on the direct line. This way stays under 1°.'],
+  )
 })

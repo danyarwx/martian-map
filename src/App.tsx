@@ -5,7 +5,7 @@ import { usePlanner } from './lib/usePlanner.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar from './panels/Sidebar.tsx'
-import type { LatLon, MobilityId, StopView, Target } from './types.ts'
+import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
 
 const site = JEZERO
 // A walk that fits one excursion, so the first screen already shows a planned route.
@@ -46,6 +46,18 @@ export default function App() {
     [custom, selected],
   )
   const planner = usePlanner(site, mobility, habitat, targets)
+  /** Which of the two routes the user wants. Kept across re-planning. */
+  const [profile, setProfile] = useState<RouteProfile>('fast')
+  const { plans } = planner
+  const choice = plans !== null && !plans.gentleIsSame
+  const shown: RouteProfile = choice ? profile : 'fast'
+  const plan = plans ? plans[shown] : null
+  const otherPlan = plans && choice ? plans[shown === 'fast' ? 'gentle' : 'fast'] : null
+
+  // With no gentler route to offer, the choice falls back to the fastest one.
+  useEffect(() => {
+    if (plans?.gentleIsSame) setProfile('fast')
+  }, [plans])
 
   useEffect(() => {
     fetch(site.views)
@@ -161,7 +173,8 @@ export default function App() {
           custom={custom}
           terrainMeta={terrainMeta}
           selected={selected}
-          plan={planner.plan}
+          plan={plan}
+          otherPlan={otherPlan}
           focusId={focusId}
           adding={adding}
           onToggle={toggle}
@@ -169,6 +182,7 @@ export default function App() {
           onMoveHabitat={moveHabitat}
           onMovePoint={movePoint}
           onPick={pickOnMap}
+          onProfile={setProfile}
         />
         <Sidebar
           site={site}
@@ -180,6 +194,8 @@ export default function App() {
           selected={selected}
           focusId={focusId}
           planner={planner}
+          plan={plan}
+          profile={shown}
           views={views}
           adding={adding}
           notice={notice}
@@ -191,6 +207,7 @@ export default function App() {
           onResetHabitat={resetHabitat}
           onAddPoint={addPoint}
           onRemovePoint={removePoint}
+          onProfile={setProfile}
         />
       </div>
     </div>

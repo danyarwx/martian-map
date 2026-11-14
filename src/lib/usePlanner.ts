@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MobilityId, RoutePlan, SiteConfig, Target } from '../types.ts'
+import type { MobilityId, RoutePlans, SiteConfig, Target } from '../types.ts'
 import type { PlanRequest, PlanResponse } from './planner.worker.ts'
 
 export interface PlannerState {
-  plan: RoutePlan | null
+  /** The fastest and the gentlest route for the current request. */
+  plans: RoutePlans | null
   planning: boolean
   error: string | null
   /** Which elevation model the route was computed on. */
@@ -17,7 +18,7 @@ export interface PlannerState {
 export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Target, targets: Target[]): PlannerState {
   const worker = useRef<Worker | null>(null)
   const latest = useRef(0)
-  const [state, setState] = useState<PlannerState>({ plan: null, planning: false, error: null, terrainSource: null })
+  const [state, setState] = useState<PlannerState>({ plans: null, planning: false, error: null, terrainSource: null })
 
   useEffect(() => {
     const w = new Worker(new URL('./planner.worker.ts', import.meta.url), { type: 'module' })
@@ -27,8 +28,8 @@ export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Targ
       if (res.id !== latest.current) return // an older request finished late
       setState((s) =>
         res.ok
-          ? { plan: res.plan, planning: false, error: null, terrainSource: res.terrainSource }
-          : { ...s, plan: null, planning: false, error: res.error },
+          ? { plans: res.plans, planning: false, error: null, terrainSource: res.terrainSource }
+          : { ...s, plans: null, planning: false, error: res.error },
       )
     }
     return () => {
@@ -43,7 +44,7 @@ export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Targ
   useEffect(() => {
     const id = ++latest.current
     if (targets.length === 0) {
-      setState((s) => ({ ...s, plan: null, planning: false, error: null }))
+      setState((s) => ({ ...s, plans: null, planning: false, error: null }))
       return
     }
     setState((s) => ({ ...s, planning: true }))

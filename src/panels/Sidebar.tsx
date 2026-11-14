@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import type { LatLon, MobilityId, SiteConfig, StopView, Target } from '../types.ts'
+import type { LatLon, MobilityId, RoutePlan, RouteProfile, SiteConfig, StopView, Target } from '../types.ts'
 import type { PlannerState } from '../lib/usePlanner.ts'
 import { NOTE_SIGNS } from '../lib/explain.ts'
 import { parsePoint, type Bounds } from '../lib/geo.ts'
-import { MOBILITY } from '../lib/mobility.ts'
+import { duration, km } from '../lib/format.ts'
+import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import {
   CAREER_LIMIT_MSV,
   EARTH_BACKGROUND_MSV_PER_DAY,
@@ -26,6 +27,9 @@ interface Props {
   selected: ReadonlySet<string>
   focusId: string | null
   planner: PlannerState
+  /** The route the user chose, shown in the Route and Safety panels. */
+  plan: RoutePlan | null
+  profile: RouteProfile
   views: Record<string, StopView>
   /** True while the next click on the map adds a point. */
   adding: boolean
@@ -40,15 +44,9 @@ interface Props {
   onAddPoint: (p: LatLon) => string | null
   onResetHabitat: () => void
   onRemovePoint: (id: string) => void
+  onProfile: (profile: RouteProfile) => void
 }
 
-const km = (m: number) => `${(m / 1000).toFixed(1)} km`
-function duration(minutes: number) {
-  const total = Math.round(minutes)
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return h === 0 ? `${m} min` : `${h} h ${String(m).padStart(2, '0')} min`
-}
 
 export default function Sidebar(p: Props) {
   const { site, planner } = p
@@ -163,8 +161,15 @@ export default function Sidebar(p: Props) {
         />
       )}
 
-      <RoutePanel planner={planner} mobility={p.mobility} stops={stops} />
-      <SafetyPanel planner={planner} />
+      <RoutePanel
+        planner={planner}
+        plan={p.plan}
+        profile={p.profile}
+        mobility={p.mobility}
+        stops={stops}
+        onProfile={p.onProfile}
+      />
+      <SafetyPanel plan={p.plan} />
     </aside>
   )
 }
@@ -254,14 +259,49 @@ function StopCard(p: { stop: Target; view?: StopView; onClose: () => void; onRem
   )
 }
 
-function RoutePanel({ planner, mobility, stops }: Pick<Props, 'planner' | 'mobility'> & { stops: Map<string, Target> }) {
-  const { plan, planning, error } = planner
+function RoutePanel({
+  planner,
+  plan,
+  profile,
+  mobility,
+  stops,
+  onProfile,
+}: Pick<Props, 'planner' | 'plan' | 'profile' | 'mobility' | 'onProfile'> & { stops: Map<string, Target> }) {
+  const { plans, planning, error } = planner
   const m = MOBILITY[mobility]
+  const routed = plan !== null && plan.legs.length > 0
   return (
     <section className="panel">
       <h2>Route {planning && <small className="muted">calculating…</small>}</h2>
       {error && <p className="alert alert--bad">Route planning failed: {error}</p>}
       {!plan && !error && !planning && <p className="muted">Choose at least one target.</p>}
+      {plans && routed && plans.gentleIsSame && (
+        <p className="muted">No gentler route here: the fastest one already keeps to the easiest ground.</p>
+      )}
+      {plans && routed && !plans.gentleIsSame && (
+        <div className="segmented options" role="group" aria-label="Which route">
+          {(['fast', 'gentle'] as const).map((id) => {
+            const option = plans[id]
+            return (
+              <button
+                key={id}
+                type="button"
+                className={id === profile ? 'is-active' : ''}
+                aria-pressed={id === profile}
+                onClick={() => onProfile(id)}
+              >
+                {ROUTE_LABELS[id]}
+                {!option.fitsOneEva && <em className="tag">over {m.maxEvaHours} h</em>}
+                <small>{duration(option.totalMinutes)} outside</small>
+                <small>
+                  {km(option.distanceM)} · steepest {option.maxSlopeDeg.toFixed(0)}°
+                </small>
+                <small>{Math.round(option.steepM / 10) * 10} m on steep ground</small>
+              </button>
+            )
+          })}
+        </div>
+      )}
       {plan && (
         <>
           {plan.habitatNoFooting && (
@@ -341,8 +381,8 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SafetyPanel({ planner }: { planner: PlannerState }) {
-  const hours = (planner.plan?.totalMinutes ?? 0) / 60
+function SafetyPanel({ plan }: { plan: RoutePlan | null }) {
+  const hours = (plan?.totalMinutes ?? 0) / 60
   const dose = evaDoseMsv(hours)
   return (
     <section className="panel">

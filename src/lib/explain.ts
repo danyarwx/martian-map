@@ -1,4 +1,4 @@
-import type { LatLon, Mobility, RouteNote, RouteSection, Terrain } from '../types.ts'
+import type { LatLon, Mobility, RouteNote, RouteProfile, RouteSection, Terrain } from '../types.ts'
 import { cellCenter } from './geo.ts'
 import { secondsPerMetre } from './mobility.ts'
 
@@ -14,6 +14,8 @@ const NOTE_SPACING_M = 150
 const STEEP_MIN_LENGTH_M = 20
 /** A detour over passable ground is explained only when it saves at least this much, seconds. */
 const MIN_SAVING_S = 60
+/** The gentle route explains a detour only when it is at least this much gentler than the direct line, degrees. */
+const MIN_GENTLER_DEG = 3
 /** Most notes shown on one leg. */
 const MAX_NOTES_PER_LEG = 6
 
@@ -131,9 +133,18 @@ const byImportance = (p: Candidate, q: Candidate) => KIND_ORDER[p.kind] - KIND_O
 
 /**
  * Why the path bends at path cell `index` instead of going straight from path cell `from` to `to`,
- * or null when the straight line would be passable and barely slower, or the reason lies too far away.
+ * or null when the straight line would be passable and barely worse, or the reason lies too far away.
+ * "Worse" is slower for the fast route and steeper for the gentle one.
  */
-function explainDetour(t: Terrain, m: Mobility, cells: number[], from: number, to: number, index: number): Candidate | null {
+function explainDetour(
+  t: Terrain,
+  m: Mobility,
+  profile: RouteProfile,
+  cells: number[],
+  from: number,
+  to: number,
+  index: number,
+): Candidate | null {
   const at = pointOf(t, cells[index])
   const direct = lineCells(t.width, cells[from], cells[to])
   const noGo = (i: number) => t.slope[i] === NO_DATA || t.slope[i] / 2 > m.maxSlopeDeg
@@ -183,18 +194,27 @@ function explainDetour(t: Terrain, m: Mobility, cells: number[], from: number, t
 
   const straight = travel(t, m, direct)
   const taken = travel(t, m, cells, from, to)
-  const saved = straight.seconds - taken.seconds
-  if (saved < MIN_SAVING_S) return null
   const deg = Math.round(straight.steepestDeg)
-  const minutes = Math.round(saved / 60)
-  const text =
-    straight.steepestDeg > taken.steepestDeg
-      ? `Turns here: up to ${deg}° on the direct line. This way saves ${minutes} min.`
-      : `Turns here: slower ground on the direct line. This way saves ${minutes} min.`
+  let text: string
+  let weight: number
+  if (profile === 'gentle') {
+    // This route gives up time for gentler ground, so the reason is the slope it stays under.
+    weight = straight.steepestDeg - taken.steepestDeg
+    if (weight < MIN_GENTLER_DEG) return null
+    text = `Turns here: up to ${deg}° on the direct line. This way stays under ${Math.floor(taken.steepestDeg) + 1}°.`
+  } else {
+    weight = straight.seconds - taken.seconds
+    if (weight < MIN_SAVING_S) return null
+    const minutes = Math.round(weight / 60)
+    text =
+      straight.steepestDeg > taken.steepestDeg
+        ? `Turns here: up to ${deg}° on the direct line. This way saves ${minutes} min.`
+        : `Turns here: slower ground on the direct line. This way saves ${minutes} min.`
+  }
   const cell = direct.reduce((best, i) => (t.slope[i] > t.slope[best] ? i : best))
   if (groundDistanceM(t, cells[index], cell) > OBSTACLE_MAX_DISTANCE_M) return null
   const obstacleText = `${deg}° slope: passable but slow`
-  return { at, kind: 'slow', text, obstacle: pointOf(t, cell), obstacleText, index, weight: saved, key: `slow ${deg}` }
+  return { at, kind: 'slow', text, obstacle: pointOf(t, cell), obstacleText, index, weight, key: `slow ${deg}` }
 }
 
 /**
@@ -205,6 +225,7 @@ function explainDetour(t: Terrain, m: Mobility, cells: number[], from: number, t
 function findDetours(
   t: Terrain,
   m: Mobility,
+  profile: RouteProfile,
   cells: number[],
   along: Float64Array,
   from: number,
@@ -223,14 +244,14 @@ function findDetours(
     }
   }
   if (farthest < 0) return
-  const note = explainDetour(t, m, cells, from, to, farthest)
+  const note = explainDetour(t, m, profile, cells, from, to, farthest)
   if (note) {
     // The shorter stretch is nearer the obstacle: it replaces a longer one saying the same thing.
     if (parent && parent.key === note.key) parent.dropped = true
     out.push(note)
   }
-  findDetours(t, m, cells, along, from, farthest, note ?? parent, out)
-  findDetours(t, m, cells, along, farthest, to, note ?? parent, out)
+  findDetours(t, m, profile, cells, along, from, farthest, note ?? parent, out)
+  findDetours(t, m, profile, cells, along, farthest, to, note ?? parent, out)
 }
 
 /** Steep stretches on the route itself: runs in the top slope class, bridging single easier cells. */
@@ -266,14 +287,26 @@ function findSteep(t: Terrain, cells: number[], levels: (0 | 1 | 2)[], along: Fl
 
 /**
  * Explains a finished leg: notes on why the path bends and where it is steep, and the path cut
- * into runs of equal slope class for colouring. `cells` is the chain of grid cells from the route search.
+ * into runs of equal slope class for colouring, and how many metres of it are in the top slope class.
+ * `cells` is the chain of grid cells from the route search; `profile` is what the route was chosen for.
  */
-export function explainLeg(t: Terrain, m: Mobility, cells: number[]): { notes: RouteNote[]; sections: RouteSection[] } {
+export function explainLeg(
+  t: Terrain,
+  m: Mobility,
+  cells: number[],
+  profile: RouteProfile = 'fast',
+): { notes: RouteNote[]; sections: RouteSection[]; steepM: number } {
   const n = cells.length
   const levels = cells.map((i) => slopeLevel(m, t.slope[i] / 2))
   // Distance along the path at every cell.
   const along = new Float64Array(n)
-  for (let k = 1; k < n; k++) along[k] = along[k - 1] + stepM(t, cells[k - 1], cells[k])
+  // Each step counts half for the cell it leaves and half for the cell it enters.
+  let steepM = 0
+  for (let k = 1; k < n; k++) {
+    const step = stepM(t, cells[k - 1], cells[k])
+    along[k] = along[k - 1] + step
+    steepM += step * 0.5 * ((levels[k - 1] === 2 ? 1 : 0) + (levels[k] === 2 ? 1 : 0))
+  }
 
   const sections: RouteSection[] = []
   for (let a = 0; a < n; ) {
@@ -286,7 +319,7 @@ export function explainLeg(t: Terrain, m: Mobility, cells: number[]): { notes: R
   }
 
   const found: Candidate[] = []
-  findDetours(t, m, cells, along, 0, n - 1, null, found)
+  findDetours(t, m, profile, cells, along, 0, n - 1, null, found)
   // Thin detour notes that crowd each other, most important first.
   const detours: Candidate[] = []
   for (const c of found.filter((c) => !c.dropped).sort(byImportance)) {
@@ -300,5 +333,5 @@ export function explainLeg(t: Terrain, m: Mobility, cells: number[]): { notes: R
     .map(({ at, kind, text, obstacle, obstacleText }) =>
       obstacle ? { at, kind, text, obstacle, obstacleText } : { at, kind, text },
     )
-  return { notes, sections }
+  return { notes, sections, steepM }
 }

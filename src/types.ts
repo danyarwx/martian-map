@@ -101,6 +101,9 @@ export interface RouteSection {
   level: 0 | 1 | 2
 }
 
+/** What a route is chosen for: the least time, or the gentlest ground even when that takes longer. */
+export type RouteProfile = 'fast' | 'gentle'
+
 /** One stretch of the route between two stops. */
 export interface RouteLeg {
   fromId: string
@@ -111,6 +114,8 @@ export interface RouteLeg {
   ascentM: number
   descentM: number
   maxSlopeDeg: number
+  /** Metres of this leg on ground at three quarters of the slope limit or above (the orange sections). */
+  steepM: number
   /** Why the path goes the way it does, in path order. */
   notes: RouteNote[]
   /** The path cut by slope class, for colouring the line. */
@@ -125,6 +130,7 @@ export type UnreachableReason = 'no-footing' | 'no-path'
 
 export interface RoutePlan {
   mobility: MobilityId
+  profile: RouteProfile
   /** Stop ids in visiting order, starting and ending at the habitat. */
   order: string[]
   legs: RouteLeg[]
@@ -142,6 +148,16 @@ export interface RoutePlan {
   totalMinutes: number
   ascentM: number
   maxSlopeDeg: number
+  /** Metres of the route on ground at three quarters of the slope limit or above. */
+  steepM: number
   /** True when the whole trip fits in one excursion for this mobility. */
   fitsOneEva: boolean
+}
+
+/** Both routes for one request. Times, distances and slopes in each are real, whatever the route was chosen for. */
+export interface RoutePlans {
+  fast: RoutePlan
+  gentle: RoutePlan
+  /** True when the gentle route is practically the fast one, so there is no real choice to offer. */
+  gentleIsSame: boolean
 }

@@ -1,4 +1,7 @@
-import type { Mobility, MobilityId } from '../types.ts'
+import type { Mobility, MobilityId, RouteProfile } from '../types.ts'
+
+/** Names of the two routes offered for one trip. */
+export const ROUTE_LABELS: Record<RouteProfile, string> = { fast: 'Fastest', gentle: 'Gentlest' }
 
 // Planning assumptions, not measurements. Sources for the starting points:
 // - Walking: Apollo crews averaged roughly 2-2.5 km/h on foot and worked on slopes up to about 20 degrees

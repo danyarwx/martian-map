@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import type { LatLon, RoutePlan, SiteConfig, Target, TerrainMeta } from '../types.ts'
+import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta } from '../types.ts'
 import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
-import { MOBILITY } from '../lib/mobility.ts'
+import { duration } from '../lib/format.ts'
+import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import { createTileLayers, MARS_CRS } from './layers.ts'
 
 interface Props {
@@ -15,7 +16,10 @@ interface Props {
   terrainMeta: TerrainMeta | null
   /** Ids of the targets chosen for the route. */
   selected: ReadonlySet<string>
+  /** The route the user chose. */
   plan: RoutePlan | null
+  /** The alternative route, drawn faintly underneath, or null when there is no real alternative. */
+  otherPlan: RoutePlan | null
   /** Stop whose card is open. */
   focusId: string | null
   /** True while the next click on the map adds a point. */
@@ -27,6 +31,8 @@ interface Props {
   onMovePoint: (id: string, p: LatLon) => string | null
   /** A click on the map itself while `adding` is on. */
   onPick: (p: LatLon) => void
+  /** A click on the alternative route chooses it. */
+  onProfile: (profile: RouteProfile) => void
 }
 
 /** Route line colour per slope class: easy, moderate, close to the limit. */
@@ -40,7 +46,7 @@ const NOTES_OPEN_ZOOM = 15
 const deg = (v: number) => String(Math.round(v))
 
 export default function MarsMap(props: Props) {
-  const { site, habitat, custom, terrainMeta, selected, plan, focusId, adding } = props
+  const { site, habitat, custom, terrainMeta, selected, plan, otherPlan, focusId, adding } = props
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const stopsRef = useRef<L.LayerGroup | null>(null)
@@ -53,6 +59,8 @@ export default function MarsMap(props: Props) {
   const dragging = useRef(false)
   /** Bumped after every drop to redraw the markers, also when the drop was refused. */
   const [drops, setDrops] = useState(0)
+  /** The pair of routes last drawn, to tell a switch between the two from a new plan. */
+  const drawn = useRef<{ plan: RoutePlan | null; other: RoutePlan | null }>({ plan: null, other: null })
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -208,7 +216,7 @@ export default function MarsMap(props: Props) {
     }
   }, [site, habitat, custom, selected, plan, focusId, drops])
 
-  // Route line coloured by slope class, its notes and the colour legend.
+  // The chosen route coloured by slope class with its notes, the alternative underneath, and the legend.
   useEffect(() => {
     const group = routeRef.current
     const notes = notesRef.current
@@ -217,7 +225,25 @@ export default function MarsMap(props: Props) {
     group.clearLayers()
     notes.clearLayers()
     if (!plan || plan.legs.length === 0) return
-    const lines = plan.legs.map((leg) => leg.path.map((p) => [p.lat, p.lon] as L.LatLngTuple))
+    const linesOf = (p: RoutePlan) => p.legs.map((leg) => leg.path.map((q) => [q.lat, q.lon] as L.LatLngTuple))
+
+    // The other route: a pale dashed line under the chosen one. A wide invisible line over it takes the
+    // click; both are vector lines, which lie below every marker, so stops and notes keep their clicks.
+    const other = otherPlan && otherPlan.legs.length > 0 ? otherPlan : null
+    if (other) {
+      const otherLines = linesOf(other)
+      L.polyline(otherLines, { color: '#ffffff', opacity: 0.6, weight: 2, dashArray: '6 6', interactive: false }).addTo(group)
+      L.polyline(otherLines, { color: '#ffffff', opacity: 0, weight: 14, bubblingMouseEvents: false })
+        .bindTooltip(`${ROUTE_LABELS[other.profile]} route: ${duration(other.totalMinutes)}`, { sticky: true })
+        .on('click', (e) => {
+          // While a point is being added, a click on the line is a click on the map.
+          if (handlers.current.adding) handlers.current.onPick({ lat: e.latlng.lat, lon: e.latlng.lng })
+          else handlers.current.onProfile(other.profile)
+        })
+        .addTo(group)
+    }
+
+    const lines = linesOf(plan)
     const outline = L.polyline(lines, { color: '#04222b', weight: 7, opacity: 0.9, interactive: false }).addTo(group)
     LEVEL_COLORS.forEach((color, level) => {
       const runs = plan.legs.flatMap((leg) =>
@@ -277,17 +303,21 @@ export default function MarsMap(props: Props) {
       el.innerHTML =
         '<strong>Slope on the route</strong>' +
         labels.map((label, i) => `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('') +
-        `<span><b>${NOTE_SIGNS['no-go']}</b> turn <b>${OBSTACLE_SIGN}</b> what it avoids</span>`
+        `<span><b>${NOTE_SIGNS['no-go']}</b> turn <b>${OBSTACLE_SIGN}</b> what it avoids</span>` +
+        (other ? '<span><i class="other"></i>other route (click to choose)</span>' : '')
       return el
     }
     legend.addTo(map) // added after the scale bar, so it sits above it
 
-    map.fitBounds(outline.getBounds(), { padding: [50, 50], maxZoom: 15 })
+    // Fit the view when a new plan arrives, not when the user only switches between the two routes.
+    const switched = plan === drawn.current.other && otherPlan === drawn.current.plan
+    drawn.current = { plan, other: otherPlan }
+    if (!switched) map.fitBounds(outline.getBounds(), { padding: [50, 50], maxZoom: 15 })
     return () => {
       map.off('zoomend', showNotes)
       legend.remove()
     }
-  }, [plan])
+  }, [plan, otherPlan])
 
   return <div ref={ref} className="map" />
 }
