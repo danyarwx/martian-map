@@ -32,19 +32,19 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · commit 3de3e2c · awaiting Dev 2 review
 - [ ] T4.4 (C) Eval harness + metrics · deps T3.5, T4.2
 - [x] T4.5 (E) CV view (V) · deps T3.5 · done 14 Nov with T4.2
-- [ ] T4.6 (E) HUD core (port from feat/helmet-hud) · deps T2.4
+- [x] T4.6 (E) HUD core · deps T2.4 · done 14 Nov (work/hud): compass, alerts, nav panel written new, not ported from feat/helmet-hud
 
 ## M3 – re-route and guidance
 - [x] T5.0 (D) Local planner + guide line · deps T4.2 · done 14 Nov (work/t5)
 - [x] T5.3 (D) Global replan bridge · deps T4.3, T5.0 · done 14 Nov (work/t5)
 
 ## M4 – sensors, sand, drop, real photo, hand-back
-- [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · data + logic done (b3b52cc: weather.json, fetch_weather.py, sensors/weather.ts, suit.ts, warnings.ts + tests); the HUD panel is still to do with T4.6
+- [x] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · data + logic b3b52cc; hud/SuitPanel.tsx done 14 Nov (work/hud)
 - [ ] T5.2 (C) Sand classifier · deps T4.4 · cut #2 if late
 - [x] T5.4 (E) Hand the map back to Mission control · deps T4.2 · done 14 Nov (work/hud) · awaiting Dev 1 review of src/map/MarsMap.tsx
 - [~] T5.5 (C) Drop-offs · deps T4.2 · cut #1 if late · pure detector done (d44185d); fused-grid wiring with T4.2
 - [x] T6.1 (A) Real stereo pair at Cheyava Falls · deps T3.1 · cut #3 if late · commit 27088c9
-- [ ] T6.2 (E) Real-photo view (R) · deps T6.1, T3.5 · cut #3 if late
+- [x] T6.2 (E) Real-photo view (R) · deps T6.1, T3.5 · done 14 Nov (work/hud); weak: 1 detection (see log)
 
 ## M5 – polish
 - [ ] T7.1 Performance pass
@@ -98,3 +98,4 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T4.2 + T4.5 · new owner · work/t4.2 · mapping/fuse.ts (HazardMap: grid + version + latest detections), hud/MiniMap.tsx (north-up, ±25 m small / ±60 m large with M, route dashed, astronaut arrow, scale bar, legend), hud/CvView.tsx (V: left camera with labelled boxes, disparity ramp, ms / Hz / valid % / pose source). In the browser: walking 5 m toward the Three Forks demo boulders paints 4 rock clusters within ~1 m of the real boulders, safe ground as the seen wedge. Not done here: the contract note (CvResult.groundZ / CvFrame.heights for drop-offs on fused heights) — drop-offs are cut #1, so they wait until the core path is done
 - 14 Nov · T5.0 + T5.3 · new owner · work/t5 · session.ts runs the local planner after every CV frame (hud/GuideLine.ts: ribbon on the ground, on three.js layer 1 so the CV cameras never see it), moves to the next leg at a stop, and checks the route against the hazard map once a second (ReplanDecider, coverage 0.06 instead of 0.30: see Questions) → ReplanClient (own planner worker) → new plan, track and "Route updated" alert. HUD: alerts (sensors/warnings.ts rules for hazard ahead and slope), nav panel (next stop, distance, steering arrow). `session.exit()` fills HelmetExit (seen image + bounds, hazard clusters, plan if re-routed). #helmet now opens the whole demo excursion (4 legs) and asks the planner for the real plan at start, so times are comparable. Seen in the browser at Three Forks: boulders detected from ~16 m, 1 planner cell blocked, new route passes 7 m south of the field, walked along the guide past it without touching a rock; 75 fps, CV 30 ms at 6.5 Hz. Not done: T2.5 (Go outside button), T4.6/T5.1 panels (compass, suit), T6.2 (R), T5.4 (map side), T4.4 eval, sand, drop-off wiring
 - 14 Nov · T2.5 + T5.4 · new owner · work/hud · App: `helmetEntry` (plan + start 300 m before the first stop) and `helmetExit`; Sidebar button "Go outside (helmet view)"; MarsMap draws the seen ground (ImageOverlay), hazard markers and the re-routed line. Demo boulder fields now sit on the ACTIVE plan's legs when the helmet is opened from Mission control (they were on the fixed demo order, which the planner does not follow: its first stop is Séítah). Demo boulders are taller (h = 0.9–1.0 d) so each stands over a step. Re-route has a second trigger: guide more than 4 m off the planned line for 4 CV frames (the 6 % cell cover did not fire on a diagonal crossing). Seen in the browser: Go outside → walk → "Re-routing round the hazard…" 10 m before the Séítah boulders → Esc → Mission control keeps its plan and shows the seen layer and markers
+- 14 Nov · T4.6 + T5.1 panel + T6.2 · new owner · work/hud · hud/Compass.tsx (tape ±60°, markers for the next stop and the guide), hud/SuitPanel.tsx (O₂ / EVA left / dose from sensors/suit.ts labelled "simulated", walk-back from the plan's `walkHomeMin`, MEDA sol 1133 air temperature model, pressure, daylight; local time starts at 10:30 like the sky's sun and runs with the session, ×4 with Shift), all §7.1 warning rules now get their inputs, hud/RealPhotoTest.tsx (R: own CvClient with maxDisp 96 on the Cheyava Falls pair) with hud/drawCv.ts shared with the CV view. Seen in the browser: panels render; the demo route shows "Walk back 78 min: beyond the 60 min reserve" at its start (true for that route); real photo: 215 ms, 69 % of pixels with depth, a clean depth map, but only 1 rock boxed. The pipeline's pose has no roll and the Navcam frame is rolled 11.5°, so the ground fit is off for the big rocks in the foreground. To improve: add roll to the CV pose (contract change) or rectify the pair to zero roll in scripts/build_real_stereo.py

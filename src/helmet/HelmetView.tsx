@@ -3,7 +3,13 @@ import { JEZERO } from '../data/jezero.ts'
 import { loadTerrain } from '../lib/terrain.ts'
 import type { RoutePlan } from '../types.ts'
 import type { HelmetEntry, HelmetExit } from './contracts.ts'
+import { evaDoseMsv } from '../lib/safety.ts'
+import Compass from './hud/Compass.tsx'
 import CvView from './hud/CvView.tsx'
+import RealPhotoTest from './hud/RealPhotoTest.tsx'
+import SuitPanel, { weatherNow } from './hud/SuitPanel.tsx'
+import { doseSoFarMsv } from './sensors/suit.ts'
+import { loadWeather, type WeatherCache } from './sensors/weather.ts'
 import MiniMap from './hud/MiniMap.tsx'
 import { evaluateWarnings } from './sensors/warnings.ts'
 import { HelmetSession, type HudState } from './session.ts'
@@ -20,6 +26,9 @@ interface Props {
 
 type Menu = 'jump' | 'help' | null
 
+/** Local solar time when the helmet opens, hours (the sun in world/sky.ts stands at 10:30). */
+const DEPARTURE_LST_H = 10.5
+
 const KEYS: [string, string][] = [
   ['W A S D / arrows', 'walk'],
   ['Shift', 'hurry (time ×4)'],
@@ -27,6 +36,7 @@ const KEYS: [string, string][] = [
   ['J', 'jump to a point of the route'],
   ['V', 'computer vision view: what the helmet computes'],
   ['M', 'hazard map small / large'],
+  ['R', 'the same detector on a real Perseverance stereo photo'],
   ['P', 'pause'],
   ['H', 'this help'],
   ['Esc', 'back to Mission control'],
@@ -56,6 +66,18 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [km, setKm] = useState(0)
   const [cvView, setCvView] = useState(false)
   const [bigMap, setBigMap] = useState(false)
+  const [realPhoto, setRealPhoto] = useState(false)
+  const [weather, setWeather] = useState<WeatherCache | null>(null)
+  useEffect(() => {
+    let live = true
+    loadWeather()
+      .then((w) => live && setWeather(w))
+      .catch((err) => console.warn('helmet: no weather data', err))
+    return () => {
+      live = false
+    }
+  }, [])
+  const startMin = useRef<number | null>(null)
   const exitRef = useRef(onExit)
   exitRef.current = onExit
   const entryRef = useRef(entry)
@@ -131,6 +153,7 @@ export default function HelmetView({ entry, onExit }: Props) {
       else if (k === 'p') setPaused((p) => !p)
       else if (k === 'v') setCvView((v) => !v)
       else if (k === 'm') setBigMap((v) => !v)
+      else if (k === 'r') setRealPhoto((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -152,16 +175,20 @@ export default function HelmetView({ entry, onExit }: Props) {
 
   const planLabel = !plan || !hud ? 'Helmet' : `${entry ? '' : 'Demo route · '}leg ${Math.min(hud.legIndex, plan.legs.length - 1) + 1} of ${plan.legs.length}`
   const nav = hud?.nav ?? null
+  // local solar time: the sky's sun stands at 10:30 when the helmet opens
+  const lst = DEPARTURE_LST_H + (hud ? hud.elapsedMin - (startMin.current ??= hud.elapsedMin) : 0) / 60
+  const wx = weatherNow(weather, lst)
   const warnings = hud
     ? evaluateWarnings({
         nearestHazardM: nav?.hazardAheadM ?? null,
         nearestHazardKind: nav?.hazardAheadKind ?? null,
         slopeUnderFootDeg: hud.slopeDeg,
-        walkBackMin: null,
-        daylightLeftMin: null,
-        doseMsv: null,
-        plannedDoseMsv: null,
-        airTempC: null,
+        walkBackMin: nav?.walkBackMin ?? null,
+        daylightLeftMin: wx?.daylightLeftMin ?? null,
+        doseMsv: doseSoFarMsv(hud.elapsedMin),
+        plannedDoseMsv: plan ? evaDoseMsv(plan.totalMinutes / 60) : null,
+        airTempC: weather ? weatherNow(weather, DEPARTURE_LST_H)?.airTempC ?? null : null,
+        weatherSol: wx?.sol ?? null,
       })
     : []
   const rerouted = nav?.rerouted && now - nav.rerouted.at < 12000 ? nav.rerouted : null
@@ -224,7 +251,10 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
-      {hud && session.current && cvView && <CvView session={session.current} hud={hud} />}
+      {hud && <Compass headingDeg={hud.pose.headingDeg} stopBearingDeg={nav && !nav.arrived ? nav.stopBearingDeg : null} steerDeg={nav?.steerDeg ?? null} />}
+      {hud && <SuitPanel elapsedMin={hud.elapsedMin} lstHours={lst} weather={weather} walkBackMin={nav?.walkBackMin ?? null} />}
+      {realPhoto && <RealPhotoTest />}
+      {hud && session.current && cvView && !realPhoto && <CvView session={session.current} hud={hud} />}
       {hud && session.current && <MiniMap session={session.current} hud={hud} large={bigMap} />}
 
       {menu === 'jump' && plan && (
@@ -263,7 +293,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
-      <p className="helmet-help">W A S D walk · Shift hurry · drag to look · J jump · V computer vision · M map · H help · Esc back</p>
+      <p className="helmet-help">W A S D walk · Shift hurry · drag look · J jump · V computer vision · R real photo · M map · H help · Esc back</p>
     </div>
   )
 }

@@ -9,13 +9,13 @@ import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, remainingM, type RouteTrack } from './nav/follow.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
-import { headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
+import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
 import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
 import { CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
-import { EYE_M, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
+import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
 import { makeCoarseGrid } from './world/heightField.ts'
 import { headingAlong } from './world/path.ts'
 import type { RoutesFile } from './world/routes.ts'
@@ -45,6 +45,8 @@ export interface HudState {
   paused: boolean
   cv: CvStats
   nav: NavState
+  /** Minutes outside so far: the planned walk to the start point plus the time in the helmet (Shift counts ×4). */
+  elapsedMin: number
 }
 
 /** Where the astronaut is on the route and what the guide says. */
@@ -68,6 +70,10 @@ export interface NavState {
   rerouted: { deltaMin: number; at: number } | null
   /** The astronaut is at the last stop of the plan. */
   arrived: boolean
+  /** Bearing of the active leg's stop from here, degrees clockwise from north. */
+  stopBearingDeg: number
+  /** Walking minutes back to the habitat from the nearest point of the planned leg; null when the plan has none. */
+  walkBackMin: number | null
 }
 
 /** How the live computer vision is doing. */
@@ -142,6 +148,7 @@ export class HelmetSession {
   private rerouted: NavState['rerouted'] = null
   private arrived = false
   private detourTicks = 0
+  private elapsedS = 0
   private onPlan: (plan: RoutePlan) => void
   legIndex: number
   paused = false
@@ -194,6 +201,12 @@ export class HelmetSession {
     this.controls = new Controls(renderer.domElement, this.pose)
 
     this.track = buildTrack(entry.plan.legs[entry.legIndex].path, this.origin)
+    // the walk from the habitat to the start point already took time (a real plan's legs carry real minutes)
+    if (!standIn) {
+      const before = entry.plan.legs.slice(0, entry.legIndex).reduce((m, l) => m + l.minutes, 0)
+      const fix = locate(this.track, 0, 0)
+      this.elapsedS = 60 * (before + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
+    }
     this.guideLine = new GuideLine(this.world.scene)
     this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
@@ -390,7 +403,16 @@ export class HelmetSession {
       replanning: this.replanner.busy,
       rerouted: this.rerouted,
       arrived: this.arrived,
+      stopBearingDeg: dirToHeading(this.track.x[this.track.n - 1] - this.pose.x, this.track.y[this.track.n - 1] - this.pose.y),
+      walkBackMin: this.walkBackMin(fix.s),
     }
+  }
+
+  private walkBackMin(s: number): number | null {
+    const home = this.plan.legs[this.legIndex].walkHomeMin
+    if (!home.length || this.track.lengthM <= 0) return null
+    const v = home[Math.min(home.length - 1, Math.round((s / this.track.lengthM) * (home.length - 1)))]
+    return Number.isFinite(v) ? v : null
   }
 
   dispose(): void {
@@ -418,6 +440,7 @@ export class HelmetSession {
     // no walking before the ground under the feet exists, or the player would start inside it
     const still = this.paused || !ready
     const res = stepPlayer(pose, still ? { fwd: 0, side: 0, fast: false } : inp, still ? 0 : dt, this.ground)
+    if (!still) this.elapsedS += dt * (this.fast ? FAST_FACTOR : 1)
     if (res.moved > 0 || res.blocked || (!inp.fwd && !inp.side)) this.move = res
     else this.move = { ...res, blocked: this.move.blocked }
     pose.z += this.lift
@@ -462,6 +485,7 @@ export class HelmetSession {
         paused: this.paused,
         cv: { ...this.cvStats },
         nav: this.navState(),
+        elapsedMin: this.elapsedS / 60,
       })
     }
   }
