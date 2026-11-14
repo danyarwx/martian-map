@@ -22,11 +22,11 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [ ] T2.5 (E) Go outside from Mission control · deps T2.4
 
 ## M2 – live CV and hazard map
-- [~] T3.1 (C) Stereo · deps T0.1 · worker lane C, started 14 Nov
-- [~] T3.2 (C) Points + ground · deps T3.1 · worker lane C (queued), started 14 Nov
-- [~] T3.3 (C) Obstacles · deps T3.2 · worker lane C (queued), started 14 Nov
-- [~] T3.4 (C) Slope · deps T3.2 · worker lane C (queued), started 14 Nov
-- [ ] T3.5 (C+B) Worker + capture · deps T3.3, T3.4, T2.4
+- [x] T3.1 (C) Stereo · deps T0.1 · commit 53a000e
+- [x] T3.2 (C) Points + ground · deps T3.1 · commit 00de106
+- [x] T3.3 (C) Obstacles · deps T3.2 · commit 6902dd1
+- [x] T3.4 (C) Slope · deps T3.2 · commit 3c92b97
+- [~] T3.5 (C+B) Worker + capture · deps T3.3, T3.4, T2.4 · worker lane C2 (worker pipeline now; camera rig after T2.4), started 14 Nov
 - [x] T4.1 (D) Hazard grid · deps T0.1 · commit 4b1661c
 - [ ] T4.2 (D+E) Fuse CV into grid + mini-map · deps T3.5, T4.1
 - [x] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · commit 3de3e2c · awaiting Dev 2 review
@@ -42,7 +42,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · worker lane A2 (data + logic now; panel after T4.6), started 14 Nov
 - [ ] T5.2 (C) Sand classifier · deps T4.4 · cut #2 if late
 - [ ] T5.4 (E) Hand the map back to Mission control · deps T4.2 · Dev 1 reviews
-- [ ] T5.5 (C) Drop-offs · deps T4.2 · cut #1 if late
+- [~] T5.5 (C) Drop-offs · deps T4.2 · cut #1 if late · worker lane C2 (pure detector now; grid wiring after T4.2), started 14 Nov
 - [~] T6.1 (A) Real stereo pair at Cheyava Falls · deps T3.1 · cut #3 if late · worker lane A2, started 14 Nov
 - [ ] T6.2 (E) Real-photo view (R) · deps T6.1, T3.5 · cut #3 if late
 
@@ -72,3 +72,8 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T1.0 · lane A · 55b2155 · 21/21 legs, 0 unreachable, public/data/helmet/routes.json (220 KB), node scripts/export_routes.ts ~2 s
 - 14 Nov · T1.1 · lane A · 2d558d1 · 241 tiles, 14.3 MB (budget 40); per window: cheyava 23, delta-front 56, habitat 43, ingenuity 47, margin-carbonates 46, seitah 53, three-forks 61; elevation check 0 failures (max 0.14 m vs 10 m grid); 0 Trek 404s; windowed /vsicurl/ DTM reads (no full download); ortho is GRAYSCALE (tint in shader); index.json adds row/col/sandFrac and a `windows` list per stop; sand mask is an orbital heuristic (gaps on bright crests, small false patches); --all-corridor would be 496 tiles ~30 MB (not built)
 - 14 Nov · merge · orchestrator · lane A merged; scope checked (728 files, all listed paths), 48/48 tests, build green
+- 14 Nov · T3.1 · lane C · 53a000e · census 5×5 + Hamming, 9×9 box aggregation with running sums, WTA + parabola + LR check + uniqueness; d=10 median error 0.006 px / 100 % valid, slanted 0.060 px / 100 %, step edge median 0 wrong px per row, 256×192×48 ≈ 40–48 ms in Node. Uniqueness default 0.8 (spec said 0.95; 0.95 let horizon mismatches through as false 1.7 m rocks) — T4.4 to tune
+- 14 Nov · T3.2 · lane C · 00de106 · back-projection (≤ 15k points) + per-cell 20th pct + seeded RANSAC per 4 m block (thin-triangle and spread checks added); 10° slope within 1° per block, 9.85° with 0.1 px noise, 10.00° end to end; points ≤ 3.1 cm off at 5 m with ±0.05 px; ~3 ms
+- 14 Nov · T3.3 · lane C · 6902dd1 · rocks from cells with ≥ 3 points > 0.30 m above ground (+ ≥ 3 points 0.10–0.30 m to reject floating mismatches), 8-connected, bbox; boxes 0.2 ignored / 0.4 → 0.399 m IoU 0.94 / 0.8 → 0.799 m IoU 1.00; through stereo 0.380 m / 0.783 m. HazardPatch = fixed 68 × 68 m around the camera, snapped to a 4 m grid
+- 14 Nov · T3.4 · lane C · 3c92b97 · per-1 m-block LSQ slope with error filter (≤ 2.5°, ≤ 15 m) + 3×3 median; steep cells > 20°, 15–20° warning; 12° none, 17° warning, 25° steep, also with 0.1 px noise and through stereo; full CV frame ≈ 42 ms. Notes for T3.5: copy disparity/patch buffers before transfer; cx = (w−1)/2; readRenderTargetPixels rows are bottom-up; order disparity → backProject → fitGround → obstacles → slopes
+- 14 Nov · merge · orchestrator · lane C merged; scope checked (12 files in cv/), 80/80 tests, build green
