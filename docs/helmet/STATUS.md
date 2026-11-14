@@ -13,8 +13,8 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T0.4 Skeleton `#helmet` · deps T0.2 · commit 68e303c
 
 ## M1 – real terrain
-- [ ] T1.0 (A) Export route polylines · deps T0.2
-- [ ] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov
+- [~] T1.0 (A) Export route polylines · deps T0.2 · worker lane A, started 14 Nov
+- [~] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov · worker lane A (queued after T1.0), started 14 Nov
 - [ ] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1
 - [ ] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1
 - [ ] T2.3 (B) Rocks · deps T2.1
@@ -22,14 +22,14 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [ ] T2.5 (E) Go outside from Mission control · deps T2.4
 
 ## M2 – live CV and hazard map
-- [ ] T3.1 (C) Stereo · deps T0.1
-- [ ] T3.2 (C) Points + ground · deps T3.1
-- [ ] T3.3 (C) Obstacles · deps T3.2
-- [ ] T3.4 (C) Slope · deps T3.2
+- [~] T3.1 (C) Stereo · deps T0.1 · worker lane C, started 14 Nov
+- [~] T3.2 (C) Points + ground · deps T3.1 · worker lane C (queued), started 14 Nov
+- [~] T3.3 (C) Obstacles · deps T3.2 · worker lane C (queued), started 14 Nov
+- [~] T3.4 (C) Slope · deps T3.2 · worker lane C (queued), started 14 Nov
 - [ ] T3.5 (C+B) Worker + capture · deps T3.3, T3.4, T2.4
-- [ ] T4.1 (D) Hazard grid · deps T0.1
+- [~] T4.1 (D) Hazard grid · deps T0.1 · worker lane D, started 14 Nov
 - [ ] T4.2 (D+E) Fuse CV into grid + mini-map · deps T3.5, T4.1
-- [ ] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews
+- [~] T4.3 (D) Planner: blocked cells + planFrom + replan message · deps T0.2 · Dev 2 reviews · worker lane D (queued after T4.1), started 14 Nov
 - [ ] T4.4 (C) Eval harness + metrics · deps T3.5, T4.2
 - [ ] T4.5 (E) CV view (V) · deps T3.5
 - [ ] T4.6 (E) HUD core (port from feat/helmet-hud) · deps T2.4
