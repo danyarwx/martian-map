@@ -147,6 +147,12 @@ export default function HelmetView({ entry, onExit }: Props) {
         {paused && <span className="helmet-flag">paused</span>}
         {error && <span className="helmet-flag">{error}</span>}
         {hud && <span>slope {hud.slopeDeg.toFixed(0)}°</span>}
+        {hud && hud.cv.frames > 0 && (
+          <span title="Live computer vision: worker time per frame and frames per second">
+            CV {hud.cv.ms.toFixed(0)} ms · {hud.cv.hz.toFixed(1)} Hz
+          </span>
+        )}
+        {hud?.cv.error && <span className="helmet-flag">CV error</span>}
         <span>{hud?.fps ?? 0} fps</span>
       </div>
 
