@@ -1,13 +1,17 @@
 // One helmet session: the renderer, the world, the player and the frame loop. No React in here: HelmetView
 // creates a session when its data has loaded, draws the HUD from the state the session reports, and disposes it.
 import * as THREE from 'three'
-import type { LatLon, Terrain } from '../types.ts'
-import type { CvResult, HelmetEntry, Pose } from './contracts.ts'
+import { JEZERO } from '../data/jezero.ts'
+import type { LatLon, RoutePlan, Terrain } from '../types.ts'
+import type { CvResult, Detection, HelmetEntry, HelmetExit, Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
-import { buildTrack, type RouteTrack } from './nav/follow.ts'
-import type { LocalPlan } from './nav/localPlanner.ts'
-import { headingToDir, localToThree, toLocal } from './frames.ts'
+import { buildTrack, locate, remainingM, type RouteTrack } from './nav/follow.ts'
+import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
+import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
+import { headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
+import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
+import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
 import { CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
@@ -40,6 +44,30 @@ export interface HudState {
   blocked: MoveResult['blocked']
   paused: boolean
   cv: CvStats
+  nav: NavState
+}
+
+/** Where the astronaut is on the route and what the guide says. */
+export interface NavState {
+  /** Id of the stop the active leg leads to. */
+  toId: string
+  /** Metres left on the active leg. */
+  remainingM: number
+  /** Metres off the planned line. */
+  offRouteM: number
+  /** Heading to follow, degrees clockwise from north; null before the first guide. */
+  steerDeg: number | null
+  /** The local planner found no way through its window. */
+  blocked: boolean
+  /** Nearest rock / steep ground / drop-off on the route line within 15 m. */
+  hazardAheadM: number | null
+  hazardAheadKind: Detection['kind'] | null
+  /** A re-route is being computed. */
+  replanning: boolean
+  /** The last re-route: minutes added, and when (performance.now()). */
+  rerouted: { deltaMin: number; at: number } | null
+  /** The astronaut is at the last stop of the plan. */
+  arrived: boolean
 }
 
 /** How the live computer vision is doing. */
@@ -63,11 +91,25 @@ export interface CvTick {
 }
 
 const HUD_EVERY_MS = 200
+/** How often the route is checked against the hazard map for a global re-route, ms. */
+const REPLAN_CHECK_MS = 1000
+/**
+ * Share of a 10 m planner cell on the route that must be rock / steep / drop before it is blocked. PLAN §5.8 says
+ * 30 %, but a row of boulders across the path covers well under 10 % of a planner cell, so 30 % never fires on
+ * the very thing a re-route is for. 6 % is about 6 m² of obstacle in a cell (deviation, logged in STATUS.md).
+ */
+const REPLAN_COVERAGE = 0.06
+/** The leg counts as walked when its end is this close, metres. */
+const ARRIVE_M = 6
 /** Time between CV frames, ms (PLAN §4: about every 150 ms, at least 4 Hz). */
 export const CV_EVERY_MS = 150
 
 export class HelmetSession {
   readonly entry: HelmetEntry
+  /** The plan being walked: the entry's, or the latest re-route. */
+  plan: RoutePlan
+  /** True once the planner has re-routed. */
+  replanned = false
   /** Session origin: local ENU (0, 0). Fixed for the whole session, also across jumps. */
   readonly origin: LatLon
   readonly pose: Pose
@@ -86,6 +128,14 @@ export class HelmetSession {
   track: RouteTrack
   /** The local planner's latest guide round the hazards (null before the first one). */
   guide: LocalPlan | null = null
+  private localPlanner = new LocalPlanner()
+  private guideLine: GuideLine
+  private decider: ReplanDecider
+  private replanner: ReplanClient
+  private replanAt = 0
+  private rerouted: NavState['rerouted'] = null
+  private arrived = false
+  private onPlan: (plan: RoutePlan) => void
   legIndex: number
   paused = false
   /** Extra metres above the eye, for looking at the world from above while debugging (dev only). */
@@ -106,8 +156,10 @@ export class HelmetSession {
   private cvHzFrom = this.last
   private cvListeners = new Set<(t: CvTick) => void>()
 
-  constructor(host: HTMLElement, entry: HelmetEntry, data: SessionData, onState: (s: HudState) => void) {
+  constructor(host: HTMLElement, entry: HelmetEntry, data: SessionData, onState: (s: HudState) => void, onPlan: (plan: RoutePlan) => void = () => {}, standIn = false) {
     this.entry = entry
+    this.plan = entry.plan
+    this.onPlan = onPlan
     this.origin = entry.startAt
     this.legIndex = entry.legIndex
     this.onState = onState
@@ -119,6 +171,7 @@ export class HelmetSession {
     host.appendChild(renderer.domElement)
     this.renderer = renderer
     this.camera = new THREE.PerspectiveCamera(70, host.clientWidth / Math.max(1, host.clientHeight), 0.1, 6000)
+    this.camera.layers.enable(HUD_LAYER)
 
     this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs })
     const heights = this.world.heights
@@ -134,6 +187,27 @@ export class HelmetSession {
     this.controls = new Controls(renderer.domElement, this.pose)
 
     this.track = buildTrack(entry.plan.legs[entry.legIndex].path, this.origin)
+    this.guideLine = new GuideLine(this.world.scene)
+    this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
+    this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
+    this.replanner = new ReplanClient(JEZERO.terrain)
+    // The stand-in plan of #helmet has made-up times (routes.json holds lines only): ask the planner for the real
+    // plan from here, so a later "Route updated: +N min" compares like with like.
+    if (standIn) {
+      const before = this.plan
+      const { stops, habitat } = remainingStops(before, this.legIndex)
+      this.replanner
+        .replan({ mobility: before.mobility, profile: before.profile, from: entry.startAt, stops, habitat, blocked: [], remainingMinutes: 0 })
+        .then((res) => {
+          if (this.plan !== before) return
+          this.plan = res.plan
+          this.setLeg(0)
+          this.guide = null
+          this.decider.setRoute(remainingPath(res.plan, 0))
+          this.onPlan(res.plan)
+        })
+        .catch((err) => console.warn('helmet: could not plan the demo route, keeping the stand-in:', err?.message ?? err))
+    }
 
     this.rig = new CvRig(renderer)
     this.cv = new CvClient()
@@ -159,11 +233,10 @@ export class HelmetSession {
     this.pose.x = p.x
     this.pose.y = p.y
     this.pose.headingDeg = t.headingDeg
-    if (t.legIndex !== this.legIndex) {
-      this.legIndex = t.legIndex
-      this.track = buildTrack(this.entry.plan.legs[t.legIndex].path, this.origin)
-    }
+    this.setLeg(t.legIndex)
+    this.decider.setRoute(remainingPath(this.plan, this.legIndex, t.at))
     this.guide = null
+    this.guideLine.set([], this.ground.heightAt, false)
     this.hudAt = 0
   }
 
@@ -194,11 +267,114 @@ export class HelmetSession {
     this.cvCount++
     this.lastCv = { result, pose }
     this.hazards.fuse(result)
+    this.navigate()
     for (const cb of this.cvListeners) cb(this.lastCv)
+  }
+
+  private setLeg(k: number): void {
+    this.legIndex = Math.min(k, this.plan.legs.length - 1)
+    this.track = buildTrack(this.plan.legs[this.legIndex].path, this.origin)
+    this.arrived = false
+  }
+
+  /** After every CV frame: the guide round the hazards, leg changes, and the global re-route check. */
+  private navigate(): void {
+    const { pose } = this
+    const now = performance.now()
+    const guide = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
+    this.guide = guide
+    this.guideLine.set(guide.path, this.ground.heightAt, guide.blocked)
+
+    // next leg when this one is walked
+    if (remainingM(this.track, guide.fix.s) < ARRIVE_M && guide.fix.distM < 2 * ARRIVE_M) {
+      if (this.legIndex < this.plan.legs.length - 1) {
+        this.setLeg(this.legIndex + 1)
+        this.guide = null
+        return
+      }
+      this.arrived = true
+    }
+
+    if (now - this.replanAt < REPLAN_CHECK_MS || this.replanner.busy) return
+    this.replanAt = now
+    const at = toLatLon(pose.x, pose.y, this.origin)
+    const decision = this.decider.check({
+      grid: this.hazards.grid,
+      at,
+      localBlocked: guide.blocked,
+      localBlockedAt: guide.blockedAt ? toLatLon(guide.blockedAt.x, guide.blockedAt.y, this.origin) : null,
+      nowMs: now,
+    })
+    if (!decision.replan) return
+    const before = this.plan
+    const { stops, habitat } = remainingStops(before, this.legIndex)
+    const oldPath = remainingPath(before, this.legIndex, at)
+    this.replanner
+      .replan({
+        mobility: before.mobility,
+        profile: before.profile,
+        from: at,
+        stops,
+        habitat,
+        blocked: this.decider.blockedCells(),
+        remainingMinutes: remainingMinutes(before, this.legIndex, this.track.lengthM > 0 ? guide.fix.s / this.track.lengthM : 0),
+      })
+      .then((res) => {
+        if (this.plan !== before) return // jumped or re-routed meanwhile
+        const newPath = remainingPath(res.plan, 0)
+        this.decider.setRoute(newPath)
+        // a blocked cell beside the route can give the same line back: nothing to announce then
+        const same = newPath.length === oldPath.length && newPath.every((p, k) => Math.abs(p.lat - oldPath[k].lat) < 1e-7 && Math.abs(p.lon - oldPath[k].lon) < 1e-7)
+        this.plan = res.plan
+        this.replanned = true
+        this.setLeg(0)
+        this.guide = null
+        if (!same) this.rerouted = { deltaMin: res.deltaMinutes, at: performance.now() }
+        this.onPlan(res.plan)
+      })
+      .catch((err) => console.warn('helmet: re-route failed, keeping the current plan:', err?.message ?? err))
+  }
+
+  /** What goes back to Mission control: the seen ground as a picture, the hazards found, and the plan if it changed. */
+  exit(): HelmetExit {
+    const grid = this.hazards.grid
+    const img = grid.toImage()
+    let seen: HelmetExit['seen'] = null
+    if (img.width && img.height) {
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      c.getContext('2d')?.putImageData(new ImageData(new Uint8ClampedArray(img.rgba), img.width, img.height), 0, 0)
+      seen = { bounds: toLatLonBounds(img, this.origin), png: c.toDataURL('image/png') }
+    }
+    return {
+      seen,
+      hazards: grid.hazardsList().map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
+      plan: this.replanned ? this.plan : null,
+    }
+  }
+
+  private navState(): NavState {
+    const g = this.guide
+    const fix = g?.fix ?? locate(this.track, this.pose.x, this.pose.y)
+    return {
+      toId: this.plan.legs[this.legIndex].toId,
+      remainingM: remainingM(this.track, fix.s),
+      offRouteM: fix.distM,
+      steerDeg: g ? g.steerDeg : null,
+      blocked: g?.blocked ?? false,
+      hazardAheadM: g?.hazardAheadM ?? null,
+      hazardAheadKind: g?.hazardAheadKind ?? null,
+      replanning: this.replanner.busy,
+      rerouted: this.rerouted,
+      arrived: this.arrived,
+    }
   }
 
   dispose(): void {
     this.renderer.setAnimationLoop(null)
+    this.replanner.dispose()
+    this.guideLine.dispose()
     this.cv.terminate()
     this.rig.dispose()
     this.cvListeners.clear()
@@ -263,6 +439,7 @@ export class HelmetSession {
         blocked: inp.fwd || inp.side ? this.move.blocked : null,
         paused: this.paused,
         cv: { ...this.cvStats },
+        nav: this.navState(),
       })
     }
   }

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { JEZERO } from '../data/jezero.ts'
 import { loadTerrain } from '../lib/terrain.ts'
+import type { RoutePlan } from '../types.ts'
 import type { HelmetEntry, HelmetExit } from './contracts.ts'
 import CvView from './hud/CvView.tsx'
 import MiniMap from './hud/MiniMap.tsx'
+import { evaluateWarnings } from './sensors/warnings.ts'
 import { HelmetSession, type HudState } from './session.ts'
 import { defaultEntry, loadRoutes } from './sim/defaultEntry.ts'
 import { jumpTargets, routeLengths, routePoint, type JumpTarget } from './sim/jump.ts'
@@ -33,6 +35,7 @@ const KEYS: [string, string][] = [
 /** Name of a stop for labels. */
 function stopName(id: string): string {
   if (id === JEZERO.habitat.id) return JEZERO.habitat.name
+  if (id === 'start') return 'where the route changed'
   return JEZERO.targets.find((t) => t.id === id)?.name ?? id
 }
 
@@ -44,6 +47,8 @@ export default function HelmetView({ entry, onExit }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const session = useRef<HelmetSession | null>(null)
   const [active, setActive] = useState<HelmetEntry | null>(entry)
+  const [plan, setPlan] = useState<RoutePlan | null>(entry?.plan ?? null)
+  const [now, setNow] = useState(0)
   const [hud, setHud] = useState<HudState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [menu, setMenu] = useState<Menu>(null)
@@ -64,7 +69,18 @@ export default function HelmetView({ entry, onExit }: Props) {
       .then(([index, terrain, routes]) => {
         if (abort.signal.aborted) return
         const e = entryRef.current ?? defaultEntry(routes)
-        s = new HelmetSession(el, e, { index, terrain, routes }, setHud)
+        s = new HelmetSession(
+          el,
+          e,
+          { index, terrain, routes },
+          (h) => {
+            setHud(h)
+            setNow(performance.now())
+          },
+          setPlan,
+          entryRef.current === null,
+        )
+        setPlan(e.plan)
         session.current = s
         setActive(e)
         if (import.meta.env.DEV) {
@@ -109,7 +125,7 @@ export default function HelmetView({ entry, onExit }: Props) {
       const k = e.key.toLowerCase()
       if (k === 'escape') {
         if (menu) setMenu(null)
-        else exitRef.current({ seen: null, hazards: [], plan: null })
+        else exitRef.current(session.current?.exit() ?? { seen: null, hazards: [], plan: null })
       } else if (k === 'j') setMenu((m) => (m === 'jump' ? null : 'jump'))
       else if (k === 'h') setMenu((m) => (m === 'help' ? null : 'help'))
       else if (k === 'p') setPaused((p) => !p)
@@ -127,7 +143,6 @@ export default function HelmetView({ entry, onExit }: Props) {
     s.controls.enabled = !paused && menu === null
   }, [paused, menu, active])
 
-  const plan = active?.plan ?? null
   const jumps = useMemo(() => (plan ? jumpTargets(plan, stopName) : []), [plan])
   const totalKm = useMemo(() => (plan ? routeLengths(plan).total / 1000 : 0), [plan])
   const jump = (t: JumpTarget) => {
@@ -135,12 +150,23 @@ export default function HelmetView({ entry, onExit }: Props) {
     setMenu(null)
   }
 
-  const leg = plan && hud ? plan.legs[Math.min(hud.legIndex, plan.legs.length - 1)] : null
-  const planLabel = !plan
-    ? 'Helmet'
-    : entry
-      ? `Leg ${(hud?.legIndex ?? active!.legIndex) + 1} of ${plan.legs.length}: to ${leg ? stopName(leg.toId) : ''}`
-      : `Test walk: ${leg ? `${stopName(leg.fromId)} → ${stopName(leg.toId)}` : ''}`
+  const planLabel = !plan || !hud ? 'Helmet' : `${entry ? '' : 'Demo route · '}leg ${Math.min(hud.legIndex, plan.legs.length - 1) + 1} of ${plan.legs.length}`
+  const nav = hud?.nav ?? null
+  const warnings = hud
+    ? evaluateWarnings({
+        nearestHazardM: nav?.hazardAheadM ?? null,
+        nearestHazardKind: nav?.hazardAheadKind ?? null,
+        slopeUnderFootDeg: hud.slopeDeg,
+        walkBackMin: null,
+        daylightLeftMin: null,
+        doseMsv: null,
+        plannedDoseMsv: null,
+        airTempC: null,
+      })
+    : []
+  const rerouted = nav?.rerouted && now - nav.rerouted.at < 12000 ? nav.rerouted : null
+  // steering arrow: where to turn, relative to where the astronaut looks
+  const turn = nav && nav.steerDeg !== null && hud ? ((nav.steerDeg - hud.pose.headingDeg + 540) % 360) - 180 : null
 
   return (
     <div className="helmet">
@@ -163,6 +189,40 @@ export default function HelmetView({ entry, onExit }: Props) {
         {hud?.cv.error && <span className="helmet-flag">CV error</span>}
         <span>{hud?.fps ?? 0} fps</span>
       </div>
+
+      <div className="helmet-alerts" aria-live="assertive">
+        {rerouted && (
+          <p className="is-info">
+            Route updated: {rerouted.deltaMin >= 0.5 ? `+${Math.round(rerouted.deltaMin)} min` : rerouted.deltaMin <= -0.5 ? `${Math.round(rerouted.deltaMin)} min` : 'under 1 min longer'} · hazard on the planned route
+          </p>
+        )}
+        {nav?.replanning && <p className="is-info">Re-routing round the hazard…</p>}
+        {nav?.blocked && !nav.replanning && <p className="is-danger">No way through ahead</p>}
+        {warnings.map((w) => (
+          <p key={w.id} className={`is-${w.severity}`} title={w.source}>
+            {w.text}
+          </p>
+        ))}
+      </div>
+
+      {nav && plan && (
+        <div className="helmet-nav">
+          <span className="helmet-nav-label">{nav.arrived ? 'Arrived' : 'Next stop'}</span>
+          <strong>{stopName(nav.toId)}</strong>
+          <span>
+            {nav.remainingM >= 1000 ? `${(nav.remainingM / 1000).toFixed(2)} km` : `${Math.round(nav.remainingM)} m`}
+            {nav.offRouteM > 15 ? ` · ${Math.round(nav.offRouteM)} m off route` : ''}
+          </span>
+          {turn !== null && !nav.arrived && (
+            <span className="helmet-steer" aria-label={`Guide: turn ${Math.round(Math.abs(turn))} degrees ${turn < 0 ? 'left' : 'right'}`}>
+              <span className="helmet-steer-arrow" style={{ transform: `rotate(${turn}deg)` }} aria-hidden="true">
+                ▲
+              </span>
+              {Math.abs(turn) < 8 ? 'on the guide' : `${Math.round(Math.abs(turn))}° ${turn < 0 ? 'left' : 'right'}`}
+            </span>
+          )}
+        </div>
+      )}
 
       {hud && session.current && cvView && <CvView session={session.current} hud={hud} />}
       {hud && session.current && <MiniMap session={session.current} hud={hud} large={bigMap} />}
