@@ -4,7 +4,7 @@ Agents update this file at the start and end of every task (see `PLAN.md` §0 an
 Legend: `[ ]` todo · `[~]` in progress (agent name, start time) · `[x]` done (commit) · `[!]` blocked (why).
 Lanes: A data · B world/sim · C CV core · D mapping/nav/planner · E HUD/UI/sensors.
 
-Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created from main `ab4c0ca`)
+Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created from main `ab4c0ca`) · **Handed off 14 Nov: read `docs/helmet/HANDOFF.md` first**
 
 ## M0 – foundation (serial)
 - [x] T0.1 Contracts and frames · commit dc537c3
@@ -16,9 +16,9 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T1.0 (A) Export route polylines · deps T0.2 · commit 55b2155
 - [x] T1.1 (A) Tile builder (1 m DTM + 25 cm ortho) · deps T1.0 · host planetarymaps.usgs.gov allowed 14 Nov · commit 2d558d1
 - [x] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1 · commit 2126b4c
-- [~] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1 · worker lane B PAUSED (usage limit, resumes after 21:00 UTC)
-- [~] T2.3 (B) Rocks · deps T2.1 · worker lane B PAUSED (usage limit, resumes after 21:00 UTC)
-- [~] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3 · worker lane B PAUSED (usage limit, resumes after 21:00 UTC)
+- [ ] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1 · not started (handed off)
+- [~] T2.3 (B) Rocks · deps T2.1 · WIP on branch `wip/helmet-lane-b` (034238c: world/rocks.ts, 407 lines, compiles, untested, not wired); handed off
+- [ ] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3 · not started (handed off)
 - [ ] T2.5 (E) Go outside from Mission control · deps T2.4
 
 ## M2 – live CV and hazard map
@@ -39,7 +39,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [ ] T5.3 (D) Global replan bridge · deps T4.3, T5.0
 
 ## M4 – sensors, sand, drop, real photo, hand-back
-- [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · worker lane A2 PAUSED (usage limit; weather.json, fetch_weather.py, sensors/ written but not committed)
+- [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · data + logic done (b3b52cc: weather.json, fetch_weather.py, sensors/weather.ts, suit.ts, warnings.ts + tests); the HUD panel is still to do with T4.6
 - [ ] T5.2 (C) Sand classifier · deps T4.4 · cut #2 if late
 - [ ] T5.4 (E) Hand the map back to Mission control · deps T4.2 · Dev 1 reviews
 - [~] T5.5 (C) Drop-offs · deps T4.2 · cut #1 if late · pure detector done (d44185d); fused-grid wiring with T4.2
@@ -59,7 +59,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 
 ## Questions for the human
 - Contract note (orchestrator decision, applied with T4.2): add `CvResult.groundZ?: Float32Array` (one value per patch cell) and `CvFrame.heights?: HeightGrid` so drop-offs run on fused grid heights (§5.6). Optional fields, nothing existing changes
-- Usage limit hit at ~17:50 UTC (resets 21:00 UTC): lanes B and A2 paused mid-task; their worktrees keep the work
+- 14 Nov ~18:10 UTC: work handed off to another person (see `docs/helmet/HANDOFF.md`). All agents stopped; nothing in flight
 - Dev 2 (review of T4.3): `usePlanner`'s worker `onmessage` does not check `type`, so replans must go to a separate worker instance (T5.3 will do that, loading the terrain a second time, ~3 MB) unless Dev 2 adds `if ('type' in res) return` in `src/lib/usePlanner.ts`. Detours around blocked cells get no route note from `explainLeg`; walk-back times ignore blocked cells. Details in the T4.3 log line
 
 ## Log
@@ -84,3 +84,6 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T6.1 · lane A2 · 27088c9 · sol 1210 Navcam pair NLF/NRF_1210_0774362057 quadrant _01 (mastEl −43°, ground with rocks); fisheye CAHVORE handled (plain CAHV gave |dy| 2.1 px); rectified 512×384, fx 540.9, B 0.4244 m, cx/cy at the quadrant corner (correct: tile is one quarter of the sensor); row check mean |dy| 0.11 px (max 0.71) on 14 points; disparity 16–82 px, depth 2.8–14.2 m (median 6 m)
 - 14 Nov · T2.1 · lane B · 2126b4c · world/tiles.ts, terrainMesh.ts, heightField.ts (+test), tileGrid, routes, path, noise, scene; sim/defaultEntry.ts; HelmetView wired (details in the commit). Rocks (T2.3) in progress, uncommitted
 - 14 Nov · merge · orchestrator · lanes C2, A2 (T6.1 only), B (T2.1 only) merged; scope checked; 109/109 tests, build green
+- 14 Nov · T5.1 (data + logic) · lane A2 · b3b52cc · weather.json from the MEDA feed (only 4 sols with full temperature + pressure in the feed's window; latest sol 1133, 2024-04-27: −79.3 / −24.7 °C, 778.9 Pa); sensors/weather.ts (daylight left, air temperature model), suit.ts (O₂ / EVA time model, assumptions named), warnings.ts (§7.1 rules, most severe first); 65 tests green in its worktree, 126/126 after merge
+- 14 Nov · T2.3 (WIP) · lane B · 034238c · world/rocks.ts written before the usage limit stopped the agent; compiles; no tests, not in the scene. Pushed as `wip/helmet-lane-b`
+- 14 Nov · handoff · orchestrator · loop stopped, all agents stopped, T5.1 merged, WIP pushed, HANDOFF.md written

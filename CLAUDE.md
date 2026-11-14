@@ -58,7 +58,7 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
-Helmet view (Level 2), branch `feat/helmet-3d`, not started yet:
+Helmet view (Level 2), branch `feat/helmet-3d`, about half built, handed off 14 Nov (start with `docs/helmet/HANDOFF.md`):
 - Spec, decisions and task list for agents: `docs/helmet/PLAN.md`. Progress board: `docs/helmet/STATUS.md`. Loop prompts: `docs/helmet/LOOP_PROMPT.md`
 - Adds `three` (agreed). Touches `src/lib/` only for a "blocked cells" planner input (Dev 2 reviews) and `src/map/` only for two optional props (Dev 1 reviews)
 - Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)
