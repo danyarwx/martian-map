@@ -120,6 +120,23 @@ export interface RouteLeg {
   notes: RouteNote[]
   /** The path cut by slope class, for colouring the line. */
   sections: RouteSection[]
+  /** Elevation in metres at each point of `path`, null where the elevation model has no data. */
+  elev: (number | null)[]
+  /**
+   * Minutes on foot straight back to the habitat from each point of `path` (not along the route).
+   * Empty when the walk-back times were not computed.
+   */
+  walkHomeMin: number[]
+}
+
+/** Lines of equal walking time back to the habitat, as a picture on the terrain grid. */
+export interface WalkBackImage {
+  width: number
+  height: number
+  /** RGBA, row 0 is the northern edge. */
+  rgba: Uint8ClampedArray
+  /** Where to write each line's time on the map. */
+  labels: { minutes: number; at: LatLon }[]
 }
 
 /**

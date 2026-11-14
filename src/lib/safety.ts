@@ -18,6 +18,14 @@ export function evaDoseMsv(hoursOutside: number): number {
   return (SURFACE_DOSE_MSV_PER_DAY * hoursOutside) / 24
 }
 
+/**
+ * How long the crew can walk on emergency reserves after a suit or rover failure, minutes.
+ * A planning assumption, not a measured Mars value: Apollo's emergency oxygen pack lasted about 30 min
+ * at full flow, and current exploration-suit designs aim for about an hour. Apollo planned every traverse
+ * so that the crew could always walk back to the lander (the "walk-back limit"); this is the same rule.
+ */
+export const WALK_BACK_RESERVE_MIN = 60
+
 /** Typical surface conditions at Jezero from Perseverance's MEDA weather station
  * (Rodriguez-Manfredi et al. 2023, Nature Geoscience 16, 19-28). */
 export const JEZERO_CONDITIONS = [

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta } from '../types.ts'
+import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta, WalkBackImage } from '../types.ts'
 import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
 import { duration } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
-import { createTileLayers, MARS_CRS } from './layers.ts'
+import { WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
+import { createTileLayers, MARS_CRS, MINERAL_LAYER, MINERAL_LEGEND } from './layers.ts'
 
 interface Props {
   site: SiteConfig
@@ -14,6 +15,8 @@ interface Props {
   custom: Target[]
   /** Header of the elevation grid, null until loaded. */
   terrainMeta: TerrainMeta | null
+  /** Lines of equal walking time back to the habitat, null until the first plan. */
+  walkBack: WalkBackImage | null
   /** Ids of the targets chosen for the route. */
   selected: ReadonlySet<string>
   /** The route the user chose. */
@@ -46,7 +49,7 @@ const NOTES_OPEN_ZOOM = 15
 const deg = (v: number) => String(Math.round(v))
 
 export default function MarsMap(props: Props) {
-  const { site, habitat, custom, terrainMeta, selected, plan, otherPlan, focusId, adding } = props
+  const { site, habitat, custom, terrainMeta, walkBack, selected, plan, otherPlan, focusId, adding } = props
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const stopsRef = useRef<L.LayerGroup | null>(null)
@@ -86,6 +89,19 @@ export default function MarsMap(props: Props) {
       .addTo(map)
     layersRef.current = control
     L.control.scale({ imperial: false }).addTo(map)
+
+    // The mineral layer explains its colours while it is on.
+    const minerals = new L.Control({ position: 'bottomright' })
+    minerals.onAdd = () => {
+      const el = L.DomUtil.create('div', 'route-legend')
+      el.innerHTML =
+        '<strong>Mineral indicators</strong>' +
+        MINERAL_LEGEND.map(({ color, label }) => `<span><i style="background:${color}"></i>${label}</span>`).join('') +
+        '<span class="legend-note">CRISM band depths, 18 m/px.<br>Hints for where to sample, not proof.</span>'
+      return el
+    }
+    map.on('overlayadd', (e) => e.name === MINERAL_LAYER && minerals.addTo(map))
+    map.on('overlayremove', (e) => e.name === MINERAL_LAYER && minerals.remove())
 
     let alive = true
     const getJson = async <T,>(path: string): Promise<T | null> => {
@@ -156,6 +172,40 @@ export default function MarsMap(props: Props) {
       overlay.remove()
     }
   }, [site, terrainMeta])
+
+  // Walk-back lines: how long it takes to walk straight home from anywhere, with the emergency reserve in green.
+  useEffect(() => {
+    const map = mapRef.current
+    const control = layersRef.current
+    if (!map || !control || !terrainMeta || !walkBack) return
+    const canvas = document.createElement('canvas')
+    canvas.width = walkBack.width
+    canvas.height = walkBack.height
+    const pixels = new ImageData(walkBack.width, walkBack.height)
+    pixels.data.set(walkBack.rgba)
+    canvas.getContext('2d')?.putImageData(pixels, 0, 0)
+    const group = L.layerGroup([
+      L.imageOverlay(
+        canvas.toDataURL(),
+        [[terrainMeta.south, terrainMeta.west], [terrainMeta.north, terrainMeta.east]],
+        { interactive: false },
+      ),
+      ...walkBack.labels.map(({ minutes, at }) => {
+        const reserve = minutes === WALK_BACK_RESERVE_MIN
+        const html = `<div class="walkback-label${reserve ? ' walkback-label--reserve' : ''}">${minutes} min${reserve ? ' · reserve' : ''}</div>`
+        return L.marker([at.lat, at.lon], {
+          icon: L.divIcon({ className: '', html, iconSize: [0, 0] }),
+          interactive: false,
+          keyboard: false,
+        })
+      }),
+    ]).addTo(map)
+    control.addOverlay(group, 'Walk-back time (on foot to habitat)')
+    return () => {
+      control.removeLayer(group)
+      group.remove()
+    }
+  }, [terrainMeta, walkBack])
 
   // "Add point on map": crosshair cursor, and the next click on the map itself picks the spot.
   // Clicks on markers do not reach the map, so no point is created under an existing marker.
@@ -311,7 +361,8 @@ export default function MarsMap(props: Props) {
         '<strong>Slope on the route</strong>' +
         labels.map((label, i) => `<span><i style="background:${LEVEL_COLORS[i]}"></i>${label}</span>`).join('') +
         `<span><b>${NOTE_SIGNS['no-go']}</b> turn <b>${OBSTACLE_SIGN}</b> what it avoids</span>` +
-        (other ? '<span><i class="other"></i>other route (click to choose)</span>' : '')
+        (other ? '<span><i class="other"></i>other route (click to choose)</span>' : '') +
+        `<span><i style="background:#7ee2a0"></i>${WALK_BACK_RESERVE_MIN} min walk back to habitat</span>`
       return el
     }
     legend.addTo(map) // added after the scale bar, so it sits above it

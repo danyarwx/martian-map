@@ -133,6 +133,8 @@ p { margin: 0; }
 .status--ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
 .status--bad { background: var(--danger-bg); border-color: var(--danger-line); color: var(--text); }
 .status--bad strong { color: #ffb3ad; }
+.status--warn { background: #2b2410; border-color: var(--warn); color: var(--text); }
+.status--warn strong { color: var(--warn); }
 .status--busy { background: var(--surface-2); border-color: var(--line-strong); color: #d5dbe3; }
 .status-actions { display: flex; flex-direction: column; gap: var(--s2); }
 .progress { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
@@ -187,6 +189,29 @@ p { margin: 0; }
 .legs .meta { font-size: 12px; color: var(--text-2); }
 .leg-notes { list-style: none; margin: var(--s1) 0 0; padding: 0; }
 .leg-notes li { display: flex; gap: var(--s2); align-items: flex-start; padding: 2px 0; font-size: 13px; color: #d5dbe3; }
+
+/* Departure time, elevation profile, turn-back */
+.when { font-size: 13px; }
+.day, .profile { display: block; width: 100%; height: auto; }
+.day-label { font-size: 10px; fill: var(--text-2); font-family: var(--mono); }
+.profile-stop { font-size: 10px; font-weight: 700; fill: var(--bg); font-family: var(--font); }
+.slider input { display: block; width: 100%; height: 28px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.reasons { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); font-size: 13px; }
+.reasons li { display: flex; gap: var(--s2); align-items: baseline; }
+.dot { width: 8px; height: 8px; flex: none; border-radius: 50%; transform: translateY(-1px); }
+.dot--ok { background: var(--ok); }
+.dot--warn { background: var(--warn); }
+.dot--bad { background: var(--danger-line); }
+.legs .at { width: 44px; flex: none; color: var(--text-2); font-size: 13px; }
+.turn-back { display: flex; gap: var(--s2); align-items: flex-start; padding: var(--s3); border-radius: var(--r-md); background: var(--surface-2); font-size: 13px; }
+.turn-back svg { flex: none; margin-top: 2px; }
+.over { color: var(--warn); }
+.walkback-label {
+  padding: 1px 6px; border-radius: 4px; font-size: 11px; font-family: var(--mono); white-space: nowrap;
+  background: rgba(14, 17, 22, 0.85); color: var(--text); border: 1px solid var(--line-strong);
+  width: max-content; transform: translate(-50%, -130%);
+}
+.walkback-label--reserve { color: var(--ok); border-color: var(--ok-line); }
 
 /* Safety */
 .conditions { width: 100%; border-collapse: collapse; }
@@ -294,6 +319,7 @@ p { margin: 0; }
 .route-legend span { display: block; white-space: nowrap; }
 .route-legend b { display: inline-block; width: 18px; text-align: center; }
 .route-legend i { display: inline-block; width: 18px; height: 4px; margin-right: var(--s2); border-radius: 2px; vertical-align: middle; }
+.route-legend .legend-note { margin-top: var(--s1); color: var(--text-2); white-space: normal; }
 .route-legend i.other { height: 0; border-radius: 0; background: none; border-top: 2px dashed var(--text); }
 
 @media (max-width: 800px) {
@@ -301,7 +327,9 @@ p { margin: 0; }
   .topbar .crumb, .topbar .sep, .topbar .hint { display: none; }
   .workspace { flex-direction: column; }
   .map { flex: none; height: 42%; }
-  .sidebar { width: auto; flex: 1; border-left: 0; border-top: 1px solid var(--line); }
+  /* On a phone nothing is pinned: the summary scrolls away with the rest. */
+  .sidebar { width: auto; flex: 1; border-left: 0; border-top: 1px solid var(--line); overflow-y: auto; }
+  .sidebar-scroll { flex: none; overflow: visible; }
   .summary, .panel, .card { padding: var(--s4); }
   .route-legend { display: none; }
   .stop-row { min-height: 48px; }
