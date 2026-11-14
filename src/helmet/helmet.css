@@ -56,3 +56,6 @@
   white-space: nowrap;
   pointer-events: none;
 }
+.helmet-flag {
+  color: var(--hz-sand);
+}
