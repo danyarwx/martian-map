@@ -121,7 +121,9 @@ goes outside. **Everything they see and get is in the helmet**:
 
 - Allowed hosts (cloud environment `martian-map`): `mars.nasa.gov`, `trek.nasa.gov`,
   `planetarymaps.usgs.gov` (added 14 Nov for T1.1), npm/PyPI. Anything else: ask the human.
-- The 1 m DTM is 1.8 GB. Prefer windowed reads over HTTP (`rasterio.open('/vsicurl/<url>')` +
+- The 1 m DTM is 1.8 GB (1 839 545 409 bytes). Its USGS URL redirects (302) to
+  `https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/...` which serves
+  byte ranges (`Accept-Ranges: bytes`, checked 14 Nov). Prefer windowed reads over HTTP (`rasterio.open('/vsicurl/<url>')` +
   `from_bounds` windows) so only the tiles we need are downloaded. Fall back to the full download only
   if windowed reads fail, and delete `scripts/raw/*.tif` afterwards if disk is short.
 - NASA's MMGIS panorama files (`Layers/mosaics/...`) are 404. The raw-image feed works:
