@@ -3,7 +3,8 @@
 // Camera frame (pinhole, OpenCV style): X right, Y down, Z forward along the optical axis. Pixel (u, v)
 // is the centre of column u, row v (row 0 at the top), so a symmetric frustum has cx = (width − 1)/2.
 // The LEFT camera's Pose gives its position and where it looks: forward = frames.headingToDir(heading,
-// pitch), right = (cos ψ, −sin ψ, 0) (horizontal, no roll), down = right × forward reversed.
+// pitch), right = (cos ψ, −sin ψ, 0) (horizontal), down = right × forward reversed; an optional roll then turns right
+// and down about forward (the helmet's cameras have none, a rover photo does).
 import type { Pose, StereoIntrinsics } from '../contracts.ts'
 import { DEPTH_MAX_M, DEPTH_MIN_M } from './stereo.ts'
 
@@ -45,7 +46,21 @@ export function cameraAxes(pose: Pose): CameraAxes {
   const sp = Math.sin(p)
   const cp = Math.cos(p)
   // up = right × forward = (−sinψ·sinθ, −cosψ·sinθ, cosθ); down is its opposite.
-  return { rx: ch, ry: -sh, rz: 0, dx: sh * sp, dy: ch * sp, dz: -cp, fx: sh * cp, fy: ch * cp, fz: sp }
+  const a = { rx: ch, ry: -sh, rz: 0, dx: sh * sp, dy: ch * sp, dz: -cp, fx: sh * cp, fy: ch * cp, fz: sp }
+  if (!pose.rollDeg) return a
+  // roll about the viewing direction: positive turns the right axis toward down (right side lower)
+  const r = (pose.rollDeg * Math.PI) / 180
+  const c = Math.cos(r)
+  const s = Math.sin(r)
+  return {
+    ...a,
+    rx: a.rx * c + a.dx * s,
+    ry: a.ry * c + a.dy * s,
+    rz: a.rz * c + a.dz * s,
+    dx: a.dx * c - a.rx * s,
+    dy: a.dy * c - a.ry * s,
+    dz: a.dz * c - a.rz * s,
+  }
 }
 
 /**

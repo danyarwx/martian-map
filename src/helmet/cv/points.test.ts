@@ -83,3 +83,20 @@ test('subsampling keeps at most 15 k points, spread over the image, deterministi
   const lastRow = Math.floor(a.pix[n - 1] / intr.width)
   assert.ok(lastRow > intr.height - 5, 'points reach the bottom of the image')
 })
+
+test('camera roll turns right and down about the viewing direction and keeps the axes orthonormal', () => {
+  const level = cameraAxes({ x: 0, y: 0, z: 0, headingDeg: 40, pitchDeg: -25 })
+  const rolled = cameraAxes({ x: 0, y: 0, z: 0, headingDeg: 40, pitchDeg: -25, rollDeg: 20 })
+  const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+  const R = [rolled.rx, rolled.ry, rolled.rz]
+  const D = [rolled.dx, rolled.dy, rolled.dz]
+  const F = [rolled.fx, rolled.fy, rolled.fz]
+  assert.deepEqual(F, [level.fx, level.fy, level.fz])
+  for (const v of [R, D]) assert.ok(Math.abs(dot(v, v) - 1) < 1e-12)
+  assert.ok(Math.abs(dot(R, D)) < 1e-12 && Math.abs(dot(R, F)) < 1e-12 && Math.abs(dot(D, F)) < 1e-12)
+  // positive roll: the right side goes down
+  assert.ok(rolled.rz < 0)
+  assert.ok(Math.abs(Math.acos(dot(R, [level.rx, level.ry, level.rz])) - (20 * Math.PI) / 180) < 1e-9)
+  // roll 0 and no roll are the same camera
+  assert.deepEqual(cameraAxes({ x: 0, y: 0, z: 0, headingDeg: 40, pitchDeg: -25, rollDeg: 0 }), level)
+})
