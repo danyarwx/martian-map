@@ -422,6 +422,7 @@ export class HelmetSession {
         .filter((h) => h.kind !== 'sand')
         .map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
       plan: this.replanned ? this.plan : null,
+      rerouteDeltaMin: this.replanned && this.rerouted ? this.rerouted.deltaMin : undefined,
     }
   }
 

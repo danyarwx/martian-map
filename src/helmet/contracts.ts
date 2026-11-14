@@ -129,4 +129,6 @@ export interface HelmetExit {
   hazards: { at: LatLon; kind: Detection['kind']; radiusM: number }[]
   /** The plan after any re-route, or null when it did not change. */
   plan: RoutePlan | null
+  /** Minutes the helmet's last re-route added to the trip (negative = shorter). Absent when it did not re-route. */
+  rerouteDeltaMin?: number
 }

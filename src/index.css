@@ -465,3 +465,35 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 .choice--route strong { font-size: 18px; }
 .choice--route .means { display: block; font-size: 14px; color: var(--text-2); margin-top: 2px; }
 .choice--route small { margin-top: var(--s1); }
+
+/* one line over the map after the helmet: what came back (FIXLIST A6) */
+.workspace {
+  position: relative;
+}
+.helmet-return {
+  position: absolute;
+  z-index: 1100;
+  top: 12px;
+  left: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(600px, calc(100% - 68px));
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid #8fe3d6;
+  border-radius: 8px;
+  background: rgba(14, 17, 22, 0.92);
+  color: #e8ecf1;
+  font-size: 14px;
+}
+.helmet-return button {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
