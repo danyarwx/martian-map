@@ -4,7 +4,7 @@ import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import MarsMap from './map/MarsMap.tsx'
-import Sidebar from './panels/Sidebar.tsx'
+import Sidebar, { type Notice } from './panels/Sidebar.tsx'
 import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
 
 const site = JEZERO
@@ -30,7 +30,7 @@ export default function App() {
   /** True while the next click on the map adds a point. */
   const [adding, setAdding] = useState(false)
   /** One line about the last action that was refused. */
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
 
@@ -82,7 +82,7 @@ export default function App() {
   const toggle = useCallback(
     (id: string) => {
       if (!selected.has(id) && selected.size >= MAX_SELECTED) {
-        setNotice(TOO_MANY)
+        setNotice({ text: TOO_MANY, at: 'point' })
         return
       }
       setNotice(null)
@@ -97,7 +97,7 @@ export default function App() {
   const moveHabitat = useCallback(
     (p: LatLon) => {
       const why = refusal(p)
-      setNotice(why)
+      setNotice(why ? { text: why, at: 'habitat' } : null)
       if (!why) setHabitatAt(p)
       return why
     },
@@ -107,7 +107,7 @@ export default function App() {
   const addPoint = useCallback(
     (p: LatLon) => {
       const why = refusal(p) ?? (selected.size >= MAX_SELECTED ? TOO_MANY : null)
-      setNotice(why)
+      setNotice(why ? { text: why, at: 'point' } : null)
       if (why) return why
       const no = ++pointNo.current
       const point: Target = {
@@ -129,7 +129,7 @@ export default function App() {
   const movePoint = useCallback(
     (id: string, p: LatLon) => {
       const why = refusal(p)
-      setNotice(why)
+      setNotice(why ? { text: why, at: 'point' } : null)
       if (!why) setCustom((list) => list.map((t) => (t.id === id ? { ...t, ...p, summary: coordinates(p) } : t)))
       return why
     },
@@ -145,6 +145,11 @@ export default function App() {
       return next
     })
     setFocusId((f) => (f === id ? null : f))
+  }, [])
+
+  const demo = useCallback(() => {
+    setNotice(null)
+    setSelected(new Set(INITIAL))
   }, [])
 
   const resetHabitat = useCallback(() => {
@@ -163,8 +168,19 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <strong>Martian Map</strong>
-        <span className="muted">Excursion planner · {site.name}</span>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a0e06" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 20l6-12 4 7 3-4 5 9z" />
+            </svg>
+          </span>
+          <strong>Martian Map</strong>
+        </div>
+        <span className="crumb">Excursion planner</span>
+        <span className="sep" aria-hidden="true">/</span>
+        <span>{site.name}</span>
+        <span className="spacer" />
+        <span className="hint">{site.scienceGoal}</span>
       </header>
       <div className="workspace">
         <MarsMap
@@ -177,7 +193,6 @@ export default function App() {
           otherPlan={otherPlan}
           focusId={focusId}
           adding={adding}
-          onToggle={toggle}
           onFocus={setFocusId}
           onMoveHabitat={moveHabitat}
           onMovePoint={movePoint}
@@ -199,6 +214,8 @@ export default function App() {
           views={views}
           adding={adding}
           notice={notice}
+          maxSelected={MAX_SELECTED}
+          onDemo={demo}
           onMobility={setMobility}
           onToggle={toggle}
           onFocus={setFocusId}

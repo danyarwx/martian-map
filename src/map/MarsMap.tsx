@@ -24,7 +24,7 @@ interface Props {
   focusId: string | null
   /** True while the next click on the map adds a point. */
   adding: boolean
-  onToggle: (id: string) => void
+  /** Opens a stop's card. A click on a marker never changes the route. */
   onFocus: (id: string) => void
   /** Called when a marker is dropped. Returns null when the move is accepted, else the reason it is not. */
   onMoveHabitat: (p: LatLon) => string | null
@@ -36,9 +36,9 @@ interface Props {
 }
 
 /** Route line colour per slope class: easy, moderate, close to the limit. */
-const LEVEL_COLORS = ['#35e0ff', '#ffd23f', '#ff7a1a']
+const LEVEL_COLORS = ['#5ce1e6', '#ffd166', '#ff5da2']
 /** Colour per kind of route note, for the line from a turn to the ground it avoids. */
-const NOTE_COLORS = { 'no-go': '#c2382e', slow: '#ffd23f', steep: '#ff7a1a' }
+const NOTE_COLORS = { 'no-go': '#f85149', slow: '#ffd166', steep: '#ff5da2' }
 /** From this zoom on, route notes stay open next to the path instead of showing on hover. */
 const NOTES_OPEN_ZOOM = 15
 
@@ -61,6 +61,8 @@ export default function MarsMap(props: Props) {
   const [drops, setDrops] = useState(0)
   /** The pair of routes last drawn, to tell a switch between the two from a new plan. */
   const drawn = useRef<{ plan: RoutePlan | null; other: RoutePlan | null }>({ plan: null, other: null })
+  /** The route area last fitted into view. Fitted again when the map's container changes size. */
+  const fitted = useRef<L.LatLngBounds | null>(null)
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -121,8 +123,16 @@ export default function MarsMap(props: Props) {
     notesRef.current = L.layerGroup().addTo(map)
     stopsRef.current = L.layerGroup().addTo(map)
 
+    // Leaflet does not notice when its container is resized by the layout; keep the centre where it was.
+    const resize = new ResizeObserver(() => {
+      map.invalidateSize({ pan: false })
+      if (fitted.current) map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+    })
+    resize.observe(ref.current)
+
     return () => {
       alive = false
+      resize.disconnect()
       map.remove()
       mapRef.current = null
       layersRef.current = null
@@ -188,17 +198,14 @@ export default function MarsMap(props: Props) {
         icon: L.divIcon({
           className: '',
           html: `<div class="${classes}"><span>${label}</span></div>`,
-          iconSize: [28, 28],
+          iconSize: [32, 32],
         }),
         title: hint,
         draggable: isHabitat || isCustom,
         zIndexOffset: isHabitat ? 500 : 0,
       })
-        .bindTooltip(hint, { direction: 'top', offset: [0, -14] })
-        .on('click', () => {
-          handlers.current.onFocus(stop.id)
-          if (!isHabitat) handlers.current.onToggle(stop.id)
-        })
+        .bindTooltip(hint, { direction: 'top', offset: [0, -16] })
+        .on('click', () => handlers.current.onFocus(stop.id))
         .addTo(group)
       if (!isHabitat && !isCustom) continue
       // Nothing is planned while dragging: the new position is reported once, on drop.
@@ -244,12 +251,12 @@ export default function MarsMap(props: Props) {
     }
 
     const lines = linesOf(plan)
-    const outline = L.polyline(lines, { color: '#04222b', weight: 7, opacity: 0.9, interactive: false }).addTo(group)
+    const outline = L.polyline(lines, { color: '#0e1116', weight: 8, opacity: 0.9, interactive: false }).addTo(group)
     LEVEL_COLORS.forEach((color, level) => {
       const runs = plan.legs.flatMap((leg) =>
         leg.sections.filter((s) => s.level === level).map((s) => s.path.map((p) => [p.lat, p.lon] as L.LatLngTuple)),
       )
-      if (runs.length > 0) L.polyline(runs, { color, weight: 3.5, interactive: false }).addTo(group)
+      if (runs.length > 0) L.polyline(runs, { color, weight: 4.5, interactive: false }).addTo(group)
     })
 
     // What each turn avoids: a dashed line from the turn to that ground and a cross on it.
@@ -265,7 +272,7 @@ export default function MarsMap(props: Props) {
         pane: 'notes',
       }).addTo(notes)
       const html = `<div class="obstacle obstacle--${note.kind}">${OBSTACLE_SIGN}</div>`
-      L.marker(to, { icon: L.divIcon({ className: '', html, iconSize: [16, 16] }), pane: 'notes', keyboard: false })
+      L.marker(to, { icon: L.divIcon({ className: '', html, iconSize: [18, 18] }), pane: 'notes', keyboard: false })
         .bindTooltip(note.obstacleText ?? '', { direction: 'top', offset: [0, -8] })
         .addTo(notes)
     }
@@ -274,7 +281,7 @@ export default function MarsMap(props: Props) {
       leg.notes.map((note) => {
         const html = `<div class="note note--${note.kind}">${NOTE_SIGNS[note.kind]}</div>`
         const marker = L.marker([note.at.lat, note.at.lon], {
-          icon: L.divIcon({ className: '', html, iconSize: [18, 18] }),
+          icon: L.divIcon({ className: '', html, iconSize: [20, 20] }),
           pane: 'notes',
           keyboard: false,
         }).addTo(notes)
@@ -312,12 +319,25 @@ export default function MarsMap(props: Props) {
     // Fit the view when a new plan arrives, not when the user only switches between the two routes.
     const switched = plan === drawn.current.other && otherPlan === drawn.current.plan
     drawn.current = { plan, other: otherPlan }
-    if (!switched) map.fitBounds(outline.getBounds(), { padding: [50, 50], maxZoom: 15 })
+    if (!switched) {
+      fitted.current = outline.getBounds()
+      // No animation: the view must land on the route even when the tab is in the background.
+      map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+    }
     return () => {
       map.off('zoomend', showNotes)
       legend.remove()
     }
   }, [plan, otherPlan])
+
+  // Opening a stop's card brings it into view, without changing the zoom.
+  useEffect(() => {
+    const map = mapRef.current
+    const stop = [habitat, ...site.targets, ...custom].find((s) => s.id === focusId)
+    if (!map || !stop) return
+    const at = L.latLng(stop.lat, stop.lon)
+    if (!map.getBounds().pad(-0.15).contains(at)) map.panTo(at)
+  }, [focusId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={ref} className="map" />
 }

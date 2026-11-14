@@ -44,6 +44,13 @@ Done on branch `feat/route-planner` (PR open, not merged yet): the excursion pla
 - Scale bar now uses Mars's radius
 - Code split into folders (see below)
 
+Done on branch `feat/ui-mission-control` (from `feat/route-planner`, not pushed): the "Mission control" UI
+- Design tokens (colours, fonts, spacing, radii) on `:root` in `src/index.css`. Design canvas: https://claude.ai/artifact/Lj6DQao3Z7QXw7hs5jWnnh (private)
+- Sidebar: pinned summary (status, time / distance / dose, Fastest/Gentlest, one main action "Walk through stops"), then steps 1–4. Loading, empty and error states live in the summary
+- Stop card replaces the list and steps through the route (Next / Previous / Remove)
+- A click on a map marker only opens its card; it no longer takes the stop off the route
+- Map refits the route when its container resizes, without animation (fixes the off-centre route on phones)
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
@@ -54,6 +61,7 @@ Known issues:
 - All 6 targets on foot is a 20 km, 14 h trip, so it does not fit one excursion. By rover it takes 5.8 h. The demo needs a selection that fits
 - The delta front target sits on a 20° cell: at the walking limit, and over the rover limit, so the rover stops at the nearest passable cell (within 50 m)
 - Waypoint tooltip only shows sol + tilt
+- The slope overlay image still uses the old red/orange colours, not the new slope tokens. On phones the attribution overlaps the scale bar
 - No README for the submission yet
 
 Next, in order:
