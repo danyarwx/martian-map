@@ -1,0 +1,83 @@
+/* Onboard vision inside the helmet view. Uses the visor's own colours (hud.css), with fallbacks. */
+
+.vision-dust {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.vision-panel {
+  position: absolute;
+  z-index: 2;
+  left: 14px;
+  bottom: 46px;
+  width: min(300px, 46%);
+  pointer-events: none;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-dim, rgba(143, 227, 214, 0.55));
+  border-radius: 8px;
+  background: rgba(10, 18, 18, 0.6);
+  color: var(--hud-fg, #f3e6dc);
+  font-family: var(--hud-mono, ui-monospace, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.vision-panel--warn {
+  border-color: #ffd166;
+}
+.vision-panel--danger {
+  border-color: var(--hud-danger, #ff5a4e);
+  background: rgba(60, 8, 4, 0.75);
+}
+
+.vision-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--hud, #8fe3d6);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.vision-head span:last-child {
+  color: var(--hud-dim, rgba(143, 227, 214, 0.55));
+  text-align: right;
+}
+
+.vision-text {
+  margin-top: 2px;
+}
+
+.vision-bar {
+  margin-top: 5px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.vision-bar i {
+  display: block;
+  height: 100%;
+  background: var(--hud-ok, #8fe3a0);
+}
+.vision-panel--warn .vision-bar i {
+  background: #ffd166;
+}
+.vision-panel--danger .vision-bar i {
+  background: var(--hud-danger, #ff5a4e);
+}
+
+.vision-sim {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (max-width: 640px) {
+  .vision-panel {
+    left: 10px;
+    bottom: 40px;
+    font-size: 11px;
+  }
+}
