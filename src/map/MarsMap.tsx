@@ -1,19 +1,32 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
-import type { RoutePlan, SiteConfig, TerrainMeta } from '../types.ts'
+import type { LatLon, RoutePlan, SiteConfig, Target, TerrainMeta } from '../types.ts'
 import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import { createTileLayers, MARS_CRS } from './layers.ts'
 
 interface Props {
   site: SiteConfig
+  /** The habitat where it stands now, which may not be the site's landing point. */
+  habitat: Target
+  /** Destinations the user added. */
+  custom: Target[]
+  /** Header of the elevation grid, null until loaded. */
+  terrainMeta: TerrainMeta | null
   /** Ids of the targets chosen for the route. */
   selected: ReadonlySet<string>
   plan: RoutePlan | null
   /** Stop whose card is open. */
   focusId: string | null
+  /** True while the next click on the map adds a point. */
+  adding: boolean
   onToggle: (id: string) => void
   onFocus: (id: string) => void
+  /** Called when a marker is dropped. Returns null when the move is accepted, else the reason it is not. */
+  onMoveHabitat: (p: LatLon) => string | null
+  onMovePoint: (id: string, p: LatLon) => string | null
+  /** A click on the map itself while `adding` is on. */
+  onPick: (p: LatLon) => void
 }
 
 /** Route line colour per slope class: easy, moderate, close to the limit. */
@@ -26,14 +39,20 @@ const NOTES_OPEN_ZOOM = 15
 /** Whole degrees for the legend. The planner keeps the exact thresholds. */
 const deg = (v: number) => String(Math.round(v))
 
-export default function MarsMap({ site, selected, plan, focusId, onToggle, onFocus }: Props) {
+export default function MarsMap(props: Props) {
+  const { site, habitat, custom, terrainMeta, selected, plan, focusId, adding } = props
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const stopsRef = useRef<L.LayerGroup | null>(null)
   const routeRef = useRef<L.LayerGroup | null>(null)
   const notesRef = useRef<L.LayerGroup | null>(null)
-  const handlers = useRef({ onToggle, onFocus })
-  handlers.current = { onToggle, onFocus }
+  const layersRef = useRef<L.Control.Layers | null>(null)
+  const handlers = useRef(props)
+  handlers.current = props
+  /** True while a marker is being dragged: the markers are not rebuilt under the pointer. */
+  const dragging = useRef(false)
+  /** Bumped after every drop to redraw the markers, also when the drop was refused. */
+  const [drops, setDrops] = useState(0)
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -55,6 +74,7 @@ export default function MarsMap({ site, selected, plan, focusId, onToggle, onFoc
     const control = L.control
       .layers(tiles.base, { ...tiles.site, ...tiles.extra }, { collapsed: true })
       .addTo(map)
+    layersRef.current = control
     L.control.scale({ imperial: false }).addTo(map)
 
     let alive = true
@@ -66,18 +86,6 @@ export default function MarsMap({ site, selected, plan, focusId, onToggle, onFoc
         return null // file not downloaded yet: run `npm run fetch-data`
       }
     }
-
-    // Slope classes from the elevation model: what the planner treats as slow or no-go ground.
-    getJson<TerrainMeta>(site.terrain.meta).then((meta) => {
-      if (!alive || !meta) return
-      const overlay = L.imageOverlay(
-        site.terrain.overlay,
-        [[meta.south, meta.west], [meta.north, meta.east]],
-        { opacity: 0.75, attribution: 'Slope: USGS Mars 2020 TRN DTM' },
-      ).addTo(map)
-      control.addOverlay(overlay, 'Slope hazard (topography)')
-      routeRef.current?.eachLayer((l) => (l as L.Polyline).bringToFront())
-    })
 
     getJson<GeoJSON.GeoJsonObject>('/data/M20_traverse.json').then((data) => {
       if (!alive || !data) return
@@ -109,41 +117,96 @@ export default function MarsMap({ site, selected, plan, focusId, onToggle, onFoc
       alive = false
       map.remove()
       mapRef.current = null
+      layersRef.current = null
     }
   }, [site])
 
-  // Habitat and target markers.
+  // Slope classes from the elevation model: what the planner treats as slow or no-go ground.
+  useEffect(() => {
+    const map = mapRef.current
+    const control = layersRef.current
+    if (!map || !control || !terrainMeta) return
+    const overlay = L.imageOverlay(
+      site.terrain.overlay,
+      [[terrainMeta.south, terrainMeta.west], [terrainMeta.north, terrainMeta.east]],
+      { opacity: 0.75, attribution: 'Slope: USGS Mars 2020 TRN DTM' },
+    ).addTo(map)
+    control.addOverlay(overlay, 'Slope hazard (topography)')
+    routeRef.current?.eachLayer((l) => (l as L.Polyline).bringToFront())
+    return () => {
+      control.removeLayer(overlay)
+      overlay.remove()
+    }
+  }, [site, terrainMeta])
+
+  // "Add point on map": crosshair cursor, and the next click on the map itself picks the spot.
+  // Clicks on markers do not reach the map, so no point is created under an existing marker.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !adding) return
+    const pick = (e: L.LeafletMouseEvent) => handlers.current.onPick({ lat: e.latlng.lat, lon: e.latlng.lng })
+    map.on('click', pick)
+    map.getContainer().classList.add('map--adding')
+    return () => {
+      map.off('click', pick)
+      map.getContainer().classList.remove('map--adding')
+    }
+  }, [adding])
+
+  // Habitat, suggested targets and the user's own points.
   useEffect(() => {
     const group = stopsRef.current
-    if (!group) return
+    if (!group || dragging.current) return
     group.clearLayers()
     const visitNo = new Map<string, number>()
     plan?.order.slice(1, -1).forEach((id, i) => visitNo.set(id, i + 1))
+    const customIds = new Set(custom.map((t) => t.id))
 
-    for (const stop of [site.habitat, ...site.targets]) {
-      const isHabitat = stop.id === site.habitat.id
+    for (const stop of [habitat, ...site.targets, ...custom]) {
+      const isHabitat = stop.id === habitat.id
+      const isCustom = customIds.has(stop.id)
       const on = isHabitat || selected.has(stop.id)
-      const blocked = plan?.unreachable.includes(stop.id)
+      const blocked = isHabitat ? plan?.habitatNoFooting : !plan?.habitatNoFooting && plan?.unreachable.includes(stop.id)
       const label = isHabitat ? 'H' : blocked ? '!' : on ? String(visitNo.get(stop.id) ?? '•') : '+'
       const classes = [
         'stop',
         isHabitat ? 'stop--habitat' : on ? 'stop--on' : 'stop--off',
+        isCustom ? 'stop--custom' : '',
         blocked ? 'stop--blocked' : '',
         focusId === stop.id ? 'stop--focus' : '',
       ].join(' ')
-      L.marker([stop.lat, stop.lon], {
-        icon: L.divIcon({ className: '', html: `<div class="${classes}">${label}</div>`, iconSize: [28, 28] }),
-        title: stop.name,
+      const hint = isHabitat ? `${stop.name}: drag to move` : isCustom ? `${stop.name}: drag to move` : stop.name
+      const marker = L.marker([stop.lat, stop.lon], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="${classes}"><span>${label}</span></div>`,
+          iconSize: [28, 28],
+        }),
+        title: hint,
+        draggable: isHabitat || isCustom,
         zIndexOffset: isHabitat ? 500 : 0,
       })
-        .bindTooltip(stop.name, { direction: 'top', offset: [0, -14] })
+        .bindTooltip(hint, { direction: 'top', offset: [0, -14] })
         .on('click', () => {
           handlers.current.onFocus(stop.id)
           if (!isHabitat) handlers.current.onToggle(stop.id)
         })
         .addTo(group)
+      if (!isHabitat && !isCustom) continue
+      // Nothing is planned while dragging: the new position is reported once, on drop.
+      marker.on('dragstart', () => {
+        dragging.current = true
+      })
+      marker.on('dragend', () => {
+        dragging.current = false
+        const { lat, lng } = marker.getLatLng()
+        const p = { lat, lon: lng }
+        const refused = isHabitat ? handlers.current.onMoveHabitat(p) : handlers.current.onMovePoint(stop.id, p)
+        if (refused) marker.setLatLng([stop.lat, stop.lon]) // back to where it was
+        setDrops((n) => n + 1)
+      })
     }
-  }, [site, selected, plan, focusId])
+  }, [site, habitat, custom, selected, plan, focusId, drops])
 
   // Route line coloured by slope class, its notes and the colour legend.
   useEffect(() => {

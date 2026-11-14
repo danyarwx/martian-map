@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Target, Terrain } from '../types.ts'
-import { distanceM } from './geo.ts'
+import { distanceM, parsePoint } from './geo.ts'
 import { MOBILITY, secondsPerMetre } from './mobility.ts'
 import { planRoute } from './planner.ts'
 
@@ -65,6 +65,8 @@ test('a target behind a closed wall is reported, not visited', () => {
   const t = terrain((c) => (c === 25 ? 30 : 0))
   const plan = planRoute(t, MOBILITY.walk, habitat, [stop('near', 15, 20), stop('far', 45, 20)])
   assert.deepEqual(plan.unreachable, ['far'])
+  assert.deepEqual(plan.unreachableWhy, { far: 'no-path' })
+  assert.equal(plan.habitatNoFooting, false)
   assert.deepEqual(plan.order, ['habitat', 'near', 'habitat'])
 })
 
@@ -129,4 +131,27 @@ test('a steep stretch the route has to cross is called out', () => {
   assert.deepEqual(leg.notes.map((n) => n.kind), ['steep'])
   assert.equal(leg.notes[0].text, 'Steep stretch: up to 16° for 40 m. Slow down.')
   assert.deepEqual(leg.sections.map((s) => s.level), [0, 2, 0])
+})
+
+test('a target on a no-go cell is reached at the nearest passable ground', () => {
+  // 30 m wide block of 30 degree ground: the target in its middle is 20 m from ground that can be walked on
+  const t = terrain((c, r) => (c >= 44 && c <= 46 && r >= 19 && r <= 21 ? 30 : 0))
+  const plan = planRoute(t, MOBILITY.walk, habitat, [stop('a', 45, 20)])
+  assert.deepEqual(plan.unreachable, [])
+  assert.deepEqual(plan.order, ['habitat', 'a', 'habitat'])
+})
+
+test('a target deep inside no-go ground has nowhere to stand', () => {
+  // 210 m wide block: nothing passable within 50 m of its centre
+  const t = terrain((c, r) => (c >= 35 && c <= 55 && r >= 10 && r <= 30 ? 30 : 0))
+  const plan = planRoute(t, MOBILITY.walk, habitat, [stop('a', 45, 20)])
+  assert.deepEqual(plan.unreachableWhy, { a: 'no-footing' })
+})
+
+test('typed coordinates are accepted only as numbers inside the elevation data', () => {
+  const b = { west: 77.2229, east: 77.48, south: 18.400009, north: 18.52001 }
+  assert.deepEqual(parsePoint(b, '18.45', ' 77.4 '), { ok: true, point: { lat: 18.45, lon: 77.4 } })
+  assert.deepEqual(parsePoint(b, '18.6', '77.4'), { ok: false, error: 'Latitude must be between 18.401 and 18.520.' })
+  assert.deepEqual(parsePoint(b, '18.45', 'east'), { ok: false, error: 'Longitude must be a number.' })
+  assert.deepEqual(parsePoint(b, '', '77.4'), { ok: false, error: 'Latitude must be a number.' })
 })

@@ -1,6 +1,8 @@
-import type { MobilityId, SiteConfig, StopView, Target } from '../types.ts'
+import { useState } from 'react'
+import type { LatLon, MobilityId, SiteConfig, StopView, Target } from '../types.ts'
 import type { PlannerState } from '../lib/usePlanner.ts'
 import { NOTE_SIGNS } from '../lib/explain.ts'
+import { parsePoint, type Bounds } from '../lib/geo.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import {
   CAREER_LIMIT_MSV,
@@ -12,14 +14,32 @@ import {
 
 interface Props {
   site: SiteConfig
+  /** The habitat where it stands now. */
+  habitat: Target
+  /** True when the habitat is no longer at the site's landing point. */
+  habitatMoved: boolean
+  /** Destinations the user added. */
+  custom: Target[]
+  /** Area with elevation data, null until its header has loaded. */
+  bounds: Bounds | null
   mobility: MobilityId
   selected: ReadonlySet<string>
   focusId: string | null
   planner: PlannerState
   views: Record<string, StopView>
+  /** True while the next click on the map adds a point. */
+  adding: boolean
+  /** One line about the last action that was refused. */
+  notice: string | null
   onMobility: (m: MobilityId) => void
   onToggle: (id: string) => void
   onFocus: (id: string | null) => void
+  onAdding: (on: boolean) => void
+  /** These two return null when done, or the reason the spot was refused. */
+  onMoveHabitat: (p: LatLon) => string | null
+  onAddPoint: (p: LatLon) => string | null
+  onResetHabitat: () => void
+  onRemovePoint: (id: string) => void
 }
 
 const km = (m: number) => `${(m / 1000).toFixed(1)} km`
@@ -32,8 +52,11 @@ function duration(minutes: number) {
 
 export default function Sidebar(p: Props) {
   const { site, planner } = p
-  const stops = new Map<string, Target>([site.habitat, ...site.targets].map((s) => [s.id, s]))
+  const stops = new Map<string, Target>([p.habitat, ...site.targets, ...p.custom].map((s) => [s.id, s]))
   const focus = p.focusId ? stops.get(p.focusId) : undefined
+  const focusIsCustom = p.custom.some((t) => t.id === focus?.id)
+  // The cached habitat photo was taken at the landing site, so it is not shown once the habitat has moved.
+  const focusView = focus && !(focus.id === p.habitat.id && p.habitatMoved) ? p.views[focus.id] : undefined
 
   return (
     <aside className="sidebar">
@@ -59,7 +82,25 @@ export default function Sidebar(p: Props) {
       </section>
 
       <section className="panel">
-        <h2>Targets</h2>
+        <h2>Habitat</h2>
+        <p className="muted">
+          {p.habitatMoved ? 'Moved from the landing site.' : p.habitat.summary} Drag the H marker on the map, or
+          enter coordinates.
+        </p>
+        <CoordForm
+          key={`${p.habitat.lat},${p.habitat.lon}`}
+          bounds={p.bounds}
+          start={p.habitat}
+          submit="Apply"
+          onSubmit={p.onMoveHabitat}
+        />
+        <button type="button" className="link" disabled={!p.habitatMoved} onClick={p.onResetHabitat}>
+          Reset to landing site
+        </button>
+      </section>
+
+      <section className="panel">
+        <h2>Suggested targets</h2>
         <ul className="targets">
           {site.targets.map((t) => (
             <li key={t.id} className={p.focusId === t.id ? 'is-focus' : ''}>
@@ -78,15 +119,101 @@ export default function Sidebar(p: Props) {
         </ul>
       </section>
 
-      {focus && <StopCard stop={focus} view={p.views[focus.id]} onClose={() => p.onFocus(null)} />}
+      <section className="panel">
+        <h2>Your points</h2>
+        {p.custom.length > 0 && (
+          <ul className="targets">
+            {p.custom.map((t) => (
+              <li key={t.id} className={p.focusId === t.id ? 'is-focus' : ''}>
+                <label>
+                  <input type="checkbox" checked={p.selected.has(t.id)} onChange={() => p.onToggle(t.id)} />
+                  <span>
+                    <strong>{t.name}</strong>
+                    <small>{t.summary}</small>
+                  </span>
+                </label>
+                <button type="button" className="link" onClick={() => p.onFocus(t.id)}>
+                  View
+                </button>
+                <button type="button" className="link" onClick={() => p.onRemovePoint(t.id)}>
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <button
+          type="button"
+          className={`toggle${p.adding ? ' is-active' : ''}`}
+          aria-pressed={p.adding}
+          onClick={() => p.onAdding(!p.adding)}
+        >
+          {p.adding ? 'Click the map to place the point (Esc cancels)' : 'Add point on map'}
+        </button>
+        <CoordForm bounds={p.bounds} submit="Add" clearOnDone onSubmit={p.onAddPoint} />
+        {p.notice && <p className="alert alert--bad">{p.notice}</p>}
+      </section>
 
-      <RoutePanel {...p} stops={stops} />
+      {focus && (
+        <StopCard
+          stop={focus}
+          view={focusView}
+          onClose={() => p.onFocus(null)}
+          onRemove={focusIsCustom ? () => p.onRemovePoint(focus.id) : undefined}
+        />
+      )}
+
+      <RoutePanel planner={planner} mobility={p.mobility} stops={stops} />
       <SafetyPanel planner={planner} />
     </aside>
   )
 }
 
-function StopCard({ stop, view, onClose }: { stop: Target; view?: StopView; onClose: () => void }) {
+/** Latitude and longitude inputs with one button. Says under the inputs why a typed value is not accepted. */
+function CoordForm(p: {
+  bounds: Bounds | null
+  start?: LatLon
+  submit: string
+  /** Empty the inputs after a successful submit. */
+  clearOnDone?: boolean
+  /** Returns null when done, or the reason the point was refused. */
+  onSubmit: (point: LatLon) => string | null
+}) {
+  const [lat, setLat] = useState(p.start ? p.start.lat.toFixed(5) : '')
+  const [lon, setLon] = useState(p.start ? p.start.lon.toFixed(5) : '')
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <form
+      className="coords"
+      noValidate
+      onSubmit={(e) => {
+        e.preventDefault()
+        const parsed = parsePoint(p.bounds, lat, lon)
+        // A refusal from `onSubmit` is shown by the caller; here only what is wrong with the typed values.
+        setError(parsed.ok ? null : parsed.error)
+        const problem = parsed.ok ? p.onSubmit(parsed.point) : parsed.error
+        if (!problem && p.clearOnDone) {
+          setLat('')
+          setLon('')
+        }
+      }}
+    >
+      <label>
+        Lat °N
+        <input type="number" step="any" inputMode="decimal" value={lat} onChange={(e) => setLat(e.target.value)} />
+      </label>
+      <label>
+        Lon °E
+        <input type="number" step="any" inputMode="decimal" value={lon} onChange={(e) => setLon(e.target.value)} />
+      </label>
+      <button type="submit">{p.submit}</button>
+      {error && <p className="coords-error">{error}</p>}
+    </form>
+  )
+}
+
+function StopCard(p: { stop: Target; view?: StopView; onClose: () => void; onRemove?: () => void }) {
+  const { stop, view, onClose } = p
   return (
     <section className="panel card">
       <header>
@@ -107,18 +234,27 @@ function StopCard({ stop, view, onClose }: { stop: Target; view?: StopView; onCl
       <dl>
         <dt>Why</dt>
         <dd>{stop.science}</dd>
-        <dt>Task</dt>
-        <dd>{stop.task}</dd>
+        {stop.task && (
+          <>
+            <dt>Task</dt>
+            <dd>{stop.task}</dd>
+          </>
+        )}
         <dt>Position</dt>
         <dd>
           {stop.lat.toFixed(5)}° N, {stop.lon.toFixed(5)}° E
         </dd>
       </dl>
+      {p.onRemove && (
+        <button type="button" className="link" onClick={p.onRemove}>
+          Remove point
+        </button>
+      )}
     </section>
   )
 }
 
-function RoutePanel({ planner, mobility, stops }: Props & { stops: Map<string, Target> }) {
+function RoutePanel({ planner, mobility, stops }: Pick<Props, 'planner' | 'mobility'> & { stops: Map<string, Target> }) {
   const { plan, planning, error } = planner
   const m = MOBILITY[mobility]
   return (
@@ -128,10 +264,21 @@ function RoutePanel({ planner, mobility, stops }: Props & { stops: Map<string, T
       {!plan && !error && !planning && <p className="muted">Choose at least one target.</p>}
       {plan && (
         <>
-          {plan.unreachable.length > 0 && (
+          {plan.habitatNoFooting && (
             <p className="alert alert--bad">
-              No safe path for {m.label.toLowerCase()} to: {plan.unreachable.map((id) => stops.get(id)?.name).join(', ')}.
-              Slopes on the way exceed {m.maxSlopeDeg}°.
+              The habitat stands on ground steeper than {m.maxSlopeDeg}° (or without elevation data). Move it.
+            </p>
+          )}
+          {!plan.habitatNoFooting && plan.unreachable.length > 0 && (
+            <p className="alert alert--bad">
+              {plan.unreachable
+                .map((id) => {
+                  const name = stops.get(id)?.name ?? id
+                  return plan.unreachableWhy[id] === 'no-footing'
+                    ? `${name} stands on ground steeper than ${m.maxSlopeDeg}° (or without elevation data).`
+                    : `No safe path to ${name}: slopes on the way exceed ${m.maxSlopeDeg}°.`
+                })
+                .join(' ')}
             </p>
           )}
           {plan.legs.length > 0 && !plan.fitsOneEva && (

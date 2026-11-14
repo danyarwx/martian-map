@@ -117,6 +117,12 @@ export interface RouteLeg {
   sections: RouteSection[]
 }
 
+/**
+ * Why a target is left out: nowhere passable to stand within reach of the point itself,
+ * or a place to stand but no safe way there from the habitat.
+ */
+export type UnreachableReason = 'no-footing' | 'no-path'
+
 export interface RoutePlan {
   mobility: MobilityId
   /** Stop ids in visiting order, starting and ending at the habitat. */
@@ -124,6 +130,10 @@ export interface RoutePlan {
   legs: RouteLeg[]
   /** Targets no safe path reaches. They are left out of the route. */
   unreachable: string[]
+  /** Reason per id in `unreachable`. */
+  unreachableWhy: Record<string, UnreachableReason>
+  /** True when the habitat itself has no passable ground within reach, so nothing can be routed. */
+  habitatNoFooting: boolean
   distanceM: number
   /** Moving time only. */
   travelMinutes: number

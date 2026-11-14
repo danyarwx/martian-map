@@ -33,3 +33,41 @@ export function cellCenter(t: TerrainMeta, col: number, row: number): LatLon {
 export function inGrid(t: TerrainMeta, col: number, row: number): boolean {
   return col >= 0 && row >= 0 && col < t.width && row < t.height
 }
+
+/** The rectangle that has elevation data. `TerrainMeta` fits. */
+export interface Bounds {
+  west: number
+  south: number
+  east: number
+  north: number
+}
+
+export function inBounds(b: Bounds, p: LatLon): boolean {
+  return p.lat >= b.south && p.lat <= b.north && p.lon >= b.west && p.lon <= b.east
+}
+
+/** Bounds as shown to the user: three decimals, rounded inwards so every shown value is allowed. */
+const shownMin = (v: number) => (Math.ceil(v * 1000) / 1000).toFixed(3)
+const shownMax = (v: number) => (Math.floor(v * 1000) / 1000).toFixed(3)
+
+/**
+ * Checks coordinates typed by the user. Gives back the point, or a sentence saying what is wrong.
+ * Without bounds (terrain header not loaded yet) only the numbers themselves are checked.
+ */
+export function parsePoint(
+  b: Bounds | null,
+  lat: string,
+  lon: string,
+): { ok: true; point: LatLon } | { ok: false; error: string } {
+  const read = (text: string) => (text.trim() === '' ? NaN : Number(text))
+  const point = { lat: read(lat), lon: read(lon) }
+  const check = (value: number, name: string, min?: number, max?: number) => {
+    if (!Number.isFinite(value)) return `${name} must be a number.`
+    if (min !== undefined && max !== undefined && (value < min || value > max)) {
+      return `${name} must be between ${shownMin(min)} and ${shownMax(max)}.`
+    }
+    return null
+  }
+  const error = check(point.lat, 'Latitude', b?.south, b?.north) ?? check(point.lon, 'Longitude', b?.west, b?.east)
+  return error ? { ok: false, error } : { ok: true, point }
+}

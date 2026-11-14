@@ -48,6 +48,20 @@ small { font-size: 12px; color: #b89a8a; }
 .targets strong, .targets small { display: block; }
 .link { background: none; border: 0; padding: 2px 0; color: #35e0ff; font-size: 13px; }
 .link:hover { text-decoration: underline; }
+.link:disabled { color: #94796b; cursor: default; text-decoration: none; }
+
+/* Latitude / longitude entry */
+.coords { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; margin: 8px 0 4px; }
+.coords label { flex: 1; min-width: 0; font-size: 12px; color: #b89a8a; }
+.coords input {
+  display: block; width: 100%; margin-top: 2px; padding: 6px 8px;
+  font: inherit; color: inherit; background: #24160f; border: 1px solid #4a2f21; border-radius: 6px;
+}
+.coords button, .toggle { padding: 6px 12px; background: #24160f; border: 1px solid #4a2f21; border-radius: 6px; }
+.coords-error { flex-basis: 100%; margin: 0; font-size: 12px; color: #ff9c8f; }
+.toggle { display: block; width: 100%; margin-top: 4px; text-align: left; }
+.toggle.is-active { background: #3b2114; border-color: #ff8a3d; }
+.map--adding, .map--adding .leaflet-grab, .map--adding .leaflet-interactive { cursor: crosshair; }
 
 .card header { display: flex; justify-content: space-between; align-items: baseline; }
 .card figure { margin: 0 0 10px; }
@@ -84,7 +98,12 @@ small { font-size: 12px; color: #b89a8a; }
 .stop--on { background: #35e0ff; color: #04222b; }
 .stop--off { background: rgba(20, 12, 8, 0.75); color: #fff; }
 .stop--habitat { background: #ff8a3d; color: #2a1206; border-radius: 6px; }
-.stop--blocked { background: #c2382e; color: #fff; }
+/* The user's own points: a violet diamond, so they are not mistaken for the suggested targets */
+.stop--custom { width: 24px; height: 24px; margin: 2px; border-radius: 4px; transform: rotate(45deg); border-color: #d9c2ff; }
+.stop--custom > span { transform: rotate(-45deg); }
+.stop--custom.stop--on { background: #9b6bff; color: #fff; }
+.stop--custom.stop--off { background: rgba(43, 24, 84, 0.85); color: #fff; }
+.stop--blocked, .stop--custom.stop--blocked { background: #c2382e; color: #fff; }
 .stop--focus { box-shadow: 0 0 0 3px #fff, 0 0 0 5px rgba(0, 0, 0, 0.55); }
 
 /* Route notes: small markers on the map and the same signs in the leg list */

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MobilityId, RoutePlan, SiteConfig } from '../types.ts'
+import type { MobilityId, RoutePlan, SiteConfig, Target } from '../types.ts'
 import type { PlanRequest, PlanResponse } from './planner.worker.ts'
 
 export interface PlannerState {
@@ -10,8 +10,11 @@ export interface PlannerState {
   terrainSource: string | null
 }
 
-/** Re-plans the round trip in a worker whenever the chosen targets or the mobility change. */
-export function usePlanner(site: SiteConfig, mobility: MobilityId, selected: ReadonlySet<string>): PlannerState {
+/**
+ * Re-plans the round trip in a worker whenever the habitat, the targets to visit or the mobility change.
+ * A new plan starts only when a position, the set of targets or the mobility really differs.
+ */
+export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Target, targets: Target[]): PlannerState {
   const worker = useRef<Worker | null>(null)
   const latest = useRef(0)
   const [state, setState] = useState<PlannerState>({ plan: null, planning: false, error: null, terrainSource: null })
@@ -34,17 +37,20 @@ export function usePlanner(site: SiteConfig, mobility: MobilityId, selected: Rea
     }
   }, [])
 
+  // What the plan depends on, as text: re-rendering with equal values does not plan again.
+  const request = JSON.stringify([mobility, habitat, targets])
+
   useEffect(() => {
-    const targets = site.targets.filter((t) => selected.has(t.id))
     const id = ++latest.current
     if (targets.length === 0) {
       setState((s) => ({ ...s, plan: null, planning: false, error: null }))
       return
     }
     setState((s) => ({ ...s, planning: true }))
-    const req: PlanRequest = { id, terrain: site.terrain, mobility, habitat: site.habitat, targets }
+    const [, home, stops] = JSON.parse(request) as [MobilityId, Target, Target[]]
+    const req: PlanRequest = { id, terrain: site.terrain, mobility, habitat: home, targets: stops }
     worker.current?.postMessage(req)
-  }, [site, mobility, selected])
+  }, [site, mobility, request])
 
   return state
 }

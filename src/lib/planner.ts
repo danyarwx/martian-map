@@ -1,4 +1,4 @@
-import type { LatLon, Mobility, RouteLeg, RoutePlan, Target, Terrain } from '../types.ts'
+import type { LatLon, Mobility, RouteLeg, RoutePlan, Target, Terrain, UnreachableReason } from '../types.ts'
 import { buildCostGrid, findPath, snapToPassable } from './astar.ts'
 import { explainLeg } from './explain.ts'
 import { cellCenter, toCell } from './geo.ts'
@@ -62,6 +62,7 @@ function permutations<T>(items: T[]): T[][] {
  * Plans a round trip from the habitat through the chosen targets and back.
  * Each leg is the fastest safe path over the terrain for this mobility; the visiting order
  * is the one with the least total travel time. Targets with no safe path are reported, not visited.
+ * A stop on no-go ground is moved to the nearest passable cell within about 50 m.
  */
 export function planRoute(t: Terrain, m: Mobility, habitat: Target, targets: Target[]): RoutePlan {
   const cost = buildCostGrid(t, m)
@@ -88,9 +89,14 @@ export function planRoute(t: Terrain, m: Mobility, habitat: Target, targets: Tar
 
   const reachable: number[] = []
   const unreachable: string[] = []
+  const unreachableWhy: Record<string, UnreachableReason> = {}
   for (let i = 1; i < stops.length; i++) {
-    if (legs.has(key(0, i))) reachable.push(i)
-    else unreachable.push(stops[i].id)
+    if (legs.has(key(0, i))) {
+      reachable.push(i)
+      continue
+    }
+    unreachable.push(stops[i].id)
+    unreachableWhy[stops[i].id] = cells[i] < 0 ? 'no-footing' : 'no-path'
   }
 
   let bestOrder: number[] = []
@@ -122,6 +128,8 @@ export function planRoute(t: Terrain, m: Mobility, habitat: Target, targets: Tar
     order: bestOrder.map((i) => stops[i].id),
     legs: routeLegs,
     unreachable,
+    unreachableWhy,
+    habitatNoFooting: cells[0] < 0,
     distanceM: sum((l) => l.distanceM),
     travelMinutes,
     stopMinutes,

@@ -35,6 +35,8 @@ Done on branch `feat/route-planner` (PR open, not merged yet): the excursion pla
 - Fastest safe round trip through the chosen targets, planned from the slope grid (A* per leg, best visiting order). Runs in a web worker
 - Two modes: on foot (2.5 km/h, 20° limit) and crew rover (10 km/h, 15° limit). Assumptions and sources are in `src/lib/mobility.ts`
 - Check that the trip fits one excursion (8 h), with a warning when it does not
+- Movable habitat (drag the marker or enter coordinates) and user-added destinations (click the map or enter coordinates), next to the 6 suggested targets. At most 8 targets per route
+- The route explains itself: line coloured by slope, notes where it turns and what it avoids
 - Stop cards with a ground-level rover photo per stop (`public/data/views/`)
 - Safety panel: radiation dose for the time outside and typical Jezero weather, static cited values (`src/lib/safety.ts`)
 - Slope grid built from the HiRISE 1 m DTM: 1523 x 711 cells of 10 m, slope overlay on the map
