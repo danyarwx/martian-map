@@ -38,6 +38,7 @@ const KEYS: [string, string][] = [
   ['M', 'hazard map small / large'],
   ['R', 'the same detector on a real Perseverance stereo photo'],
   ['P', 'pause'],
+  ['I', 'developer numbers (CV time, frames per second)'],
   ['H', 'this help'],
   ['Esc', 'back to Mission control'],
 ]
@@ -67,6 +68,7 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [cvView, setCvView] = useState(false)
   const [bigMap, setBigMap] = useState(false)
   const [realPhoto, setRealPhoto] = useState(false)
+  const [debug, setDebug] = useState(false)
   const [weather, setWeather] = useState<WeatherCache | null>(null)
   useEffect(() => {
     let live = true
@@ -156,6 +158,7 @@ export default function HelmetView({ entry, onExit }: Props) {
       else if (k === 'v') setCvView((v) => !v)
       else if (k === 'm') setBigMap((v) => !v)
       else if (k === 'r') setRealPhoto((v) => !v)
+      else if (k === 'i') setDebug((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -210,13 +213,13 @@ export default function HelmetView({ entry, onExit }: Props) {
         {paused && <span className="helmet-flag">paused</span>}
         {error && <span className="helmet-flag">{error}</span>}
         {hud && <span>slope {hud.slopeDeg.toFixed(0)}°</span>}
-        {hud && hud.cv.frames > 0 && (
+        {debug && hud && hud.cv.frames > 0 && (
           <span title="Live computer vision: worker time per frame and frames per second">
             CV {hud.cv.ms.toFixed(0)} ms · {hud.cv.hz.toFixed(1)} Hz
           </span>
         )}
         {hud?.cv.error && <span className="helmet-flag">CV error</span>}
-        <span>{hud?.fps ?? 0} fps</span>
+        {debug && <span>{hud?.fps ?? 0} fps</span>}
       </div>
 
       <div className="helmet-alerts" aria-live="assertive">
