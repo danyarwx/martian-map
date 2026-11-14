@@ -1,32 +1,35 @@
 import { useEffect, useState } from 'react'
-import type { Stop } from '../../types'
+import type { Panorama as Pano, Stop } from '../../types'
 import { normDeg } from '../geo'
-import { panoramaSources } from '../walkScript'
+import { drawnScenery } from './drawnScenery'
 
 /**
- * Azimuth of the panorama's left edge, in degrees from north. MMGIS cylindrical mosaics start at
- * azimuth 0. If the view turns out rotated against the map, correct it here once.
+ * Azimuth of the panorama's left edge, in degrees from north. The stitched Navcam panoramas
+ * start at north (scripts/build_panoramas.py). If the view looks rotated against the map, correct it here.
  */
 export const PANO_AZ_OFFSET_DEG = 0
 
-// Resolved image URL per stop: a string, or null when no source loaded (we then show a plain backdrop).
-const resolved = new Map<string, string | null>()
+type Loaded = { pano: Pano; real: boolean }
 
-function loadFirst(urls: string[]): Promise<string | null> {
-  return urls.reduce<Promise<string | null>>(
-    (prev, url) =>
-      prev.then(
-        (ok) =>
-          ok ??
-          new Promise((resolve) => {
-            const img = new Image()
-            img.onload = () => resolve(url)
-            img.onerror = () => resolve(null)
-            img.src = url
-          }),
-      ),
-    Promise.resolve(null),
-  )
+// Result per stop, so switching back to a stop doesn't reload or flicker.
+const loaded = new Map<string, Loaded>()
+
+function load(stop: Stop): Promise<Loaded> {
+  const hit = loaded.get(stop.id)
+  if (hit) return Promise.resolve(hit)
+  const pano = stop.panorama
+  const fallback = (): Loaded => ({ pano: drawnScenery(), real: false })
+  const done = (r: Loaded) => {
+    loaded.set(stop.id, r)
+    return r
+  }
+  if (!pano) return Promise.resolve(done(fallback()))
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => resolve(done({ pano, real: true }))
+    img.onerror = () => resolve(done(fallback()))
+    img.src = pano.url
+  })
 }
 
 type Props = {
@@ -36,37 +39,29 @@ type Props = {
   width: number
   height: number
   horizonY: number
+  /** Tells the parent whether real rover imagery or the drawn backup is showing. */
+  onSource?: (real: boolean) => void
 }
 
-/** A 360° rover panorama cropped to the visor's field of view. Turning changes which slice shows. */
-export default function Panorama({ stop, headingDeg, fovDeg, width, height, horizonY }: Props) {
-  const [src, setSrc] = useState<string | null | undefined>(() => resolved.get(stop.id))
+/** A 360° panorama cropped to the visor's field of view. Turning changes which slice shows. */
+export default function Panorama({ stop, headingDeg, fovDeg, width, height, horizonY, onSource }: Props) {
+  const [state, setState] = useState<Loaded | undefined>(() => loaded.get(stop.id))
 
   useEffect(() => {
-    if (resolved.has(stop.id)) {
-      setSrc(resolved.get(stop.id))
-      return
-    }
     let alive = true
-    setSrc(undefined)
-    loadFirst(panoramaSources(stop)).then((url) => {
-      resolved.set(stop.id, url)
-      if (alive) setSrc(url)
+    load(stop).then((r) => {
+      if (!alive) return
+      setState(r)
+      onSource?.(r.real)
     })
     return () => {
       alive = false
     }
-  }, [stop])
+  }, [stop, onSource])
 
-  const pano = stop.panorama
-  if (!src || !pano || width === 0) {
-    return (
-      <div className="hud-pano hud-pano--fallback" style={{ ['--horizon' as string]: `${horizonY}px` }}>
-        <span className="hud-pano-note">{src === undefined ? 'Loading panorama…' : 'Panorama not available offline. Run npm run fetch-panoramas'}</span>
-      </div>
-    )
-  }
+  if (!state || width === 0) return <div className="hud-pano" />
 
+  const { pano } = state
   // Scale so the visor shows `fovDeg` of the 360° image, with the horizon row at horizonY.
   const scale = width / ((fovDeg / 360) * pano.columns)
   const bgW = pano.columns * scale
@@ -79,9 +74,9 @@ export default function Panorama({ stop, headingDeg, fovDeg, width, height, hori
     <div
       className="hud-pano"
       role="img"
-      aria-label={`Perseverance panorama from sol ${stop.sol}`}
+      aria-label={state.real ? `Perseverance Navcam view from sol ${stop.sol}` : 'Drawn Mars scenery'}
       style={{
-        backgroundImage: `url("${src}")`,
+        backgroundImage: `url("${pano.url}")`,
         backgroundSize: `${bgW}px ${bgH}px`,
         backgroundPosition: `${x}px ${y}px`,
         height,

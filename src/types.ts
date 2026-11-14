@@ -17,9 +17,9 @@ export type Hazard = LatLon & {
   label?: string
 }
 
-/** A rover panorama: a 360° cylindrical image taken at a stop. */
+/** A 360° equirectangular panorama: left edge = azimuth 0° (north), one row = constant elevation. */
 export type Panorama = {
-  /** Path relative to https://mars.nasa.gov/mmgis-maps/M20/ (as in M20_waypoints.json). */
+  /** URL the browser loads, e.g. /data/panoramas/navcam_sol1210.jpg */
   url: string
   columns: number
   rows: number

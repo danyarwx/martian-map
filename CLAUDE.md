@@ -46,7 +46,7 @@ Next, in order:
 Helmet view (branch `feat/helmet-hud`):
 - `#hud` or the "Helmet view" tab opens it. Scripted 25 s walk: habitat (invented) → stops sol 1224, 1219 → Cheyava Falls, with a boulder-field hazard (invented) found on the way
 - Contract with the map/planner: `src/types.ts` (`Hazard`, `Stop`, `LatLon`...). `HelmetHUD` takes `onHazard(h)` (App keeps the list; MarsMap should draw it) and `replan(route, walkedM, hazard)` (defaults to a simple detour in `walkScript.ts` until the real planner exists)
-- Panoramas load from `public/data/panoramas/` (`npm run fetch-panoramas`), then NASA's server, then a plain backdrop. If the view looks rotated against the map, set `PANO_AZ_OFFSET_DEG` in `src/panels/hud/Panorama.tsx`
+- Panoramas: NASA's MMGIS panorama URLs (the `images` field in M20_waypoints.json) return 404. We stitch our own 360° views from Navcam raw images with `npm run build-panoramas` (Python, numpy + pillow) into `public/data/panoramas/` (committed, ~0.6 MB each). North comes from each image's attitude quaternion (checked against waypoint yaw). If an image fails to load, drawn scenery is shown instead. Rotation fix if ever needed: `PANO_AZ_OFFSET_DEG` in `src/panels/hud/Panorama.tsx`
 
 Folder ownership (to avoid merge conflicts):
 - Dev 1: `src/map/` (layers, controls, drawing the route)
@@ -82,7 +82,7 @@ Confirm every endpoint with a real request before building on it. Write down wha
 | Topography (global) | VERIFIED: `Mars_MGS_MOLA_ClrShade_merge_global_463m` (jpg, max z7) | Too coarse to route by on foot. Fine for context |
 | Topography (local, for routing) | HiRISE DTMs: https://www.uahirise.org/dtm/ | ~1 m/px. Derive slope from it to find no-go zones |
 | Rover route (Perseverance) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json` (559 segments) and `M20_waypoints.json` (708 points) | Standard GeoJSON [lon, lat, elev]. Waypoints include sol, elevation, rover pitch/roll/tilt, distance, and panorama URLs (relative to `https://mars.nasa.gov/mmgis-maps/M20/`). Use tilt for slope warnings and panoramas for POV images |
-| Ground-level photos | Perseverance raw images: https://mars.nasa.gov/mars2020/multimedia/raw-images/ | Attach photos to waypoints by sol |
+| Ground-level photos | VERIFIED 14 Nov: raw image JSON feed `https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&sol=N`. Each image has mastAz/mastEl, rover attitude quaternion (scalar first, rover→site) and a CAHVORE camera model | MMGIS panorama files (`Layers/mosaics/...`) are 404. `scripts/build_panoramas.py` stitches 360° views from the end-of-drive Navcam ring (5 pointings × 4 tiles) |
 | Geology | USGS Mars maps: https://astrogeology-usgs.hub.arcgis.com/pages/interactive-maps-mars | Geologic units for the science layer |
 | Route visual reference | https://science.nasa.gov/resource/curiositys-proposed-path-up-mount-sharp/ | Shows how NASA presents a route |
 | Atmosphere / radiation | Candidates: Perseverance MEDA, Curiosity REMS and RAD | Not confirmed yet. A static "typical conditions" panel with a cited source counts |

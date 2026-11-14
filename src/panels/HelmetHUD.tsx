@@ -77,6 +77,7 @@ export default function HelmetHUD({ onHazard, replan = detourAround }: Props) {
   const [, render] = useReducer((n: number) => n + 1, 0)
   const box = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
+  const [realImagery, setRealImagery] = useState(true)
 
   useLayoutEffect(() => {
     const el = box.current
@@ -207,7 +208,7 @@ export default function HelmetHUD({ onHazard, replan = detourAround }: Props) {
   const pose = { lat: here.lat, lon: here.lon, headingDeg: s.headingDeg }
   const next: Stop = WAYPOINTS.find((w) => !s.passed.has(w.id)) ?? CHEYAVA_FALLS
   const panoStop = nearestPanoramaStop(here)
-  const view = { headingDeg: s.headingDeg, fovDeg, width: size.w, height: size.h, horizonY: size.h * 0.48 }
+  const view = { headingDeg: s.headingDeg, fovDeg, width: size.w, height: size.h, horizonY: size.h * 0.42 }
   const walked = [...s.route.slice(0, here.nextIndex), { lat: here.lat, lon: here.lon }]
   const helmetHazards = s.hazards.filter((h) => h.source === 'helmet')
 
@@ -224,7 +225,15 @@ export default function HelmetHUD({ onHazard, replan = detourAround }: Props) {
         onPointerCancel={endDrag}
         onKeyDown={onKeyDown}
       >
-        <Panorama stop={panoStop} headingDeg={s.headingDeg} fovDeg={fovDeg} width={size.w} height={size.h} horizonY={view.horizonY} />
+        <Panorama
+          stop={panoStop}
+          headingDeg={s.headingDeg}
+          fovDeg={fovDeg}
+          width={size.w}
+          height={size.h}
+          horizonY={view.horizonY}
+          onSource={setRealImagery}
+        />
 
         {size.w > 0 && (
           <svg className="hud-svg" width={size.w} height={size.h} aria-hidden="true">
@@ -248,7 +257,11 @@ export default function HelmetHUD({ onHazard, replan = detourAround }: Props) {
         {!s.alert && helmetHazards.length > 0 && (
           <div className="hud-chip">{helmetHazards.length} hazard from helmet added to map</div>
         )}
-        <div className="hud-credit">Panorama: NASA/JPL-Caltech, Perseverance sol {panoStop.sol}</div>
+        <div className="hud-credit">
+          {realImagery
+            ? `View: NASA/JPL-Caltech, Perseverance Navcam, sol ${panoStop.sol}`
+            : 'Drawn scenery (rover image unavailable)'}
+        </div>
       </div>
 
       <div className="hud-controls">

@@ -1,29 +1,28 @@
 // The scripted demo walk for the helmet view: habitat → two rover stops → Cheyava Falls.
-// Stop positions and panoramas are real Perseverance data from public/data/M20_waypoints.json.
+// Stop positions are real Perseverance data (public/data/M20_waypoints.json); panoramas are stitched
+// from the rover's Navcam images at those stops (scripts/build_panoramas.py).
 // The habitat and the boulder field are invented for the demo story.
 import type { Hazard, LatLon, Stop, SuitStatus } from '../types'
 import { distanceM, offsetM, pathLengthM, pointAlong, toLocalM } from './geo'
-
-const PANO_BASE = 'https://mars.nasa.gov/mmgis-maps/M20/'
 
 export const HABITAT: Stop = { id: 'hab', name: 'Habitat', kind: 'habitat', lat: 18.4905, lon: 77.3072 } // invented
 
 export const STOP_1: Stop = {
   id: 'sol-1224', name: 'Stop 1', kind: 'stop', sol: 1224, tiltDeg: 3.5,
   lat: 18.49299917, lon: 77.30323824,
-  panorama: { url: 'Layers/mosaics/N_LRGB_1224_RZS_0561998_CYL_L_AUTOGENJ01.jpg', columns: 9292, rows: 2073, elZeroRow: 351.25 },
+  panorama: { url: '/data/panoramas/navcam_sol1224.jpg', columns: 3600, rows: 1000, elZeroRow: 250 },
 }
 
 export const STOP_2: Stop = {
   id: 'sol-1219', name: 'Stop 2', kind: 'stop', sol: 1219, tiltDeg: 1.1,
   lat: 18.4959853, lon: 77.30369792,
-  panorama: { url: 'Layers/mosaics/N_LRGB_1219_RZS_0560784_CYL_L_AUTOGENJ02.jpg', columns: 9292, rows: 2033, elZeroRow: 310.701 },
+  panorama: { url: '/data/panoramas/navcam_sol1219.jpg', columns: 3600, rows: 1000, elZeroRow: 250 },
 }
 
 export const CHEYAVA_FALLS: Stop = {
   id: 'sol-1210', name: 'Cheyava Falls', kind: 'target', sol: 1210, tiltDeg: 17.0,
   lat: 18.49748444, lon: 77.30519089,
-  panorama: { url: 'Layers/mosaics/N_LRGB_1210_RZS_0560000_CYL_L_AUTOGENJ03.jpg', columns: 9292, rows: 2542, elZeroRow: 543.438 },
+  panorama: { url: '/data/panoramas/navcam_sol1210.jpg', columns: 3600, rows: 1000, elZeroRow: 250 },
 }
 
 export const STOPS: Stop[] = [HABITAT, STOP_1, STOP_2, CHEYAVA_FALLS]
@@ -43,12 +42,10 @@ export const SCRIPTED_HAZARD: Hazard = {
 /** The helmet notices the boulders when it is this close. */
 export const DETECTION_RANGE_M = 32
 
-/** Panorama files: local copy first (scripts/fetch_panoramas.sh), then NASA's server. */
-export function panoramaSources(stop: Stop): string[] {
-  if (!stop.panorama) return []
-  const file = stop.panorama.url.split('/').pop()
-  return [`/data/panoramas/${file}`, PANO_BASE + stop.panorama.url]
-}
+/**
+ * Panoramas are stitched from Perseverance Navcam raw images by scripts/build_panoramas.py
+ * (NASA's own MMGIS panorama files now return 404). They ship with the app, so they work offline.
+ */
 
 /** The rover stop with a panorama nearest to a point. */
 export function nearestPanoramaStop(p: LatLon): Stop {
