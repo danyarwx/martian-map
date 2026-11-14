@@ -3,7 +3,9 @@
 import * as THREE from 'three'
 import type { LatLon } from '../../types.ts'
 import type { Pose } from '../contracts.ts'
+import { buildFarTerrain, FAR_HOLE_M, updateFarTerrain } from './farTerrain.ts'
 import { HeightField, type CoarseGrid } from './heightField.ts'
+import { Atmosphere } from './sky.ts'
 import { makeDetailNormalMap } from './terrainMesh.ts'
 import type { TileIndex } from './tileGrid.ts'
 import { TileStreamer } from './tiles.ts'
@@ -22,6 +24,8 @@ export class World {
   readonly tiles: TileStreamer
   private detail: THREE.DataTexture
   private terrainGroup = new THREE.Group()
+  readonly atmosphere: Atmosphere
+  private far: THREE.Mesh
 
   constructor(init: WorldInit) {
     this.heights = new HeightField(init.index, init.origin, init.coarse)
@@ -29,13 +33,9 @@ export class World {
     this.terrainGroup.name = 'near terrain'
     this.scene.add(this.terrainGroup)
 
-    const haze = new THREE.Color('#c9a07a')
-    this.scene.background = haze
-    this.scene.fog = new THREE.Fog(haze, 200, 2500)
-    this.scene.add(new THREE.HemisphereLight('#f3d6b8', '#5a3a26', 1.1))
-    const sun = new THREE.DirectionalLight('#fff1dc', 2.2)
-    sun.position.set(300, 500, 200)
-    this.scene.add(sun)
+    this.atmosphere = new Atmosphere(this.scene, init.renderer, { latDeg: init.origin.lat })
+    this.far = buildFarTerrain(init.coarse, init.origin)
+    this.scene.add(this.far)
 
     this.tiles = new TileStreamer({
       index: init.index,
@@ -51,6 +51,8 @@ export class World {
   /** Per frame, with the eye pose in local ENU. */
   update(pose: Pose): void {
     this.tiles.update(pose.x, pose.y)
+    this.atmosphere.update(pose)
+    updateFarTerrain(this.far, pose.x, pose.y, this.tiles.readyAround(pose.x, pose.y, FAR_HOLE_M))
   }
 
   /** True when the ground around (x, y) is built. */
@@ -66,6 +68,7 @@ export class World {
   dispose(): void {
     this.tiles.dispose()
     this.detail.dispose()
+    this.atmosphere.dispose()
     this.scene.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.geometry.dispose()
