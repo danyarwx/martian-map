@@ -85,6 +85,12 @@ interface Props {
   onEditStep: (step: number | null) => void
 }
 
+/** One line under each route choice saying what it means. */
+const ROUTE_MEANS: Record<RouteProfile, string> = {
+  fast: 'Shortest time outside',
+  gentle: 'Less steep ground, may take longer',
+}
+
 /** The three things the summary keeps behind a button. */
 type Detail = 'depart' | 'route' | 'safety'
 const DETAIL_TITLES: Record<Detail, string> = { depart: 'When to leave', route: 'Route details', safety: 'Safety' }
@@ -385,13 +391,14 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         </p>
       )}
       {plans && routed && !plans.gentleIsSame && (
-        <div className="choice choice--inset" role="group" aria-label="Which route">
+        <div className="choice choice--inset choice--route" role="group" aria-label="Which route">
           {(['fast', 'gentle'] as const).map((id) => {
             const option = plans[id]
             return (
               <button key={id} type="button" aria-pressed={id === p.profile} onClick={() => p.onProfile(id)}>
                 {!option.fitsOneEva && <em className="tag">over {m.maxEvaHours} h</em>}
                 <strong>{ROUTE_LABELS[id]}</strong>
+                <span className="means">{ROUTE_MEANS[id]}</span>
                 <small>
                   {duration(option.totalMinutes)} · {Math.round(option.steepM / 10) * 10} m steep
                 </small>
@@ -474,15 +481,10 @@ function StopsPanel(p: Props) {
         <h2 className="step">
           Stops <span className="num">{p.selected.size}/{p.maxSelected}</span>
         </h2>
-        <button
-          type="button"
-          className={`btn btn--sm${p.adding ? ' btn--active' : ''}`}
-          aria-pressed={p.adding}
-          onClick={() => p.onAdding(!p.adding)}
-        >
-          {p.adding ? 'Done' : '+ Add point'}
-        </button>
       </div>
+      <button type="button" className="btn btn--add" aria-pressed={p.adding} onClick={() => p.onAdding(!p.adding)}>
+        {p.adding ? 'Done adding points' : '+ Add your own point on the map'}
+      </button>
       {p.adding && <p className="adding-hint">Click the map to place points. Press Done (or Esc) when you have them all.</p>}
       {p.notice?.at === 'point' && <p className="field-error" role="alert">{p.notice.text}</p>}
 
@@ -516,8 +518,17 @@ function StopsPanel(p: Props) {
       )}
 
       <ul className="stops">
-        {p.site.targets.map((t) => row(t, false))}
-        {p.custom.map((t) => row(t, true))}
+        {(() => {
+          // Chosen stops first, the latest choice on top (a Set keeps the order things were added in).
+          // The rest keep their original order, so an unticked stop goes back to its place.
+          const all: [Target, boolean][] = [...p.site.targets.map((t): [Target, boolean] => [t, false]), ...p.custom.map((t): [Target, boolean] => [t, true])]
+          const byId = new Map(all.map((e) => [e[0].id, e]))
+          const chosen = [...p.selected]
+            .reverse()
+            .map((id) => byId.get(id))
+            .filter((e): e is [Target, boolean] => e !== undefined)
+          return [...chosen, ...all.filter(([t]) => !p.selected.has(t.id))].map(([t, custom]) => row(t, custom))
+        })()}
       </ul>
 
       <button type="button" className="btn btn--sm" aria-expanded={typing} onClick={() => setTyping(!typing)} style={{ alignSelf: 'flex-start' }}>
@@ -601,16 +612,28 @@ function DeparturePanel({
   const isBest = chosen.start === best.start
   return (
     <Fold title="When to leave" hint={`${clock(chosen.start)} → ${clock(chosen.end)}`} open={open}>
-      <div className="panel-head">
-        <p>
-          {isBest ? 'Best departure' : 'Your departure'}: <strong className="num">{clock(chosen.start)}</strong>, back at{' '}
-          <strong className="num">{clock(chosen.end)}</strong>.
-        </p>
-        {custom && !isBest && (
-          <button type="button" className="btn btn--sm" onClick={() => onStart(null)}>
-            Use best · {clock(best.start)}
-          </button>
-        )}
+      <div className="depart-head">
+        <div className="depart-times">
+          <div>
+            <span>{isBest ? 'Best departure' : 'Your departure'}</span>
+            <strong className="num">{clock(chosen.start)}</strong>
+          </div>
+          <div>
+            <span>Back at the habitat</span>
+            <strong className="num">{clock(chosen.end)}</strong>
+          </div>
+        </div>
+        {/* Always in the layout, only hidden, so sliding past the best time does not make the panel jump. */}
+        <button
+          type="button"
+          className="btn btn--sm"
+          style={{ visibility: custom && !isBest ? 'visible' : 'hidden' }}
+          aria-hidden={!(custom && !isBest)}
+          tabIndex={custom && !isBest ? 0 : -1}
+          onClick={() => onStart(null)}
+        >
+          Use best · {clock(best.start)}
+        </button>
       </div>
       <svg className="day" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Day chart: excursion from ${clock(chosen.start)} to ${clock(chosen.end)}, daylight ${clock(DAY.sunrise)} to ${clock(DAY.sunset)}, gust hours ${clock(DAY.gustsFrom)} to ${clock(DAY.gustsTo)}`}>
         <rect x="0" y="0" width={W} height="64" fill="var(--bg)" rx="6" />

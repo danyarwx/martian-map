@@ -200,12 +200,6 @@ export default function App() {
       <Landing
         site={site}
         view={views[site.habitat.id]}
-        onDemo={() => {
-          demo()
-          setFocusId(null)
-          setEditStep(null)
-          openPlanner()
-        }}
         onOwn={() => {
           setNotice(null)
           setSelected(new Set())

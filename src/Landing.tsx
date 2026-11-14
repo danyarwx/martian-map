@@ -28,13 +28,11 @@ const STEPS: { title: string; text: string }[] = [
 export default function Landing({
   site,
   view,
-  onDemo,
   onOwn,
 }: {
   site: SiteConfig
   /** Ground photo at the habitat, once the photo index has loaded. */
   view?: StopView
-  onDemo: () => void
   onOwn: () => void
 }) {
   return (
@@ -65,11 +63,8 @@ export default function Landing({
               against slope, daylight and radiation, and shows what each stop looks like from the ground.
             </p>
             <div className="landing-actions">
-              <button type="button" className="btn btn--primary" onClick={onDemo}>
-                Try the demo walk (3 stops)
-              </button>
-              <button type="button" className="btn" onClick={onOwn}>
-                Plan my own route
+              <button type="button" className="btn btn--primary btn--cta" onClick={onOwn}>
+                Plan my route
               </button>
             </div>
           </div>
