@@ -133,6 +133,17 @@ interface Footing {
   secPerM: Float32Array
   /** Seconds on foot back to the habitat per cell, or null when not asked for. */
   homeSec: Float32Array | null
+  /** Extra no-go cells (1 = blocked), or undefined for none. */
+  blocked?: Uint8Array
+}
+
+/** Optional inputs shared by `planRoute`, `planRoutes` and `planFrom`. */
+export interface PlanOptions {
+  /**
+   * Extra no-go cells on top of the slope limit: one byte per terrain cell (row 0 north, index
+   * row × width + col), 1 = blocked. The helmet sets it for hazards it found on the ground.
+   */
+  blocked?: Uint8Array
 }
 
 /** A stop on no-go ground is moved to the nearest passable cell within about 50 m. */
@@ -142,14 +153,15 @@ function findFooting(
   habitat: Target,
   targets: Target[],
   homeSec: Float32Array | null = null,
+  blocked?: Uint8Array,
 ): Footing {
-  const secPerM = buildCostGrid(t, m)
+  const secPerM = buildCostGrid(t, m, undefined, blocked)
   const stops = [habitat, ...targets]
   const cells = stops.map((s) => {
     const { col, row } = toCell(t, s)
     return snapToPassable(secPerM, t.width, t.height, col, row)
   })
-  return { stops, cells, secPerM, homeSec }
+  return { stops, cells, secPerM, homeSec, blocked }
 }
 
 /**
@@ -157,8 +169,8 @@ function findFooting(
  * or least slope-weighted time) and the visiting order minimises the same thing over the whole trip.
  * The plan reports real times either way.
  */
-function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, secPerM, homeSec }: Footing): RoutePlan {
-  const cost = profile === 'fast' ? secPerM : buildCostGrid(t, m, (deg) => gentlePenalty(m, deg))
+function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, secPerM, homeSec, blocked }: Footing): RoutePlan {
+  const cost = profile === 'fast' ? secPerM : buildCostGrid(t, m, (deg) => gentlePenalty(m, deg), blocked)
   const fastest = secondsPerMetre(m, 0)
 
   // Best leg between every pair of stops. Cost is symmetric, so one search serves both directions.
@@ -239,6 +251,7 @@ function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, 
  * Plans a round trip from the habitat through the chosen targets and back.
  * 'fast' takes the least time; 'gentle' keeps to gentler ground under the same slope limit, even when
  * that takes longer. Targets with no safe path are reported, not visited.
+ * `options.blocked` adds no-go cells (see PlanOptions).
  */
 export function planRoute(
   t: Terrain,
@@ -246,13 +259,15 @@ export function planRoute(
   habitat: Target,
   targets: Target[],
   profile: RouteProfile = 'fast',
+  options: PlanOptions = {},
 ): RoutePlan {
-  return planOn(t, m, profile, findFooting(t, m, habitat, targets))
+  return planOn(t, m, profile, findFooting(t, m, habitat, targets, null, options.blocked))
 }
 
 /**
  * Plans the fastest and the gentlest round trip together, and says whether they differ enough to offer a choice.
  * With `homeSec` (see walkback.ts) every leg also carries the walking time straight back to the habitat.
+ * `options.blocked` adds no-go cells (see PlanOptions).
  */
 export function planRoutes(
   t: Terrain,
@@ -260,8 +275,9 @@ export function planRoutes(
   habitat: Target,
   targets: Target[],
   homeSec: Float32Array | null = null,
+  options: PlanOptions = {},
 ): RoutePlans {
-  const footing = findFooting(t, m, habitat, targets, homeSec)
+  const footing = findFooting(t, m, habitat, targets, homeSec, options.blocked)
   const fast = planOn(t, m, 'fast', footing)
   let gentle = planOn(t, m, 'gentle', footing)
   // A round trip costs the same in both directions: show both routes in the same direction so they compare stop by stop.
@@ -278,4 +294,93 @@ export function planRoutes(
     Math.abs(gentle.maxSlopeDeg - fast.maxSlopeDeg) <= SAME_WITHIN_DEG &&
     Math.abs(gentle.steepM - fast.steepM) <= SAME_WITHIN_STEEP_M
   return { fast, gentle, gentleIsSame }
+}
+
+/** Id `planFrom` gives the start point in `RoutePlan.order` and in the first leg's `fromId`. */
+export const PLAN_FROM_START_ID = 'start'
+
+/**
+ * Re-plans an excursion already under way: from `from` (where the crew is now) through `stops` in the
+ * GIVEN order (no reordering) and back to the habitat. Used by the helmet after it finds the route blocked.
+ *
+ * - `from` is snapped to the nearest passable cell within about 50 m, like the stops: the crew usually
+ *   stands right next to the hazard that blocked the route. With nothing passable there it throws.
+ * - The plan's `order` starts with the synthetic id `PLAN_FROM_START_ID` ('start'), then the stops
+ *   reached, then the habitat: `legs[k]` goes from `order[k]` to `order[k + 1]`.
+ * - A stop with nowhere to stand or no safe path from the previous point is skipped and reported in
+ *   `unreachable`, as in `planRoute`; the route goes on from the previous point to the next stop.
+ * - When no safe path leads back to the habitat, the plan ends at the last point reached and the
+ *   habitat's id is listed in `unreachable` (with `habitatNoFooting` when it has nowhere to stand).
+ * - `stopMinutes` counts every stop reached. `options.homeSec` (see walkback.ts) fills `walkHomeMin`.
+ */
+export function planFrom(
+  t: Terrain,
+  m: Mobility,
+  from: LatLon,
+  stops: Target[],
+  habitat: Target,
+  options: PlanOptions & { profile?: RouteProfile; homeSec?: Float32Array | null } = {},
+): RoutePlan {
+  const profile = options.profile ?? 'fast'
+  const homeSec = options.homeSec ?? null
+  const secPerM = buildCostGrid(t, m, undefined, options.blocked)
+  const cost = profile === 'fast' ? secPerM : buildCostGrid(t, m, (deg) => gentlePenalty(m, deg), options.blocked)
+  const fastest = secondsPerMetre(m, 0)
+  const snap = (p: LatLon) => {
+    const { col, row } = toCell(t, p)
+    return snapToPassable(secPerM, t.width, t.height, col, row)
+  }
+
+  const startCell = snap(from)
+  if (startCell < 0) throw new Error('No passable ground near the start point')
+
+  const order = [PLAN_FROM_START_ID]
+  const routeLegs: RouteLeg[] = []
+  const unreachable: string[] = []
+  const unreachableWhy: Record<string, UnreachableReason> = {}
+  let at = startCell
+  let atId = PLAN_FROM_START_ID
+  let visited = 0
+  const habitatCell = snap(habitat)
+
+  for (let k = 0; k <= stops.length; k++) {
+    const isHome = k === stops.length
+    const s = isHome ? habitat : stops[k]
+    const cell = isHome ? habitatCell : snap(s)
+    const found =
+      cell < 0 ? null : findPath(cost, t.width, t.height, t.cellMetersX, t.cellMetersY, at, cell, fastest)
+    if (!found) {
+      unreachable.push(s.id)
+      unreachableWhy[s.id] = cell < 0 ? 'no-footing' : 'no-path'
+      continue
+    }
+    const seconds = profile === 'fast' ? found.seconds : travelSeconds(t, secPerM, found.cells)
+    routeLegs.push(legFromCells(t, m, profile, found.cells, seconds, atId, s.id, homeSec))
+    order.push(s.id)
+    if (!isHome) visited++
+    at = cell
+    atId = s.id
+  }
+
+  const sum = (f: (l: RouteLeg) => number) => routeLegs.reduce((s, l) => s + f(l), 0)
+  const travelMinutes = sum((l) => l.minutes)
+  const stopMinutes = visited * m.stopMinutes
+  const totalMinutes = travelMinutes + stopMinutes
+  return {
+    mobility: m.id,
+    profile,
+    order,
+    legs: routeLegs,
+    unreachable,
+    unreachableWhy,
+    habitatNoFooting: habitatCell < 0,
+    distanceM: sum((l) => l.distanceM),
+    travelMinutes,
+    stopMinutes,
+    totalMinutes,
+    ascentM: sum((l) => l.ascentM),
+    maxSlopeDeg: routeLegs.reduce((s, l) => Math.max(s, l.maxSlopeDeg), 0),
+    steepM: sum((l) => l.steepM),
+    fitsOneEva: totalMinutes <= m.maxEvaHours * 60,
+  }
 }
