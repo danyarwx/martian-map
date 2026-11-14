@@ -59,3 +59,78 @@
 .helmet-flag {
   color: var(--hz-sand);
 }
+.helmet-menu {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--hud-dim);
+  border-radius: 10px;
+  background: rgba(10, 18, 18, 0.88);
+  color: var(--hud);
+  font-size: 13px;
+}
+.helmet-menu h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.helmet-menu ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.helmet-menu button {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-dim);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--hud);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.helmet-menu button:hover,
+.helmet-menu button:focus-visible {
+  background: rgba(143, 227, 214, 0.15);
+  outline: none;
+}
+.helmet-menu-slider {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.helmet-menu-slider input {
+  width: 100%;
+  accent-color: var(--hud);
+}
+.helmet-menu-note {
+  margin: 10px 0 0;
+  color: var(--hud-dim);
+  font-size: 11px;
+}
+.helmet-menu dl {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.helmet-menu dl > div {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 8px;
+}
+.helmet-menu dt {
+  color: var(--text, #e8ecf1);
+}
+.helmet-menu dd {
+  margin: 0;
+}
