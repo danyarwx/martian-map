@@ -40,6 +40,16 @@ export interface ObstacleOptions {
   smallMaxWidthM: number
   /** A small rock's height above the ground right around it must reach this, metres (a bump of the ground does not). */
   smallMinHeightM: number
+  /** A group that made no rock is looked at again above a level this much higher, metres, … */
+  retryStepM: number
+  /** … and its pieces then need this height above the ground in the ring round them, metres. */
+  retryMinHeightM: number
+  /** Take heights from the local floor where it lies below the fitted plane (see step 2b). */
+  floorCorrection: boolean
+  /** … but only where it lies at least this far below, metres (less is stereo noise). */
+  floorMinM: number
+  /** … and only this near, metres: farther away the heights are too noisy to move. */
+  floorMaxRangeM: number
   /** Neighbouring rock pixels belong together when their depths differ by less than linkM + linkRel · depth. */
   linkM: number
   linkRel: number
@@ -65,6 +75,11 @@ export const OBSTACLE_DEFAULTS: ObstacleOptions = {
   smallMaxRangeM: 8,
   smallMaxWidthM: 1.2,
   smallMinHeightM: 0.11,
+  retryStepM: 0.04,
+  retryMinHeightM: 0.05,
+  floorCorrection: true,
+  floorMinM: 0.12,
+  floorMaxRangeM: 6,
   linkM: 0.2,
   linkRel: 0.05,
   splitRatio: 0.6,
@@ -89,6 +104,8 @@ interface PixelBuffers {
   /** Per image column: tallest rock pixel of the current group, and the piece the column belongs to. */
   colMax: Float32Array
   colPiece: Int32Array
+  /** Pixels waiting for a second look at a higher level. */
+  pending: Int32Array
 }
 
 export interface ObstacleContext {
@@ -101,6 +118,7 @@ export interface ObstacleContext {
   readonly touched: Int32Array
   readonly proj: Float64Array
   px: PixelBuffers | null
+  floor?: { floorHist: Uint16Array; floorCell: Float32Array; floorCount: Int32Array }
 }
 
 export function createObstacleContext(ground: GroundContext, opts: Partial<ObstacleOptions> = {}): ObstacleContext {
@@ -114,6 +132,15 @@ export function createObstacleContext(ground: GroundContext, opts: Partial<Obsta
     proj: new Float64Array(3),
     px: null,
   }
+}
+
+const FLOOR_BINS = 16
+const FLOOR_BIN_M = 0.05
+const FLOOR_RANGE_M = 0.4
+
+function floorBuffers(ctx: ObstacleContext, nCells: number) {
+  ctx.floor ??= { floorHist: new Uint16Array(nCells * FLOOR_BINS), floorCell: new Float32Array(nCells), floorCount: new Int32Array(nCells) }
+  return ctx.floor
 }
 
 function pixelBuffers(ctx: ObstacleContext, width: number, height: number): PixelBuffers {
@@ -130,6 +157,7 @@ function pixelBuffers(ctx: ObstacleContext, width: number, height: number): Pixe
     heights: new Float32Array(n),
     colMax: new Float32Array(width),
     colPiece: new Int32Array(width),
+    pending: new Int32Array(n * 3),
   }
   return ctx.px
 }
@@ -202,7 +230,7 @@ export function detectObstacles(
   const { cellM } = ground.opts
   const { width: W, height: H, fx, fy, cx, cy, baselineM } = intr
   const px = pixelBuffers(ctx, W, H)
-  const { hag, depth, wx, wy, label, queue, heights, colMax, colPiece } = px
+  const { hag, depth, wx, wy, label, queue, heights, colMax, colPiece, pending } = px
   const out: Detection[] = []
 
   // 1. Per-cell counts from the cloud: which cells show ground, which show something above the step.
@@ -244,18 +272,73 @@ export function detectObstacles(
     }
   }
 
-  // 3. Groups of rock pixels, 4-connected across small depth steps.
-  const minH = opts.rockMinHagM
-  const hazardM = opts.stepM - opts.hazardMarginM
-  const rock = (i: number) => hag[i] > minH
   const cellAt = (i: number) => {
     const col = Math.floor((wx[i] - patch.x0) / cellM)
     const row = Math.floor((patch.y0 - wy[i]) / cellM)
     return col >= 0 && col < cols && row >= 0 && row < rows ? row * cols + col : -1
   }
+
+  // 2b. Where the fitted plane rides above the real ground (a bed of stones pulls it up, or a near block has to
+  //     borrow its neighbours' planes), heights read too low and rocks vanish. Find the local floor: per 0.5 m
+  //     cell the 20th percentile of the heights (5 cm bins), then the lowest floor in the 3 × 3 cells around.
+  //     Where that is below the plane, heights are taken from it instead. It only ever raises a height.
+  if (opts.floorCorrection) {
+    const { floorHist, floorCell, floorCount } = floorBuffers(ctx, nCells)
+    floorHist.fill(0)
+    floorCount.fill(0)
+    for (let i = 0; i < px.n; i++) {
+      const h = hag[i]
+      if (!(h === h)) continue
+      const c = cellAt(i)
+      if (c < 0) continue
+      const bin = Math.min(FLOOR_BINS - 1, Math.max(0, Math.floor((h + FLOOR_RANGE_M) / FLOOR_BIN_M)))
+      floorHist[c * FLOOR_BINS + bin]++
+      floorCount[c]++
+    }
+    for (let c = 0; c < nCells; c++) {
+      const n = floorCount[c]
+      if (n < 20) {
+        floorCell[c] = NaN
+        continue
+      }
+      const need = Math.max(6, n * 0.2)
+      let acc = 0
+      let bin = 0
+      for (; bin < FLOOR_BINS; bin++) {
+        acc += floorHist[c * FLOOR_BINS + bin]
+        if (acc >= need) break
+      }
+      floorCell[c] = bin * FLOOR_BIN_M - FLOOR_RANGE_M + FLOOR_BIN_M / 2
+    }
+    for (let i = 0; i < px.n; i++) {
+      if (!(hag[i] === hag[i]) || depth[i] > opts.floorMaxRangeM) continue
+      const c = cellAt(i)
+      if (c < 0) continue
+      const r = (c / cols) | 0
+      const col = c - r * cols
+      let low = 0
+      for (let dr = -1; dr <= 1; dr++) {
+        const rr = r + dr
+        if (rr < 0 || rr >= rows) continue
+        for (let dc = -1; dc <= 1; dc++) {
+          const cc = col + dc
+          if (cc < 0 || cc >= cols) continue
+          const f = floorCell[rr * cols + cc]
+          if (f < low) low = f
+        }
+      }
+      if (depth[i] <= opts.floorMaxRangeM && low < -opts.floorMinM) hag[i] -= low
+    }
+  }
+
+  // 3. Groups of rock pixels, 4-connected across small depth steps.
+  const minH = opts.rockMinHagM
+  const hazardM = opts.stepM - opts.hazardMarginM
   let next = 1
-  for (let seed = 0; seed < px.n; seed++) {
-    if (label[seed] || !rock(seed)) continue
+  let pendEnd = 0
+  const stack: [number, number, number][] = []
+  const group = (seed: number, thr: number): void => {
+    if (label[seed] || !(hag[seed] > thr)) return
     const id = next++
     let qe = 0
     queue[qe++] = seed
@@ -268,7 +351,7 @@ export function detectObstacles(
       if (u > gu1) gu1 = u
       const tol = opts.linkM + opts.linkRel * depth[i]
       const tryPixel = (j: number) => {
-        if (label[j] || !rock(j) || Math.abs(depth[j] - depth[i]) > tol) return
+        if (label[j] || !(hag[j] > thr) || Math.abs(depth[j] - depth[i]) > tol) return
         label[j] = id
         queue[qe++] = j
       }
@@ -277,7 +360,9 @@ export function detectObstacles(
       if (i >= W) tryPixel(i - W)
       if (i < px.n - W) tryPixel(i + W)
     }
-    if (qe < Math.min(opts.minPixels, opts.minSmallPixels)) continue
+    if (qe < Math.min(opts.minPixels, opts.minSmallPixels)) return
+    let emitted = 0
+    let groupDepth = 0
 
     // 4. Cut the group where its height profile dips: rocks standing side by side.
     for (let u = gu0; u <= gu1; u++) colMax[u] = 0
@@ -383,12 +468,14 @@ export function detectObstacles(
       const small =
         !hazard &&
         ringN >= 6 &&
-        heightM - ringSum / ringN >= opts.smallMinHeightM &&
+        heightM - ringSum / ringN >= (thr > minH ? opts.retryMinHeightM : opts.smallMinHeightM) &&
         heightM <= opts.stepM + 0.1 &&
         m >= opts.minSmallPixels &&
         meanDepth <= opts.smallMaxRangeM &&
         ((u1 - u0 + 1) * meanDepth) / fx <= opts.smallMaxWidthM
+      groupDepth = meanDepth
       if (!hazard && !small) continue
+      emitted++
       // Centre = mean of the rock's pixels (its visible face); the extent comes from the image width, because stray
       // pixels at a rock's edge (stereo smears a little there) stretch a world-space box.
       const centreX = sumX / m
@@ -446,9 +533,27 @@ export function detectObstacles(
         groundZ: Number.isFinite(gz) ? gz : undefined,
       })
     }
+    // 6. A low, wide group that made no rock (a bed of stones, their bases touching): look at it again above a
+    //    higher level, where each stone's top is its own group.
+    const up = thr + opts.retryStepM
+    if (!emitted && qe >= opts.minSmallPixels && up <= opts.stepM - opts.retryStepM && groupDepth <= opts.smallMaxRangeM && pendEnd + qe <= pending.length) {
+      const start = pendEnd
+      for (let q = 0; q < qe; q++) {
+        const i = queue[q]
+        if (!(hag[i] > up)) continue
+        label[i] = 0
+        pending[pendEnd++] = i
+      }
+      if (pendEnd > start) stack.push([start, pendEnd, up])
+    }
+  }
+  for (let seed = 0; seed < px.n; seed++) group(seed, minH)
+  while (stack.length) {
+    const [a, b, thr] = stack.pop()!
+    for (let k = a; k < b; k++) group(pending[k], thr)
   }
 
-  // 6. Seen ground with nothing on it is safe. More ground points, surer.
+  // 7. Seen ground with nothing on it is safe. More ground points, surer.
   for (let c = 0; c < nCells; c++) {
     if (patch.cls[c] !== HAZARD.unseen || highCount[c] >= opts.minPoints || !groundCount[c]) continue
     patch.cls[c] = HAZARD.safe
