@@ -12,7 +12,8 @@ import { GuideKeeper } from './nav/guide.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
 import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
-import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
+import { SceneOverlay } from './hud/SceneOverlay.ts'
+import { RockTracks } from './mapping/rockTracks.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
 import { CV_MAX_DISP, CvRig } from './sim/cvRig.ts'
@@ -156,7 +157,9 @@ export class HelmetSession {
   private localPlanner = new LocalPlanner()
   /** Keeps the shown guide steady: the planned line while it is clear, one kept detour round hazards (nav/guide.ts). */
   private keeper = new GuideKeeper()
-  private guideLine: GuideLine
+  /** Rocks the CV found, remembered across frames, for the outlines in the view. */
+  readonly rocks = new RockTracks()
+  private overlay: SceneOverlay
   private decider: ReplanDecider
   private replanner: ReplanClient
   private replanAt = 0
@@ -202,7 +205,6 @@ export class HelmetSession {
     host.appendChild(renderer.domElement)
     this.renderer = renderer
     this.camera = new THREE.PerspectiveCamera(70, host.clientWidth / Math.max(1, host.clientHeight), 0.1, 6000)
-    this.camera.layers.enable(HUD_LAYER)
 
     this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs, planLegs: standIn ? undefined : entry.plan.legs })
     const heights = this.world.heights
@@ -225,7 +227,7 @@ export class HelmetSession {
       const stopsBefore = entry.legIndex * MOBILITY[entry.plan.mobility].stopMinutes
       this.elapsedS = 60 * (before + stopsBefore + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
     }
-    this.guideLine = new GuideLine(this.world.scene)
+    this.overlay = new SceneOverlay(host)
     this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
     this.replanner = new ReplanClient(JEZERO.terrain)
@@ -258,6 +260,7 @@ export class HelmetSession {
 
     this.ro = new ResizeObserver(() => {
       renderer.setSize(host.clientWidth, host.clientHeight)
+      this.overlay.resize(host.clientWidth, host.clientHeight)
       this.camera.aspect = host.clientWidth / Math.max(1, host.clientHeight)
       this.camera.updateProjectionMatrix()
     })
@@ -274,7 +277,7 @@ export class HelmetSession {
     this.setLeg(t.legIndex)
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, t.at))
     this.guide = null
-    this.guideLine.set([], this.ground.heightAt, false)
+    this.rocks.clear()
     this.hudAt = 0
   }
 
@@ -307,6 +310,7 @@ export class HelmetSession {
     this.cvCount++
     this.lastCv = { result, pose }
     this.hazards.fuse(result)
+    this.rocks.update(result.detections, performance.now(), this.pose)
     this.navigate()
     for (const cb of this.cvListeners) cb(this.lastCv)
   }
@@ -325,7 +329,6 @@ export class HelmetSession {
     const fresh = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
     const guide = this.keeper.update(fresh, this.hazards.grid, this.track, pose.x, pose.y)
     this.guide = guide
-    this.guideLine.set(guide.path, this.ground.heightAt, guide.blocked)
 
     // next leg when this one is walked
     if (remainingM(this.track, guide.fix.s) < ARRIVE_M && guide.fix.distM < 2 * ARRIVE_M) {
@@ -452,7 +455,7 @@ export class HelmetSession {
   dispose(): void {
     this.renderer.setAnimationLoop(null)
     this.replanner.dispose()
-    this.guideLine.dispose()
+    this.overlay.dispose()
     this.cv.terminate()
     this.rig.dispose()
     this.cvListeners.clear()
@@ -485,6 +488,17 @@ export class HelmetSession {
     this.camera.position.set(eye.x, eye.y, eye.z)
     this.camera.lookAt(eye.x + d.x, eye.y + d.y, eye.z + d.z)
     this.renderer.render(world.scene, this.camera)
+    this.overlay.draw({
+      camera: this.camera,
+      pose,
+      rocks: this.rocks.tracks,
+      grid: this.hazards.grid,
+      gridVersion: this.hazards.version,
+      path: this.guide?.path ?? [],
+      guide: this.guide?.blocked ? 'blocked' : this.keeper.mode === 'detour' ? 'detour' : 'route',
+      heightAt: this.ground.heightAt,
+      now: performance.now(),
+    })
 
     // CV tick: both eyes → pixels → worker. One frame in flight; a busy worker means this tick is skipped.
     if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy) {
