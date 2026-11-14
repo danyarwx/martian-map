@@ -101,7 +101,7 @@ export function runFrame(p: CvPipeline, frame: CvFrame): CvResult {
   const disparity = computeDisparity(p.stereo, frame.left, frame.right)
   backProject(disparity, intr, pose, p.cloud)
   fitGround(p.ground, p.cloud, pose)
-  const rocks = detectObstacles(p.obstacles, p.ground, p.cloud, intr, pose)
+  const rocks = detectObstacles(p.obstacles, p.ground, p.cloud, intr, pose, disparity)
   const slopes = detectSlopes(p.slope, p.ground, p.cloud, pose)
   const sand = (p.opts.sandHook ?? noSand)(frame, p)
   groundCellHeights(p.ground, p.cloud, pose, p.heights, p.drop.opts)

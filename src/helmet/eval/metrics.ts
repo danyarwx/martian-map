@@ -45,7 +45,7 @@ export interface RockScore {
  * rock standing ≥ 0.30 m within matchRadius.
  */
 export function scoreRocks(visible: readonly TruthRock[], nearby: readonly TruthRock[], detections: readonly Detection[]): RockScore {
-  const rocks = detections.filter((d) => d.kind === 'rock')
+  const rocks = detections.filter((d) => d.kind === 'rock' && d.level !== 'small')
   const near = (r: TruthRock, d: Detection) => Math.hypot(d.x - r.x, d.y - r.y) <= matchRadius(r)
   const foundFlags = visible.map((r) => rocks.some((d) => near(r, d)))
   const scored = rocks.filter((d) => d.distanceM >= ROCK_NEAR_M && d.distanceM <= ROCK_FAR_M)
@@ -63,6 +63,34 @@ export function scoreRocks(visible: readonly TruthRock[], nearby: readonly Truth
     trueFlags,
     scored,
     onLowRock,
+  }
+}
+
+/** Small rocks (trip risks) are scored between these standing heights and up to this distance, metres. */
+export const SMALL_MIN_STAND_M = 0.1
+export const SMALL_FAR_M = 8
+
+export interface SmallRockScore {
+  truth: number
+  found: number
+  detections: number
+  detectionsTrue: number
+}
+
+/**
+ * `visible`: rocks standing 0.10–0.30 m, 2–8 m away, in view. Found = a rock detection of either level within
+ * matchRadius (a 0.28 m rock read as 0.31 m is still found). Precision = 'small' detections 2–8 m away with any
+ * rock standing ≥ 0.08 m within matchRadius.
+ */
+export function scoreSmallRocks(visible: readonly TruthRock[], nearby: readonly TruthRock[], detections: readonly Detection[]): SmallRockScore {
+  const rocks = detections.filter((d) => d.kind === 'rock')
+  const near = (r: TruthRock, d: Detection) => Math.hypot(d.x - r.x, d.y - r.y) <= matchRadius(r)
+  const small = rocks.filter((d) => d.level === 'small' && d.distanceM >= ROCK_NEAR_M && d.distanceM <= SMALL_FAR_M)
+  return {
+    truth: visible.length,
+    found: visible.filter((r) => rocks.some((d) => near(r, d))).length,
+    detections: small.length,
+    detectionsTrue: small.filter((d) => nearby.some((r) => r.standM >= 0.08 && near(r, d))).length,
   }
 }
 

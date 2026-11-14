@@ -3,14 +3,14 @@ import { test } from 'node:test'
 import { cameraAxes } from '../cv/points.ts'
 import { CV_BASELINE_M, cvIntrinsics, eyePoses } from './cvRig.ts'
 
-test('CV camera intrinsics: 70° across 256 px, principal point at the centre of the pixel grid', () => {
+test('CV camera intrinsics: 70° across 384 px, principal point at the centre of the pixel grid', () => {
   const i = cvIntrinsics()
-  assert.equal(i.width, 256)
-  assert.equal(i.height, 192)
-  assert.ok(Math.abs(2 * Math.atan(128 / i.fx) * (180 / Math.PI) - 70) < 1e-9)
+  assert.equal(i.width, 384)
+  assert.equal(i.height, 288)
+  assert.ok(Math.abs(2 * Math.atan(192 / i.fx) * (180 / Math.PI) - 70) < 1e-9)
   assert.equal(i.fx, i.fy)
-  assert.equal(i.cx, 127.5)
-  assert.equal(i.cy, 95.5)
+  assert.equal(i.cx, 191.5)
+  assert.equal(i.cy, 143.5)
   assert.equal(i.baselineM, 0.3)
 })
 

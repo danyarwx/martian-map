@@ -15,7 +15,7 @@ import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './f
 import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
-import { CvRig } from './sim/cvRig.ts'
+import { CV_MAX_DISP, CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
 import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
 import { makeCoarseGrid } from './world/heightField.ts'
@@ -89,6 +89,9 @@ export interface CvStats {
   /** Share of the left image's pixels with a depth, 0..1. */
   valid: number
   detections: number
+  /** Of those: rocks taller than the step height, and small rocks (trip risks). */
+  hazardRocks: number
+  smallRocks: number
   frames: number
   error: string | null
 }
@@ -141,7 +144,7 @@ export class HelmetSession {
   readonly controls: Controls
   readonly rig: CvRig
   readonly cv: CvClient
-  readonly cvStats: CvStats = { ms: 0, hz: 0, valid: 0, detections: 0, frames: 0, error: null }
+  readonly cvStats: CvStats = { ms: 0, hz: 0, valid: 0, detections: 0, hazardRocks: 0, smallRocks: 0, frames: 0, error: null }
   /** The latest CV result (for the CV view). */
   lastCv: CvTick | null = null
   /** Top-down map of what the camera has seen. */
@@ -245,7 +248,7 @@ export class HelmetSession {
     }
 
     this.rig = new CvRig(renderer)
-    this.cv = new CvClient()
+    this.cv = new CvClient({ stereo: { maxDisp: CV_MAX_DISP } })
     this.cv.onResult((result) => this.onCvResult(result))
     this.cv.onError((msg, id) => {
       console.error('helmet CV:', msg)
@@ -297,6 +300,8 @@ export class HelmetSession {
     st.ms = result.ms
     st.valid = valid / d.length
     st.detections = result.detections.length
+    st.smallRocks = result.detections.filter((d) => d.kind === 'rock' && d.level === 'small').length
+    st.hazardRocks = result.detections.filter((d) => d.kind === 'rock' && d.level !== 'small').length
     st.frames++
     st.error = null
     this.cvCount++

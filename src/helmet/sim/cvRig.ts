@@ -1,14 +1,16 @@
 // The helmet's stereo camera pair (docs/helmet/PLAN.md §6.3, T3.5): two parallel cameras 0.30 m apart at eye
-// height, 70° horizontal field of view, 256 × 192, following the head. Each CV tick both are rendered into small
+// height, 70° horizontal field of view, 384 × 288 (FIXLIST A2: at 256 × 192 a 30 cm rock 10 m away was 5 pixels tall), following the head. Each CV tick both are rendered into small
 // render targets and read back as pixels. COLOUR ONLY: no depth buffer, no object ids. The CV gets what a camera
 // would give it, plus the pose of the left camera (from the simulator: a stand-in for suit IMU + visual odometry).
 import * as THREE from 'three'
 import type { CvFrame, Pose, StereoIntrinsics } from '../contracts.ts'
 import { headingToDir, localToThree } from '../frames.ts'
 
-export const CV_WIDTH = 256
-export const CV_HEIGHT = 192
+export const CV_WIDTH = 384
+export const CV_HEIGHT = 288
 export const CV_HFOV_DEG = 70
+/** Disparities the stereo matcher searches: depth from 1.4 m (focal length 274 px × 0.30 m / 60). */
+export const CV_MAX_DISP = 60
 export const CV_BASELINE_M = 0.3
 
 export function cvIntrinsics(width = CV_WIDTH, height = CV_HEIGHT, hfovDeg = CV_HFOV_DEG, baselineM = CV_BASELINE_M): StereoIntrinsics {
@@ -41,9 +43,10 @@ export class CvRig {
   private raw: Uint8Array
   private nextId = 1
 
-  constructor(renderer: THREE.WebGLRenderer) {
+  /** `width`: CV image width in pixels (4:3); the default is what the helmet runs at. */
+  constructor(renderer: THREE.WebGLRenderer, width = CV_WIDTH) {
     this.renderer = renderer
-    this.intr = cvIntrinsics()
+    this.intr = cvIntrinsics(width, Math.round((width * CV_HEIGHT) / CV_WIDTH))
     const { width: W, height: H, fy } = this.intr
     const vfov = (2 * Math.atan(H / 2 / fy) * 180) / Math.PI
     const make = () => new THREE.WebGLRenderTarget(W, H, { depthBuffer: true, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter })
