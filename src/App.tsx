@@ -3,6 +3,7 @@ import { JEZERO } from './data/jezero.ts'
 import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
+import Landing from './Landing.tsx'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar, { type Notice } from './panels/Sidebar.tsx'
 import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
@@ -31,6 +32,10 @@ export default function App() {
   const [adding, setAdding] = useState(false)
   /** One line about the last action that was refused. */
   const [notice, setNotice] = useState<Notice | null>(null)
+  /** Step of the step-by-step route editor, or null while the summary is shown. */
+  const [editStep, setEditStep] = useState<number | null>(null)
+  /** The landing page, or the planner. Kept in the URL hash so the browser's back button works. */
+  const [screen, setScreen] = useState<'landing' | 'plan'>(() => (window.location.hash === '#plan' ? 'plan' : 'landing'))
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
 
@@ -64,6 +69,12 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : {}))
       .then(setViews)
       .catch(() => setViews({}))
+  }, [])
+
+  useEffect(() => {
+    const onHash = () => setScreen(window.location.hash === '#plan' ? 'plan' : 'landing')
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   useEffect(() => {
@@ -119,8 +130,8 @@ export default function App() {
         ...p,
       }
       setCustom((list) => [...list, point])
+      // The point joins the list without opening its card, like ticking a suggested target.
       setSelected(new Set(selected).add(point.id))
-      setFocusId(point.id)
       return null
     },
     [refusal, selected],
@@ -152,30 +163,73 @@ export default function App() {
     setSelected(new Set(INITIAL))
   }, [])
 
+  /** Start over: no stops, no custom points, habitat back at the landing site, then the editor from step 1. */
+  const newRoute = useCallback(() => {
+    setNotice(null)
+    setAdding(false)
+    setCustom([])
+    setSelected(new Set())
+    setHabitatAt(null)
+    setMobility('walk')
+    setProfile('fast')
+    setFocusId(null)
+    pointNo.current = 0
+    setEditStep(1)
+  }, [])
+
   const resetHabitat = useCallback(() => {
     setNotice(null)
     setHabitatAt(null)
   }, [])
 
-  /** A click on the map while "Add point on map" is on. A refused spot leaves the mode on for another try. */
+  /** A click on the map while "Add point on map" is on. The mode stays on, so several points can be added in a row. */
   const pickOnMap = useCallback(
     (p: LatLon) => {
-      if (!addPoint(p)) setAdding(false)
+      addPoint(p)
     },
     [addPoint],
   )
 
+  const openPlanner = () => {
+    window.location.hash = 'plan'
+    setScreen('plan')
+  }
+
+  if (screen === 'landing') {
+    return (
+      <Landing
+        site={site}
+        view={views[site.habitat.id]}
+        onOwn={() => {
+          setNotice(null)
+          setSelected(new Set())
+          setFocusId(null)
+          setEditStep(1)
+          openPlanner()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
+        <button
+          type="button"
+          className="brand-link"
+          aria-label="Martian Map: back to the start page"
+          onClick={() => {
+            window.location.hash = ''
+            setScreen('landing')
+          }}
+        >
           <span className="brand-mark" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a0e06" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 20l6-12 4 7 3-4 5 9z" />
             </svg>
           </span>
           <strong>Martian Map</strong>
-        </div>
+        </button>
         <span className="crumb">Excursion planner</span>
         <span className="sep" aria-hidden="true">/</span>
         <span>{site.name}</span>
@@ -217,6 +271,7 @@ export default function App() {
           notice={notice}
           maxSelected={MAX_SELECTED}
           onDemo={demo}
+          onNewRoute={newRoute}
           onMobility={setMobility}
           onToggle={toggle}
           onFocus={setFocusId}
@@ -226,6 +281,8 @@ export default function App() {
           onAddPoint={addPoint}
           onRemovePoint={removePoint}
           onProfile={setProfile}
+          editStep={editStep}
+          onEditStep={setEditStep}
         />
       </div>
     </div>
