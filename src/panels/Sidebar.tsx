@@ -159,6 +159,26 @@ const Caution = () => (
     <path d="M12 10v5M12 18v.5" />
   </svg>
 )
+const Chevron = () => (
+  <svg className="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+)
+
+/** A panel that stays closed until asked for: its header says what is inside and the one value worth seeing closed. */
+function Fold({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+  return (
+    <details className="panel fold">
+      <summary>
+        <h2 className="step">{title}</h2>
+        {hint && <span className="fold-hint num">{hint}</span>}
+        <Chevron />
+      </summary>
+      <div className="fold-body">{children}</div>
+    </details>
+  )
+}
+
 const Arrow = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
     <path d="M5 12h14M13 6l6 6-6 6" />
@@ -256,14 +276,19 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         </div>
       )}
       {routed && !planning && p.schedule?.farthest && p.schedule.farthest.minutes > WALK_BACK_RESERVE_MIN && (
-        <div className="status status--warn">
-          <Caution />
-          <span>
-            <strong>Beyond the walk-back reserve.</strong> The farthest point is{' '}
-            <span className="num">{duration(p.schedule.farthest.minutes)}</span> on foot from the habitat; the
-            emergency reserve is {WALK_BACK_RESERVE_MIN} min.
-          </span>
-        </div>
+        <details className="status status--warn more">
+          <summary>
+            <Caution />
+            <span>
+              <strong>Beyond walk-back reserve</strong> · <span className="num">{duration(p.schedule.farthest.minutes)}</span>
+            </span>
+            <Chevron />
+          </summary>
+          <p>
+            The farthest point of the route is <span className="num">{duration(p.schedule.farthest.minutes)}</span> on
+            foot from the habitat. The emergency reserve is {WALK_BACK_RESERVE_MIN} min: the green line on the map.
+          </p>
+        </details>
       )}
       {routed && !planning && p.schedule && !p.schedule.chosen.inDaylight && (
         <div className="status status--bad" role="alert">
@@ -511,19 +536,18 @@ function DeparturePanel({
   for (let t = STRIP_FROM; t <= STRIP_TO; t += 15) curve.push(`${x(t).toFixed(1)},${y(temperatureC(t)).toFixed(1)}`)
   const isBest = chosen.start === best.start
   return (
-    <section className="panel">
+    <Fold title="3 · When to leave" hint={`${clock(chosen.start)} → ${clock(chosen.end)}`}>
       <div className="panel-head">
-        <h2 className="step">3 · When to leave</h2>
+        <p>
+          {isBest ? 'Best departure' : 'Your departure'}: <strong className="num">{clock(chosen.start)}</strong>, back at{' '}
+          <strong className="num">{clock(chosen.end)}</strong>.
+        </p>
         {custom && !isBest && (
           <button type="button" className="btn btn--sm" onClick={() => onStart(null)}>
             Use best · {clock(best.start)}
           </button>
         )}
       </div>
-      <p>
-        {isBest ? 'Best departure' : 'Your departure'}: <strong className="num">{clock(chosen.start)}</strong>, back at{' '}
-        <strong className="num">{clock(chosen.end)}</strong>.
-      </p>
       <svg className="day" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Day chart: excursion from ${clock(chosen.start)} to ${clock(chosen.end)}, daylight ${clock(DAY.sunrise)} to ${clock(DAY.sunset)}, gust hours ${clock(DAY.gustsFrom)} to ${clock(DAY.gustsTo)}`}>
         <rect x="0" y="0" width={W} height="64" fill="var(--bg)" rx="6" />
         <rect x={x(DAY.sunrise)} y="0" width={x(DAY.sunset) - x(DAY.sunrise)} height="64" fill="var(--surface-2)" />
@@ -586,7 +610,7 @@ function DeparturePanel({
         A model of a typical sol, not a forecast: daylight for 18° N, air temperature and gust hours from Perseverance
         MEDA (Rodriguez-Manfredi et al. 2023; Newman et al. 2022). Cosmic-ray dose does not depend on the hour.
       </p>
-    </section>
+    </Fold>
   )
 }
 
@@ -664,8 +688,7 @@ function RoutePanel({
 }) {
   if (!plan || plan.legs.length === 0) return null
   return (
-    <section className="panel">
-      <h2 className="step">4 · Route, leg by leg</h2>
+    <Fold title="4 · Route, leg by leg" hint={`${plan.legs.length} legs · climb ${Math.round(plan.ascentM)} m`}>
       <Profile plan={plan} />
       <p className="muted">
         {duration(plan.travelMinutes)} moving, {duration(plan.stopMinutes)} working at stops. Climb{' '}
@@ -712,7 +735,7 @@ function RoutePanel({
         </p>
       )}
       {terrainSource && <p className="source">Terrain: {terrainSource}</p>}
-    </section>
+    </Fold>
   )
 }
 
@@ -720,8 +743,7 @@ function SafetyPanel({ plan }: { plan: RoutePlan | null }) {
   const hours = (plan?.totalMinutes ?? 0) / 60
   const dose = evaDoseMsv(hours)
   return (
-    <section className="panel">
-      <h2 className="step">5 · Safety</h2>
+    <Fold title="5 · Safety and conditions" hint={hours > 0 ? `${dose.toFixed(2)} mSv` : undefined}>
       <p>
         {hours > 0 && (
           <>
@@ -749,7 +771,7 @@ function SafetyPanel({ plan }: { plan: RoutePlan | null }) {
         Typical values, not live. Radiation: Curiosity RAD, Gale crater (Hassler et al. 2014). Weather: Perseverance
         MEDA, Jezero (Rodriguez-Manfredi et al. 2023).
       </p>
-    </section>
+    </Fold>
   )
 }
 
