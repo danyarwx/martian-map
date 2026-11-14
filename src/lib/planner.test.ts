@@ -220,3 +220,23 @@ test('the suggested departure keeps the excursion in daylight and out of the mid
   assert.deepEqual(steps.map((s) => s.kind), ['leave', 'arrive', 'return'])
   assert.ok(Math.abs(steps.at(-1)!.at - (8 * 60 + plan.totalMinutes)) < 0.01)
 })
+
+test('a replan from off the route keeps the given order of stops and ends at the habitat', async () => {
+  const { HERE_ID, planFixedOrder } = await import('./planner.ts')
+  // 'far' first, then 'near': not the shortest order, but the one the crew is following.
+  const start = stop('x', 20, 30)
+  const plan = planFixedOrder(terrain(), MOBILITY.walk, start, [stop('far', 50, 20), stop('near', 15, 20)], habitat)
+  assert.deepEqual(plan.order, [HERE_ID, 'far', 'near', 'habitat'])
+  assert.equal(plan.legs.length, 3)
+  assert.equal(plan.legs[0].fromId, HERE_ID)
+  assert.ok(distanceM(plan.legs[0].path[0], start) < 15, 'starts where the crew stands')
+  assert.equal(plan.stopMinutes, 60)
+})
+
+test('a replan skips a stop it cannot reach and still goes home', async () => {
+  const { planFixedOrder } = await import('./planner.ts')
+  const t = terrain((c) => (c === 40 ? 30 : 0)) // closed wall east of the habitat side
+  const plan = planFixedOrder(t, MOBILITY.walk, stop('x', 20, 30), [stop('far', 50, 20), stop('near', 15, 20)], habitat)
+  assert.deepEqual(plan.order, ['here', 'near', 'habitat'])
+  assert.deepEqual(plan.unreachable, ['far'])
+})

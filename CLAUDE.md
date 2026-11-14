@@ -58,10 +58,20 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
+Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn navigation at `/nav`
+- Landscape tablet screen, glove-sized controls, dark theme (`src/nav-ui/`). Plan screen, then Google Maps-style navigation: instruction banner, north-up map that follows the crew arrow, walked part greyed, captions of every announcement, stop card with photo and countdown, finished card
+- Position is simulated (`src/nav/position.ts`, yellow SIMULATION bar: speed 1×/10×/60×, Drift 40 m = guided back, Drift 90 m = new route). The `PositionSource` interface allows an Earth-GPS-mapped source later
+- Instruction engine and announcement timing in `src/nav/` (200 m / 50 m / now on foot, 400 m / 100 m by rover). Off route > 25 m for 5 s: guide back up to 50 m, beyond that replan from here (`planFixedOrder` in the worker)
+- Voice API for the AI voice teammate: `docs/VOICE_API.md`. Event bus in `src/nav/events.ts`, also on `window.marsNav` and `BroadcastChannel('mars-nav')`. Optional browser TTS preview
+- Planner now straightens A* paths (string pulling, at most 2% slower), which also straightens the web map line. Turns under 35° are not announced
+- Installable offline PWA (`vite-plugin-pwa`, service worker registered only from `/nav`). Precache 4.9 MB. "Download for offline" saves Trek tiles: whole area up to HiRISE z15 (~73 MB) plus HiRISE z16–17 along the route (~20 MB for the demo)
+- Web app sidebar has "Send to tablet": `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
+- Not yet: heading-up map (needs `leaflet-rotate`), Earth GPS mode, turn-back-time event, tested on a real tablet / Safari
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
-- `npm test`: unit tests for the planner (`src/lib/planner.test.ts`)
+- `npm test`: unit tests for the planner and navigation (`src/lib/*.test.ts`, `src/nav/*.test.ts`). Works on Node 21 too (`scripts/test.mjs` bundles them with esbuild)
 
 Known issues:
 - The HiRISE DTM ends at about 77.25°E. The crater rim west of that has no slope data, so the planner treats it as no-go. The last 96 of the 708 rover waypoints (about sol 1690 onward) are in that gap. All 6 targets are inside the covered area

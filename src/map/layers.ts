@@ -14,6 +14,11 @@ const TREK = 'https://trek.nasa.gov/tiles/Mars/EQ'
  */
 export const MARS_CRS: L.CRS = L.Util.extend({}, L.CRS.EPSG4326, { R: MARS_RADIUS_M })
 
+/** URL of one Mars Trek tile. Rows (y) count from the north, columns (x) from 180° W. */
+export function trekTileUrl(layerId: string, ext: 'jpg' | 'png', z: number, x: number, y: number): string {
+  return `${TREK}/${layerId}/1.0.0/default/default028mm/${z}/${y}/${x}.${ext}`
+}
+
 function trekLayer(
   layerId: string,
   ext: 'jpg' | 'png',
@@ -25,6 +30,9 @@ function trekLayer(
     maxZoom: 19,
     noWrap: true,
     bounds,
+    // Trek answers with Access-Control-Allow-Origin: *. CORS requests give the offline cache real responses
+    // (an opaque one would be padded to megabytes in the browser's storage quota).
+    crossOrigin: true,
     attribution: 'NASA/JPL-Caltech Mars Trek',
   })
 }
@@ -47,6 +55,15 @@ export const MINERAL_LEGEND = [
   { color: '#5a7dff', label: 'other hydrated minerals' },
 ]
 
+/** Tile layers the navigation screen keeps for offline use: id, file type and deepest real zoom. */
+export const OFFLINE_SOURCES = {
+  viking: { id: 'Mars_Viking_MDIM21_ClrMosaic_global_232m', ext: 'jpg', maxZoom: 7 },
+  ctx: { id: 'JEZ_ctx_B_soc_008_orthoMosaic_6m_Eqc_latTs0_lon0', ext: 'png', maxZoom: 13 },
+  hirise: { id: 'JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd', ext: 'png', maxZoom: 17 },
+} as const
+
+const { viking: VIKING, ctx: CTX, hirise: HIRISE } = OFFLINE_SOURCES
+
 export function createTileLayers() {
   const minerals = L.imageOverlay('/data/jezero_crism_car.png', CRISM_CAR_BOUNDS, {
     opacity: 0.75,
@@ -57,18 +74,13 @@ export function createTileLayers() {
   themis.setOpacity(0.7)
   return {
     base: {
-      'Viking color (optical)': trekLayer('Mars_Viking_MDIM21_ClrMosaic_global_232m', 'jpg', 7),
+      'Viking color (optical)': trekLayer(VIKING.id, VIKING.ext, VIKING.maxZoom),
       'MOLA shaded relief (topography)': trekLayer('Mars_MGS_MOLA_ClrShade_merge_global_463m', 'jpg', 7),
     },
     // Site imagery on top of the global basemap: CTX for context, HiRISE for walking-scale detail
     site: {
-      'CTX Jezero 6 m (optical)': trekLayer('JEZ_ctx_B_soc_008_orthoMosaic_6m_Eqc_latTs0_lon0', 'png', 13, JEZ_CTX_BOUNDS),
-      'HiRISE Jezero 25 cm (optical)': trekLayer(
-        'JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd',
-        'png',
-        17,
-        JEZ_HIRISE_BOUNDS,
-      ),
+      'CTX Jezero 6 m (optical)': trekLayer(CTX.id, CTX.ext, CTX.maxZoom, JEZ_CTX_BOUNDS),
+      'HiRISE Jezero 25 cm (optical)': trekLayer(HIRISE.id, HIRISE.ext, HIRISE.maxZoom, JEZ_HIRISE_BOUNDS),
     },
     // Thermal: THEMIS daytime IR, 100 m/px, covers 65S-65N
     // Spectral: CRISM mineral indicators, Jezero only

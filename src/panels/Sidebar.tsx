@@ -24,6 +24,7 @@ import {
   type DepartureOption,
   type TimelineStep,
 } from '../lib/schedule.ts'
+import { navUrl } from '../nav-ui/params.ts'
 
 /** The clock side of the plan: when the crew leaves, and what follows from that. */
 interface Schedule {
@@ -357,6 +358,22 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         >
           Walk through stops <Arrow />
         </button>
+      )}
+      {routed && !planning && (
+        <a
+          className="btn btn--block"
+          href={navUrl({
+            stopIds: [...p.selected],
+            mobility,
+            profile: p.profile,
+            home: p.habitatMoved ? { lat: p.habitat.lat, lon: p.habitat.lon } : null,
+            points: p.custom,
+          })}
+          target="_blank"
+          rel="noopener"
+        >
+          Send to tablet
+        </a>
       )}
     </section>
   )

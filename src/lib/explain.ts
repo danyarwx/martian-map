@@ -1,4 +1,5 @@
 import type { LatLon, Mobility, RouteNote, RouteProfile, RouteSection, Terrain } from '../types.ts'
+import { lineCells } from './astar.ts'
 import { cellCenter } from './geo.ts'
 import { secondsPerMetre } from './mobility.ts'
 
@@ -38,33 +39,6 @@ export function slopeLevelLimits(m: Mobility): [number, number] {
 function slopeLevel(m: Mobility, slopeDeg: number): 0 | 1 | 2 {
   const [moderate, steep] = slopeLevelLimits(m)
   return slopeDeg < moderate ? 0 : slopeDeg < steep ? 1 : 2
-}
-
-/** Grid cells on the straight line from cell `a` to cell `b`, both included (Bresenham). */
-function lineCells(width: number, a: number, b: number): number[] {
-  let col = a % width
-  let row = (a / width) | 0
-  const endCol = b % width
-  const endRow = (b / width) | 0
-  const dc = Math.abs(endCol - col)
-  const dr = Math.abs(endRow - row)
-  const sc = col < endCol ? 1 : -1
-  const sr = row < endRow ? 1 : -1
-  let err = dc - dr
-  const out = [row * width + col]
-  while (col !== endCol || row !== endRow) {
-    const e2 = 2 * err
-    if (e2 > -dr) {
-      err -= dr
-      col += sc
-    }
-    if (e2 < dc) {
-      err += dc
-      row += sr
-    }
-    out.push(row * width + col)
-  }
-  return out
 }
 
 /** Ground distance between two neighbouring cells, metres. */
@@ -189,7 +163,17 @@ function explainDetour(
             `${deg}° slope: too steep ${who} (limit ${m.maxSlopeDeg}°)`,
           ]
         : [`Turns here: no elevation data ${away} m away on the direct line.`, 'No elevation data']
-    return { at, kind: 'no-go', text, obstacle: pointOf(t, cell), obstacleText, index, weight: steepest, key: `no-go ${deg}` }
+    return {
+      at,
+      kind: 'no-go',
+      text,
+      obstacle: pointOf(t, cell),
+      obstacleText,
+      slopeDeg: deg,
+      index,
+      weight: steepest,
+      key: `no-go ${deg}`,
+    }
   }
 
   const straight = travel(t, m, direct)
@@ -214,7 +198,7 @@ function explainDetour(
   const cell = direct.reduce((best, i) => (t.slope[i] > t.slope[best] ? i : best))
   if (groundDistanceM(t, cells[index], cell) > OBSTACLE_MAX_DISTANCE_M) return null
   const obstacleText = `${deg}° slope: passable but slow`
-  return { at, kind: 'slow', text, obstacle: pointOf(t, cell), obstacleText, index, weight, key: `slow ${deg}` }
+  return { at, kind: 'slow', text, obstacle: pointOf(t, cell), obstacleText, slopeDeg: deg, index, weight, key: `slow ${deg}` }
 }
 
 /**
@@ -275,6 +259,8 @@ function findSteep(t: Terrain, cells: number[], levels: (0 | 1 | 2)[], along: Fl
         at: pointOf(t, cells[index]),
         kind: 'steep',
         text: `Steep stretch: up to ${deg}° for ${Math.round(lengthM / 10) * 10} m. Slow down.`,
+        slopeDeg: deg,
+        lengthM: Math.round(lengthM / 10) * 10,
         index,
         weight: steepest,
         key: `steep ${deg}`,
@@ -330,8 +316,12 @@ export function explainLeg(
     .sort(byImportance)
     .slice(0, MAX_NOTES_PER_LEG)
     .sort((p, q) => p.index - q.index)
-    .map(({ at, kind, text, obstacle, obstacleText }) =>
-      obstacle ? { at, kind, text, obstacle, obstacleText } : { at, kind, text },
+    .map(({ at, kind, text, obstacle, obstacleText, slopeDeg, lengthM }) =>
+      obstacle
+        ? { at, kind, text, obstacle, obstacleText, slopeDeg }
+        : lengthM !== undefined
+          ? { at, kind, text, slopeDeg, lengthM }
+          : { at, kind, text },
     )
   return { notes, sections, steepM }
 }

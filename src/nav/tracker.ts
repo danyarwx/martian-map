@@ -1,0 +1,372 @@
+// Follows the crew along the route: where they are on it, what comes next, when they arrive, and what
+// to do when they leave it. Feeds the announcer and publishes everything on the navigation bus.
+import type { LatLon, Mobility, RoutePlan, Target } from '../types.ts'
+import { WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
+import { distanceM } from '../lib/geo.ts'
+import { duration } from '../lib/format.ts'
+import { createAnnouncer } from './announcer.ts'
+import type { NavBus, NavEventType, NavPriority, NavState, NavStatus, UpcomingManeuver } from './events.ts'
+import { cumulativeM, projectOntoPath, type PathProjection } from './geometry.ts'
+import { buildManeuvers, spokenDistance, type Maneuver } from './instructions.ts'
+import type { PositionFix } from './position.ts'
+
+/** Farther than this from the route counts as off it, metres. */
+export const OFF_ROUTE_M = 25
+/** Up to this far off, the crew is guided back; beyond it the route is planned again, metres. */
+export const REROUTE_M = 50
+/** Back under this distance counts as back on the route, metres. */
+export const BACK_ON_ROUTE_M = 15
+/** Off the route for this long before anything is said, milliseconds. Brief wobbles are ignored. */
+export const OFF_ROUTE_DELAY_MS = 5000
+/** The crew has arrived when this close to the stop, metres. */
+export const ARRIVE_M = 15
+
+/** Positions are matched to the route this far behind and ahead of the last known progress, metres. */
+const SEARCH_BACK_M = 50
+const SEARCH_AHEAD_M = 400
+/** "Head back to the route" is repeated this often while off it, milliseconds. */
+const GUIDE_REPEAT_MS = 30000
+/** A passed departure or "keep going" line may still be said this far after it, metres. */
+const SAY_AFTER_M = 30
+/** After a failed reroute, wait this long before trying again, milliseconds. */
+const REROUTE_RETRY_MS = 30000
+
+export interface NavigatorOptions {
+  plan: RoutePlan
+  /** The habitat and the targets by id, for names and tasks. */
+  stops: Record<string, Target>
+  mobility: Mobility
+  bus: NavBus
+  /**
+   * Plans a new route from `from` through `stopIds` (targets still to visit, in this order; the habitat
+   * is always the end and is not listed). Without it, a crew far off the route is only guided back.
+   */
+  requestReroute?: (from: LatLon, stopIds: string[]) => Promise<RoutePlan>
+  /** Date.now() milliseconds of the latest time to turn back, if the schedule has one. */
+  turnBackAtMs?: number
+  /** Clock for the ETA. Positions carry their own time. Default Date.now. */
+  now?: () => number
+}
+
+export interface Navigator {
+  /** Starts navigating. Instructions begin with the first position. */
+  start(): void
+  /** Feed every position here. */
+  update(fix: PositionFix): void
+  /** Leaves the stop the crew is at and starts the next leg. */
+  continueFromStop(): void
+  /** Ends navigation. */
+  stop(): void
+  getState(): NavState
+  /** The route being followed. Changes after a reroute; its first stop is then 'here'. */
+  getPlan(): RoutePlan
+  getManeuvers(): Maneuver[]
+}
+
+export function createNavigator(options: NavigatorOptions): Navigator {
+  const { stops, mobility, bus, requestReroute, turnBackAtMs } = options
+  const clock = options.now ?? Date.now
+  const announcer = createAnnouncer(bus, mobility.id)
+
+  let plan = options.plan
+  let maneuvers: Maneuver[] = []
+  let cums: number[][] = []
+  /** Distance from the route start to the start of each leg, metres. */
+  let legStart: number[] = []
+  let legIndex = 0
+  let legAlong = 0
+  let status: NavStatus = 'idle'
+  let position: PositionFix | null = null
+  let offsetM = 0
+  let walkHomeMin: number | null = null
+  const visited: string[] = []
+  let offSince: number | null = null
+  let guidedAt = -Infinity
+  let rerouteCount = 0
+  let rerouteToken = 0
+  let rerouteBlockedUntil = -Infinity
+  let walkBackWarned = false
+  let turnBackSaid = false
+  let lastNow = clock()
+  /** Which side the route is on, from the last position: for "head back to the route ... to your left". */
+  let lastSide: 'left' | 'right' = 'left'
+
+  function load(p: RoutePlan, idPrefix: string) {
+    plan = p
+    maneuvers = buildManeuvers(p, stops, idPrefix)
+    cums = p.legs.map((l) => cumulativeM(l.path))
+    legStart = []
+    let a = 0
+    for (const c of cums) {
+      legStart.push(a)
+      a += c[c.length - 1]
+    }
+    legIndex = 0
+    legAlong = 0
+    announcer.resetNext()
+  }
+  load(plan, '')
+
+  const legLength = (i: number) => cums[i][cums[i].length - 1]
+  const homeId = () => plan.order[plan.order.length - 1]
+  const name = (id: string) => stops[id]?.name ?? id
+
+  function emit(type: NavEventType, id: string, text: string, priority: NavPriority, extra: { stopId?: string } = {}) {
+    bus.emit({ id, type, text, priority, at: lastNow, ...extra })
+    announcer.noteSpoken(lastNow)
+  }
+
+  /**
+   * Maneuvers still ahead, with distances along the route from the current progress. A departure or a
+   * "keep going" line stays in the list for a few metres after it is passed, so it can still be said
+   * when another announcement held it back.
+   */
+  function upcoming(): UpcomingManeuver[] {
+    const here = legStart[legIndex] + legAlong
+    const ahead = (m: Maneuver) =>
+      m.legAlongM >= legAlong - 0.01 || ((m.kind === 'depart' || m.kind === 'continue') && legAlong - m.legAlongM <= SAY_AFTER_M)
+    return maneuvers
+      .filter((m) =>
+        status === 'at_stop' || status === 'finished'
+          ? m.legIndex > legIndex
+          : m.legIndex > legIndex || (m.legIndex === legIndex && ahead(m)),
+      )
+      .map((m) => ({ maneuver: m, distanceM: Math.max(0, m.alongM - here) }))
+  }
+
+  function state(ahead: UpcomingManeuver[]): NavState {
+    const leg = plan.legs[legIndex]
+    const legLen = legLength(legIndex)
+    const legRemainingM = status === 'at_stop' || status === 'finished' ? 0 : Math.max(0, legLen - legAlong)
+    const legRemainingMin = leg && legLen > 0 ? (leg.minutes * legRemainingM) / legLen : 0
+    let routeRemainingM = legRemainingM
+    let routeRemainingMin = legRemainingMin
+    for (let i = legIndex + 1; i < plan.legs.length; i++) {
+      routeRemainingM += legLength(i)
+      routeRemainingMin += plan.legs[i].minutes
+    }
+    // Work time at every stop still to reach (the habitat needs none).
+    const stopsLeft = plan.legs.slice(status === 'at_stop' ? legIndex + 1 : legIndex).filter((l) => l.toId !== homeId())
+    routeRemainingMin += stopsLeft.length * mobility.stopMinutes
+    const next = ahead.find((u) => u.maneuver.kind !== 'hazard') ?? null
+    return {
+      status,
+      position: position ? { lat: position.lat, lon: position.lon } : null,
+      headingDeg: position?.headingDeg ?? null,
+      speedMps: position?.speedMps ?? 0,
+      onRoute: offsetM <= OFF_ROUTE_M,
+      offsetM: Math.round(offsetM),
+      legIndex,
+      legCount: plan.legs.length,
+      nextStopId: status === 'finished' ? null : (plan.legs[status === 'at_stop' ? legIndex + 1 : legIndex]?.toId ?? null),
+      visited: [...visited],
+      legAlongM: Math.round(legAlong),
+      next,
+      legRemainingM: Math.round(legRemainingM),
+      legRemainingMin,
+      routeRemainingM: Math.round(routeRemainingM),
+      routeRemainingMin,
+      etaMs: status === 'idle' ? null : lastNow + routeRemainingMin * 60000,
+      walkHomeMin,
+      rerouteCount,
+    }
+  }
+
+  function publish() {
+    const ahead = upcoming()
+    bus.publishState(state(ahead), ahead)
+  }
+
+  /** Where `p` lies on the current leg, searching near the last progress first so a parallel stretch never wins. */
+  function snap(p: LatLon): PathProjection {
+    const path = plan.legs[legIndex].path
+    const cum = cums[legIndex]
+    let lo = 0
+    while (lo + 1 < path.length - 1 && cum[lo + 1] < legAlong - SEARCH_BACK_M) lo++
+    let hi = lo
+    while (hi + 1 < path.length - 1 && cum[hi + 1] <= legAlong + SEARCH_AHEAD_M) hi++
+    const near = projectOntoPath(path, p, cum, lo, hi)
+    if (near.offsetM <= REROUTE_M || hi >= path.length - 2) return near
+    // Far from the expected stretch: maybe the crew skipped ahead (a gap in positions). Only accept a clear match.
+    const wide = projectOntoPath(path, p, cum, lo, path.length - 2)
+    return wide.offsetM <= OFF_ROUTE_M ? wide : near
+  }
+
+  /** "to your left" or "to your right": where the route is, seen by someone facing along it. */
+  function routeSide(s: PathProjection): 'left' | 'right' {
+    return s.side === 'right' ? 'left' : 'right'
+  }
+
+  function arrive() {
+    const leg = plan.legs[legIndex]
+    const last = legIndex === plan.legs.length - 1
+    const m = maneuvers.find((x) => x.legIndex === legIndex && (x.kind === 'arrive' || x.kind === 'arrive_home'))
+    visited.push(leg.toId)
+    status = last ? 'finished' : 'at_stop'
+    legAlong = legLength(legIndex)
+    emit('arrive', m?.id ?? `arrive-${legIndex}`, m?.text ?? `You have arrived at ${name(leg.toId)}.`, 'high', {
+      stopId: leg.toId,
+    })
+    if (last) emit('nav_ended', 'nav-ended', 'Navigation ended.', 'low')
+  }
+
+  function reroute(fix: PositionFix) {
+    if (!requestReroute) return
+    status = 'rerouting'
+    const token = ++rerouteToken
+    const remaining = plan.legs.slice(legIndex).map((l) => l.toId).filter((id) => id !== homeId())
+    emit('off_route', `reroute-${token}-${fix.t}`, 'You are off the route. Planning a new route from here.', 'high')
+    requestReroute({ lat: fix.lat, lon: fix.lon }, remaining).then(
+      (p) => {
+        if (token !== rerouteToken || status !== 'rerouting') return
+        if (p.legs.length === 0) throw new Error('empty plan')
+        rerouteCount++
+        load(p, `r${rerouteCount}-`)
+        status = 'navigating'
+        offSince = null
+        const first = p.legs[0]
+        const skipped = p.unreachable.map(name)
+        const skipText = skipped.length ? ` ${skipped.join(', ')} can no longer be reached and ${skipped.length > 1 ? 'are' : 'is'} skipped.` : ''
+        emit(
+          'rerouted',
+          `rerouted-${rerouteCount}`,
+          `New route: ${spokenDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
+          'normal',
+        )
+        publish()
+      },
+    ).catch(() => {
+      if (token !== rerouteToken || status !== 'rerouting') return
+      status = 'off_route'
+      rerouteBlockedUntil = lastNow + REROUTE_RETRY_MS
+      guidedAt = lastNow
+      emit(
+        'off_route',
+        `reroute-failed-${token}`,
+        `No safe new route from here. Head back to the route, ${spokenDistance(offsetM)} to your ${lastSide}.`,
+        'high',
+      )
+      publish()
+    })
+  }
+
+  return {
+    start() {
+      if (status !== 'idle') return
+      lastNow = clock()
+      status = 'navigating'
+      const targets = plan.legs.filter((l) => l.toId !== homeId()).length
+      emit(
+        'nav_started',
+        'nav-started',
+        `Navigation started: ${targets} stop${targets === 1 ? '' : 's'}, ${spokenDistance(plan.distanceM)}, about ${duration(plan.totalMinutes)}.`,
+        'normal',
+      )
+    },
+
+    update(fix) {
+      if (status === 'idle' || status === 'finished') return
+      position = fix
+      lastNow = fix.t
+      const leg = plan.legs[legIndex]
+
+      if (status === 'at_stop') {
+        offsetM = 0
+        publish()
+        return
+      }
+
+      const s = snap(fix)
+      offsetM = s.offsetM
+      lastSide = routeSide(s)
+      if (status !== 'rerouting') legAlong = s.alongM
+      // Walk-back time between the two path points around the position.
+      const [h0, h1] = [leg.walkHomeMin[s.segmentIndex], leg.walkHomeMin[s.segmentIndex + 1]]
+      walkHomeMin = h0 === undefined ? null : h1 === undefined ? h0 : h0 + (h1 - h0) * s.t
+
+      // Arrival: close to the stop, or matched to the end of the leg while on the route.
+      const end = leg.path[leg.path.length - 1]
+      if (
+        status !== 'rerouting' &&
+        (distanceM(fix, end) <= ARRIVE_M || (legLength(legIndex) - legAlong <= ARRIVE_M && offsetM <= OFF_ROUTE_M))
+      ) {
+        arrive()
+        publish()
+        return
+      }
+
+      // Off the route: wait a few seconds, then guide back, or plan again when far off.
+      if (offsetM > OFF_ROUTE_M) {
+        offSince ??= fix.t
+        if (status !== 'rerouting' && fix.t - offSince >= OFF_ROUTE_DELAY_MS) {
+          if (offsetM > REROUTE_M && requestReroute && fix.t >= rerouteBlockedUntil) {
+            reroute(fix)
+          } else if (status !== 'off_route' || fix.t - guidedAt >= GUIDE_REPEAT_MS) {
+            status = 'off_route'
+            guidedAt = fix.t
+            emit(
+              'off_route',
+              `off-route-${fix.t}`,
+              `Head back to the route, ${spokenDistance(offsetM)} to your ${lastSide}.`,
+              'high',
+            )
+          }
+        }
+      } else {
+        offSince = null
+        if (status === 'off_route' && offsetM < BACK_ON_ROUTE_M) {
+          status = 'navigating'
+          announcer.resetNext()
+          emit('back_on_route', `back-on-route-${fix.t}`, 'You are back on the route.', 'normal')
+        }
+      }
+
+      if (!walkBackWarned && walkHomeMin !== null && walkHomeMin > WALK_BACK_RESERVE_MIN) {
+        walkBackWarned = true
+        emit(
+          'walkback_warning',
+          'walkback-warning',
+          `Caution: you are now more than ${WALK_BACK_RESERVE_MIN} minutes' walk from the habitat, beyond the emergency reserve.`,
+          'high',
+        )
+      }
+      if (!turnBackSaid && turnBackAtMs !== undefined && fix.t >= turnBackAtMs) {
+        turnBackSaid = true
+        emit('turn_back_time', 'turn-back-time', 'Turn-back time reached. Head back to the habitat now.', 'high')
+      }
+
+      const ahead = upcoming()
+      if (status === 'navigating') {
+        announcer.update(
+          ahead.filter((u) => u.maneuver.legIndex === legIndex),
+          fix.t,
+        )
+      }
+      bus.publishState(state(ahead), ahead)
+    },
+
+    continueFromStop() {
+      if (status !== 'at_stop') return
+      legIndex++
+      legAlong = 0
+      offSince = null
+      status = 'navigating'
+      announcer.resetNext()
+      publish()
+    },
+
+    stop() {
+      if (status === 'idle') return
+      lastNow = clock()
+      rerouteToken++
+      const wasFinished = status === 'finished'
+      status = 'idle'
+      if (!wasFinished) emit('nav_ended', 'nav-ended', 'Navigation stopped.', 'low')
+      publish()
+    },
+
+    getState: () => state(upcoming()),
+    getPlan: () => plan,
+    getManeuvers: () => maneuvers,
+  }
+}

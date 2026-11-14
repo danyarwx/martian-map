@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/*.test.ts",
+    "test": "node scripts/test.mjs",
     "fetch-data": "bash scripts/fetch_data.sh",
     "build-terrain": "scripts/.venv/bin/python scripts/build_terrain.py"
   },
@@ -22,6 +22,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.6.2",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^2.0.0"
   }
 }
