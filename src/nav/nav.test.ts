@@ -288,7 +288,16 @@ test('voice fallback: the browser voice speaks when the cloud voice cannot, and 
   let online = true
   let now = 0
   let tries = 0
-  const primary = { trySpeak: async (t: string) => { tries++; if (works) said.push(`cloud:${t}`); return works }, cancel() {} }
+  let slow = false
+  const primary = {
+    trySpeak: async (t: string) => {
+      tries++
+      if (slow) return 'slow' as const
+      if (works) said.push(`cloud:${t}`)
+      return works ? ('spoken' as const) : ('failed' as const)
+    },
+    cancel() {},
+  }
   const fallback = { speak: async (t: string) => { said.push(`browser:${t}`) }, cancel() {} }
   const voice = withFallback(primary, fallback, { available: () => online, now: () => now })
 
@@ -306,4 +315,14 @@ test('voice fallback: the browser voice speaks when the cloud voice cannot, and 
   online = false
   await voice.speak('e')
   assert.equal(said.at(-1), 'browser:e', 'offline goes straight to the browser voice')
+
+  // Slow lines are said by the browser voice, but the cloud voice is not rested for them.
+  online = true
+  slow = true
+  const before = tries
+  for (let i = 0; i < MAX_FAILURES + 1; i++) await voice.speak('slow')
+  assert.equal(tries - before, MAX_FAILURES + 1, 'tried every time')
+  slow = false
+  await voice.speak('f')
+  assert.equal(said.at(-1), 'cloud:f')
 })

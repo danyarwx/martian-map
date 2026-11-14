@@ -2,14 +2,19 @@
 // Pure logic, tested in src/nav/nav.test.ts.
 import type { SpeechEngine } from './queue.ts'
 
+/**
+ * What became of a line: 'spoken' (or cancelled during its turn), 'slow' (the audio was not there in time;
+ * the voice is fine, it just could not say this line now), or 'failed' (the voice is not working).
+ */
+export type TryResult = 'spoken' | 'slow' | 'failed'
+
 /** A voice that may be unable to speak a line. */
 export interface TryEngine {
-  /** Resolves true when the line was spoken (or cancelled while it was this engine's turn), false when it could not be. */
-  trySpeak(text: string): Promise<boolean>
+  trySpeak(text: string): Promise<TryResult>
   cancel(): void
 }
 
-/** After this many failures in a row the primary voice is left alone for a while, so lines are not all late. */
+/** After this many failures in a row (not slow lines) the primary voice is left alone for a while. */
 export const MAX_FAILURES = 2
 /** ... for this long, milliseconds. */
 export const RETRY_AFTER_MS = 60000
@@ -33,12 +38,13 @@ export function withFallback(primary: TryEngine, fallback: SpeechEngine | null, 
     async speak(text) {
       const mine = cancels
       if (available() && now() >= blockedUntil) {
-        if (await primary.trySpeak(text)) {
+        const result = await primary.trySpeak(text)
+        if (result === 'spoken') {
           failures = 0
           onEngine?.('primary')
           return
         }
-        if (++failures >= MAX_FAILURES) {
+        if (result === 'failed' && ++failures >= MAX_FAILURES) {
           failures = 0
           blockedUntil = now() + RETRY_AFTER_MS
         }

@@ -4,7 +4,7 @@
 import type { NavBus } from '../../nav/events.ts'
 import { createBrowserEngine } from './browserEngine.ts'
 import { withFallback } from './fallback.ts'
-import { createOpenAiEngine } from './openaiEngine.ts'
+import { createOpenAiEngine, warmUpVoice } from './openaiEngine.ts'
 import { createSpeechQueue, type SpeechEngine } from './queue.ts'
 import { unlockAudio } from './audio.ts'
 
@@ -31,6 +31,7 @@ function chooseEngine(): SpeechEngine {
 }
 
 export function startVoice(bus: NavBus, muted = false): Voice {
+  warmUpVoice()
   const queue = createSpeechQueue(chooseEngine())
   queue.setMuted(muted)
   const off = bus.subscribe('*', (e) => {

@@ -29,6 +29,11 @@ function sameSite(request) {
   }
 }
 
+/** GET wakes the function up (the app calls it at page load). No speech is made, so it costs nothing. */
+export function GET() {
+  return new Response(null, { status: 204, headers: { 'cache-control': 'no-store' } })
+}
+
 export async function POST(request) {
   if (!sameSite(request)) return json(403, { error: 'forbidden' })
   const key = process.env.OPENAI_API_KEY
@@ -63,8 +68,16 @@ export async function POST(request) {
     console.error('OpenAI speech failed', upstream.status, (await upstream.text()).slice(0, 300))
     return json(502, { error: 'voice service failed' })
   }
-  return new Response(upstream.body, {
+  // The whole clip (20-40 KB) is read first and sent in one piece: passing OpenAI's stream straight
+  // through was cut off under `vercel dev`.
+  let audio
+  try {
+    audio = await upstream.arrayBuffer()
+  } catch {
+    return json(502, { error: 'voice service failed' })
+  }
+  return new Response(audio, {
     status: 200,
-    headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'audio/mpeg', 'content-length': String(audio.byteLength), 'cache-control': 'no-store' },
   })
 }
