@@ -4,7 +4,7 @@ import { loadTerrain } from '../lib/terrain.ts'
 import type { RoutePlan } from '../types.ts'
 import type { HelmetEntry, HelmetExit } from './contracts.ts'
 import { evaDoseMsv } from '../lib/safety.ts'
-import Compass from './hud/Compass.tsx'
+import { Gauges, HeadingTape, NextStop, VisorGlass, Warnings, type VisorWarning } from './hud/Visor.tsx'
 import CvView from './hud/CvView.tsx'
 import RealPhotoTest from './hud/RealPhotoTest.tsx'
 import SuitPanel, { weatherNow } from './hud/SuitPanel.tsx'
@@ -35,7 +35,8 @@ const KEYS: [string, string][] = [
   ['Drag', 'look around'],
   ['J', 'jump to a point of the route'],
   ['V', 'computer vision view: what the helmet computes'],
-  ['M', 'hazard map small / large'],
+  ['Tab (hold)', 'full readout: suit, weather, large hazard map'],
+  ['M', 'hazard map on / off'],
   ['R', 'the same detector on a real Perseverance stereo photo'],
   ['P', 'pause'],
   ['I', 'developer numbers (CV time, frames per second)'],
@@ -66,7 +67,8 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [paused, setPaused] = useState(false)
   const [km, setKm] = useState(0)
   const [cvView, setCvView] = useState(false)
-  const [bigMap, setBigMap] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const [readout, setReadout] = useState(false)
   const [realPhoto, setRealPhoto] = useState(false)
   const [debug, setDebug] = useState(false)
   const [weather, setWeather] = useState<WeatherCache | null>(null)
@@ -156,12 +158,26 @@ export default function HelmetView({ entry, onExit }: Props) {
       else if (k === 'h') setMenu((m) => (m === 'help' ? null : 'help'))
       else if (k === 'p') setPaused((p) => !p)
       else if (k === 'v') setCvView((v) => !v)
-      else if (k === 'm') setBigMap((v) => !v)
+      else if (k === 'm') setShowMap((v) => !v)
+      else if (k === 'tab') {
+        e.preventDefault()
+        setReadout(true)
+      }
       else if (k === 'r') setRealPhoto((v) => !v)
       else if (k === 'i') setDebug((v) => !v)
     }
+    const onUp = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') setReadout(false)
+    }
+    const onBlur = () => setReadout(false)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keyup', onUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onUp)
+      window.removeEventListener('blur', onBlur)
+    }
   }, [menu, realPhoto, cvView])
 
   useEffect(() => {
@@ -200,74 +216,62 @@ export default function HelmetView({ entry, onExit }: Props) {
   // steering arrow: where to turn, relative to where the astronaut looks
   const turn = nav && nav.steerDeg !== null && hud ? ((nav.steerDeg - hud.pose.headingDeg + 540) % 360) - 180 : null
 
+  const alerts: VisorWarning[] = []
+  if (rerouted)
+    alerts.push({
+      id: 'rerouted',
+      severity: 'info',
+      text: `Route updated: ${rerouted.deltaMin >= 0.5 ? `+${Math.round(rerouted.deltaMin)} min` : rerouted.deltaMin <= -0.5 ? `${Math.round(rerouted.deltaMin)} min` : 'under 1 min longer'} · hazard on the planned route`,
+    })
+  if (nav?.replanning) alerts.push({ id: 'replanning', severity: 'info', text: 'Re-routing round the hazard…' })
+  if (nav?.blocked && !nav.replanning) alerts.push({ id: 'blocked', severity: 'danger', text: 'No way through ahead' })
+  if (nav?.sandAhead)
+    alerts.push({
+      id: 'sand',
+      severity: 'caution',
+      text: 'Loose sand ahead on the route: slow down, watch your footing',
+      source: 'Helmet hazard map (camera): ground classified as loose sand. The classifier is trained on the simulated sand look',
+    })
+  for (const w of warnings) alerts.push(w)
+  const flags: string[] = []
+  if ((!hud || hud.loading) && !error) flags.push('loading terrain')
+  if (hud?.coarse && !hud.loading) flags.push('coarse terrain')
+  if (hud?.fast) flags.push('time ×4')
+  if (hud?.blocked === 'rock') flags.push('rock in the way')
+  if (hud?.blocked === 'slope') flags.push('too steep to climb')
+  if (paused) flags.push('paused')
+  if (hud?.cv.error) flags.push('CV error')
+  if (error) flags.push(error)
+  const mapOpen = showMap || readout
+
   return (
     <div className="helmet">
       <div ref={host} className="helmet-canvas" />
-      <div className="helmet-status" aria-live="polite">
+      <VisorGlass />
+      <div className="visor-status" aria-live="polite">
         <span>{planLabel}</span>
-        {(!hud || hud.loading) && !error && <span>Loading terrain…</span>}
-        {hud?.coarse && !hud.loading && <span className="helmet-flag">coarse terrain</span>}
-        {hud?.fast && <span className="helmet-flag">time ×4</span>}
-        {hud?.blocked === 'rock' && <span className="helmet-flag">rock in the way</span>}
-        {hud?.blocked === 'slope' && <span className="helmet-flag">too steep to climb</span>}
-        {paused && <span className="helmet-flag">paused</span>}
-        {error && <span className="helmet-flag">{error}</span>}
         {hud && <span>slope {hud.slopeDeg.toFixed(0)}°</span>}
+        {flags.map((f) => (
+          <span key={f} className="visor-flag">
+            {f}
+          </span>
+        ))}
         {debug && hud && hud.cv.frames > 0 && (
           <span title="Live computer vision: worker time per frame and frames per second">
-            CV {hud.cv.ms.toFixed(0)} ms · {hud.cv.hz.toFixed(1)} Hz
+            CV {hud.cv.ms.toFixed(0)} ms · {hud.cv.hz.toFixed(1)} Hz · {hud.fps} fps
           </span>
         )}
-        {hud?.cv.error && <span className="helmet-flag">CV error</span>}
-        {debug && <span>{hud?.fps ?? 0} fps</span>}
       </div>
 
-      <div className="helmet-alerts" aria-live="assertive">
-        {rerouted && (
-          <p className="is-info">
-            Route updated: {rerouted.deltaMin >= 0.5 ? `+${Math.round(rerouted.deltaMin)} min` : rerouted.deltaMin <= -0.5 ? `${Math.round(rerouted.deltaMin)} min` : 'under 1 min longer'} · hazard on the planned route
-          </p>
-        )}
-        {nav?.replanning && <p className="is-info">Re-routing round the hazard…</p>}
-        {nav?.blocked && !nav.replanning && <p className="is-danger">No way through ahead</p>}
-        {nav?.sandAhead && (
-          <p className="is-caution" title="Helmet hazard map (camera): ground classified as loose sand. The classifier is trained on the simulated sand look">
-            Loose sand ahead on the route: slow down, watch your footing
-          </p>
-        )}
-        {warnings.map((w) => (
-          <p key={w.id} className={`is-${w.severity}`} title={w.source}>
-            {w.text}
-          </p>
-        ))}
-      </div>
+      {hud && <HeadingTape headingDeg={hud.pose.headingDeg} stopBearingDeg={nav && !nav.arrived ? nav.stopBearingDeg : null} steerDeg={nav?.steerDeg ?? null} />}
+      <Warnings items={alerts} />
+      {nav && plan && <NextStop name={stopName(nav.toId)} arrived={nav.arrived} remainingM={nav.remainingM} offRouteM={nav.offRouteM} turnDeg={turn} />}
+      {hud && <Gauges elapsedMin={hud.elapsedMin} />}
 
-      {nav && plan && (
-        <div className="helmet-nav">
-          <span className="helmet-nav-label">{nav.arrived ? 'Arrived' : 'Next stop'}</span>
-          <strong>{stopName(nav.toId)}</strong>
-          <span>
-            {nav.remainingM >= 1000 ? `${(nav.remainingM / 1000).toFixed(2)} km` : `${Math.round(nav.remainingM)} m`}
-            {nav.offRouteM > 15 ? ` · ${Math.round(nav.offRouteM)} m off route` : ''}
-          </span>
-          {turn !== null && !nav.arrived && (
-            <span className="helmet-steer" aria-label={`Guide: turn ${Math.round(Math.abs(turn))} degrees ${turn < 0 ? 'left' : 'right'}`}>
-              <span className="helmet-steer-arrow" style={{ transform: `rotate(${turn}deg)` }} aria-hidden="true">
-                <svg viewBox="0 0 20 28" width="14" height="20">
-                  <path d="M10 1 L18 12 H12.5 V27 H7.5 V12 H2 Z" fill="currentColor" />
-                </svg>
-              </span>
-              {Math.abs(turn) < 8 ? 'on the guide' : `${Math.round(Math.abs(turn))}° ${turn < 0 ? 'left' : 'right'}`}
-            </span>
-          )}
-        </div>
-      )}
-
-      {hud && <Compass headingDeg={hud.pose.headingDeg} stopBearingDeg={nav && !nav.arrived ? nav.stopBearingDeg : null} steerDeg={nav?.steerDeg ?? null} />}
-      {hud && <SuitPanel elapsedMin={hud.elapsedMin} lstHours={lst} weather={weather} walkBackMin={nav?.walkBackMin ?? null} />}
+      {hud && readout && <SuitPanel elapsedMin={hud.elapsedMin} lstHours={lst} weather={weather} walkBackMin={nav?.walkBackMin ?? null} />}
       {realPhoto && <RealPhotoTest />}
       {hud && session.current && cvView && !realPhoto && <CvView session={session.current} hud={hud} />}
-      {hud && session.current && <MiniMap session={session.current} hud={hud} large={bigMap} />}
+      {hud && session.current && mapOpen && <MiniMap session={session.current} hud={hud} large={readout} />}
 
       {menu === 'jump' && plan && (
         <div className="helmet-menu" role="dialog" aria-label="Jump to a point of the route">
@@ -305,7 +309,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
-      <p className="helmet-help">W A S D walk · Shift hurry · drag look · J jump · V computer vision · R real photo · M map · H help · Esc back</p>
+      <p className="visor-keys">W A S D walk · Shift hurry · drag look · Tab readout · M map · V computer vision · R real photo · J jump · H keys · Esc back</p>
     </div>
   )
 }

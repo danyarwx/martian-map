@@ -132,7 +132,7 @@ export class SceneOverlay {
     ctx.shadowBlur = 0
     ctx.lineWidth = 1
     // three depth bands, so the hatch thins out with distance
-    for (const [near, far, alpha] of [[0, 5, 0.55], [5, 9, 0.38], [9, SAND_RANGE_M, 0.22]] as const) {
+    for (const [near, far, alpha] of [[0, 5, 0.42], [5, 9, 0.26], [9, SAND_RANGE_M, 0.13]] as const) {
       ctx.strokeStyle = HUD_AMBER
       ctx.globalAlpha = alpha
       ctx.beginPath()
@@ -217,6 +217,7 @@ export class SceneOverlay {
       .map((e) => e.t.id)
     ctx.font = '11px Menlo, Consolas, "Courier New", monospace'
     ctx.textBaseline = 'bottom'
+    const labelX: number[] = []
     for (const t of f.rocks) {
       if (t.hits < 2) continue // one sighting may be noise
       const dist = Math.hypot(t.x - f.pose.x, t.y - f.pose.y)
@@ -243,7 +244,8 @@ export class SceneOverlay {
       ctx.closePath()
       ctx.stroke()
       ctx.setLineDash([])
-      if (hazard && labelled.includes(t.id)) {
+      if (hazard && labelled.includes(t.id) && !labelX.some((x) => Math.abs(x - base.x) < 110)) {
+        labelX.push(base.x)
         // corner ticks and a label on the nearest few
         const label = `${t.heightM.toFixed(1)} m · ${dist < 10 ? dist.toFixed(1) : Math.round(dist)} m`
         ctx.shadowBlur = 4
