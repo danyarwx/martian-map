@@ -6,6 +6,7 @@ import { MOBILITY } from '../lib/mobility.ts'
 import { createAnnouncer } from './announcer.ts'
 import { createNavBus, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
+import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
 import { createSpeechQueue, STALE_MS } from '../nav-ui/voice/queue.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { SimulatedSource } from './position.ts'
@@ -279,4 +280,30 @@ test('speech queue: a line that waited too long is dropped, and nothing is said 
   q.setMuted(false)
   q.push('back', 'normal')
   assert.equal(f.spoken.at(-1), 'back')
+})
+
+test('voice fallback: the browser voice speaks when the cloud voice cannot, and the cloud voice is rested after repeated failures', async () => {
+  const said: string[] = []
+  let works = true
+  let online = true
+  let now = 0
+  let tries = 0
+  const primary = { trySpeak: async (t: string) => { tries++; if (works) said.push(`cloud:${t}`); return works }, cancel() {} }
+  const fallback = { speak: async (t: string) => { said.push(`browser:${t}`) }, cancel() {} }
+  const voice = withFallback(primary, fallback, { available: () => online, now: () => now })
+
+  await voice.speak('a')
+  works = false
+  for (let i = 0; i < MAX_FAILURES; i++) await voice.speak('b')
+  await voice.speak('c')
+  assert.deepEqual(said, ['cloud:a', ...Array(MAX_FAILURES).fill('browser:b'), 'browser:c'])
+  assert.equal(tries, 1 + MAX_FAILURES, 'not tried again while resting')
+
+  works = true
+  now = RETRY_AFTER_MS + 1
+  await voice.speak('d')
+  assert.equal(said.at(-1), 'cloud:d')
+  online = false
+  await voice.speak('e')
+  assert.equal(said.at(-1), 'browser:e', 'offline goes straight to the browser voice')
 })

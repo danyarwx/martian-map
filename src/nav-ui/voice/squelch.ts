@@ -1,7 +1,8 @@
 // The short radio click that opens every line. A burst of faded noise made with WebAudio: no audio files to ship.
 let ctx: AudioContext | null = null
 
-function context(): AudioContext | null {
+/** The page's one audio output, shared by the click and the cloud voice. Null when the browser has none. */
+export function audioContext(): AudioContext | null {
   if (ctx) return ctx
   const Ctor = typeof window !== 'undefined' ? (window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext) : undefined
   if (!Ctor) return null
@@ -15,13 +16,13 @@ function context(): AudioContext | null {
 
 /** Call from a tap: browsers keep audio locked until the user has touched the page. */
 export function unlockAudio() {
-  const c = context()
+  const c = audioContext()
   if (c && c.state === 'suspended') void c.resume().catch(() => {})
 }
 
 /** Plays the click and resolves when it has ended. Resolves at once when audio is not available. */
 export function playSquelch(durationMs = 90): Promise<void> {
-  const c = context()
+  const c = audioContext()
   if (!c || c.state !== 'running') return Promise.resolve()
   const frames = Math.round((c.sampleRate * durationMs) / 1000)
   const buffer = c.createBuffer(1, frames, c.sampleRate)

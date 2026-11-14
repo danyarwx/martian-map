@@ -12,7 +12,7 @@ import { Banner, EndControl, FinishedCard, NavPanel, PlanPanel, SimBar, StopCard
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput } from './useNavRun.ts'
-import { canSpeak, startVoice, type Voice } from './voice/index.ts'
+import { startVoice, type Voice } from './voice/index.ts'
 import './nav.css'
 
 const site = JEZERO
@@ -209,11 +209,9 @@ export default function NavApp() {
         </div>
         <div className="nav-foot">
           {run && s?.status !== 'finished' && <EndControl onEnd={end} />}
-          {canSpeak() && (
-            <button type="button" className="big voice-toggle" aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
-              {muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
-            </button>
-          )}
+          <button type="button" className="big voice-toggle" aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
+            {muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
+          </button>
         </div>
       </aside>
     </div>

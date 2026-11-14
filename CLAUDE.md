@@ -68,6 +68,10 @@ Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn 
 - Web app sidebar has "Send to tablet": `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
 - Not yet: heading-up map (needs `leaflet-rotate`), Earth GPS mode, turn-back-time event, tested on a real tablet / Safari
 
+Branch `feat/voice-browser-tts` (from `feat/tablet-nav`): built-in voice for `/nav`. Terse radio phrasing with units spelled out, speech queue (high interrupts, stale low dropped), browser voice, radio click, mute button, "Radio check" on Start.
+
+Branch `feat/voice-openai-tts` (from `feat/tablet-nav`, same voice work plus): OpenAI `gpt-4o-mini-tts` through the Vercel function `api/tts.js` (key in Vercel env `OPENAI_API_KEY`, same-site requests and 300 characters max). Falls back to the browser voice when offline or after 1.5 s. This adds a backend: agree as a team before merging. OpenAI shuts this model down on 6 Jan 2027. Piper is parked.
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)

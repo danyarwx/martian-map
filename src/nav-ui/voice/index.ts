@@ -1,11 +1,12 @@
 // The built-in voice: speaks every announcement on the navigation bus, in the terse radio style.
-// Engine order: Piper when its model has been downloaded (not wired yet), else the browser's own voice.
+// Engine order: the OpenAI voice (through /api/tts) when there is a network and it answers in time,
+// else the browser's own voice, which also works offline.
 import type { NavBus } from '../../nav/events.ts'
-import { canSpeak, createBrowserEngine } from './browserEngine.ts'
+import { createBrowserEngine } from './browserEngine.ts'
+import { withFallback } from './fallback.ts'
+import { createOpenAiEngine } from './openaiEngine.ts'
 import { createSpeechQueue, type SpeechEngine } from './queue.ts'
 import { playSquelch, unlockAudio } from './squelch.ts'
-
-export { canSpeak }
 
 export interface Voice {
   /** Mutes or unmutes. Muting stops the line being spoken. Captions are not affected. */
@@ -16,9 +17,17 @@ export interface Voice {
   stop(): void
 }
 
-/** The engine in use: Piper when available, else the browser voice. Null when nothing can speak. */
-function chooseEngine(): SpeechEngine | null {
-  return createBrowserEngine()
+/** The OpenAI voice with the browser voice behind it. Each plays the radio click right before it speaks. */
+function chooseEngine(): SpeechEngine {
+  const browser = createBrowserEngine()
+  let last = ''
+  return withFallback(createOpenAiEngine(), browser && withSquelch(browser), {
+    available: () => navigator.onLine,
+    onEngine(which) {
+      if (which !== last) console.info(`[voice] speaking with the ${which === 'primary' ? 'OpenAI' : 'browser'} voice`)
+      last = which
+    },
+  })
 }
 
 /** Wraps an engine so every line starts with the radio click. */
@@ -33,9 +42,7 @@ function withSquelch(engine: SpeechEngine): SpeechEngine {
 }
 
 export function startVoice(bus: NavBus, muted = false): Voice {
-  const engine = chooseEngine()
-  if (!engine) return { setMuted() {}, radioCheck() {}, stop() {} }
-  const queue = createSpeechQueue(withSquelch(engine))
+  const queue = createSpeechQueue(chooseEngine())
   queue.setMuted(muted)
   const off = bus.subscribe('*', (e) => {
     if (e.type === 'state' || !e.text) return
