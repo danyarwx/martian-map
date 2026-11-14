@@ -9,7 +9,7 @@ session with Danya. For whoever picks this up next. Read `HANDOFF.md` and `PLAN.
 | Item | State | Note |
 |---|---|---|
 | A1 | PR open | https://github.com/danyarwx/martian-map/pull/6, not merged: needs a review |
-| A2 | Done | Recall 80.5 %, precision 81.1 %; small rocks 49 % found. CV cameras 384 × 288, 57 ms per frame |
+| A2 | Done | After C5: recall 81.0 %, precision 93.6 %; small rocks 40 % found. CV cameras 384 × 288, 59 ms per frame |
 | A3 | Done, with a limit | Foreground rocks are found, as one outline round the group, not one per rock |
 | A4, C3, C4 | Done | `hud/SceneOverlay.ts`; built from the decisions table, not from the mockup |
 | A5 | **Open: Danya decides** | The walk-back warning is still permanent on the default demo route |
@@ -20,7 +20,7 @@ session with Danya. For whoever picks this up next. Read `HANDOFF.md` and `PLAN.
 | B6 | **Open: Danya decides** | Guide still does not steer round sand |
 | B9, B10, B11 | Open | Not touched |
 | C1, C2 | Done, not approved | Visor HUD from the decisions table. The mockup is private and was never opened: Danya to review |
-| C5 | See STATUS log | World realism pass + re-run eval |
+| C5 | Done, first pass | Rocks, ground, sand, sky reworked; eval re-run (recall 81 %, precision 94 %), sand classifier re-trained (F1 0.91). Danya to judge the look |
 | C6, D | Partly | CLAUDE.md, README (first version), DEMO.md text updated. Backup video not recorded |
 
 Details and numbers for each item: the log at the end of `STATUS.md`.

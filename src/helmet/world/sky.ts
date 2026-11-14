@@ -5,9 +5,14 @@
 //   equinox (solar declination 0°), which is close to the season Perseverance landed in (northern spring, about
 //   Ls 5°). On Mars the declination swings between ±25.2° over the year, so on other dates the real sun stands
 //   up to 25° further north or south. No equation of time, no refraction.
-// - Sky colour: a butterscotch gradient, paler at the horizon, picked by eye after rover sky photographs.
+// - Sky colour: butterscotch overhead, paler and brighter towards the horizon where the line of sight passes
+//   through more dust, and a pale blue-white glow round the sun (dust scatters blue light forwards). Colours
+//   picked by eye after rover sky photographs. The sky goes through the same tone mapping as the ground, so the
+//   haze on far terrain and the sky behind it meet in one colour.
 // - Haze: exponential fog in the horizon colour. Its density is chosen so the far terrain fades out before its
 //   4 km edge, not from a measured dust opacity.
+// - Light: a warm sun plus a strong butterscotch sky light, because on Mars a large share of the daylight arrives
+//   scattered by dust: shadows are filled in and soft-edged. The shares are picked by eye.
 import * as THREE from 'three'
 import type { Pose } from '../contracts.ts'
 import { localToThree, type Vec3 } from '../frames.ts'
@@ -54,28 +59,34 @@ export function snapToTexels(p: THREE.Vector3, right: THREE.Vector3, up: THREE.V
   return out.copy(p).addScaledVector(right, dr).addScaledVector(up, du)
 }
 
-/** Sky colours (sRGB). A model, see the top of the file. */
+/** Sky colours (sRGB, as scene colours: they are tone-mapped like the ground). A model, see the top of the file. */
 export const SKY = {
-  zenith: '#b88f63',
-  horizon: '#e3caa6',
+  zenith: '#a9794a',
+  horizon: '#e6c69a',
   /** Below the horizon, where no terrain is drawn: thicker haze. */
-  below: '#c7a981',
-  sun: '#fff6e6',
-  /** Forward-scattering glow around the sun: paler and less red than the sky. */
-  glow: '#f4ead8',
+  below: '#c9a57a',
+  sun: '#fff8ee',
+  /** Forward-scattering glow around the sun: bluish white. */
+  glow: '#d3def0',
 } as const
 
-/** FogExp2 density, 1/m: about 18 % haze at 1 km, 55 % at 2 km, 96 % at 4 km. */
-export const HAZE_DENSITY = 0.00045
+/** FogExp2 density, 1/m: about 22 % haze at 1 km, 67 % at 2 km, 99 % at 4 km. */
+export const HAZE_DENSITY = 0.00055
 
 /** Half-width of the square the sun's shadow map covers around the player, metres. */
 export const SHADOW_HALF_M = 60
 export const SHADOW_MAP_SIZE = 2048
+/** Shadow edges are blurred over about this many shadow-map texels (6 cm each) to either side. */
+export const SHADOW_SOFTNESS = 2.2
 /** Distance of the light from the player, and the depth range of the shadow camera, metres. */
 const LIGHT_DISTANCE_M = 300
 const SKY_RADIUS_M = 1000
-const SUN_INTENSITY = 2.4
-const SKY_LIGHT_INTENSITY = 1.0
+const SUN_INTENSITY = 2.5
+const SKY_LIGHT_INTENSITY = 1.25
+/** Exposure of the display image (tone mapping). The CV cameras render without tone mapping and do not see it. */
+export const EXPOSURE = 1.3
+/** Brightness of the sun's disc relative to white, before tone mapping. */
+const SUN_DISC = 30
 
 const SKY_VERTEX = /* glsl */ `
 varying vec3 vDir;
@@ -95,17 +106,26 @@ uniform float uDay;
 varying vec3 vDir;
 void main() {
   vec3 d = normalize(vDir);
-  // paler towards the horizon: the dust path gets longer
-  float t = pow(1.0 - clamp(d.y, 0.0, 1.0), 3.5);
-  vec3 col = mix(uZenith, uHorizon, t);
-  col = mix(col, uBelow, smoothstep(0.0, -0.25, d.y));
-  float ang = acos(clamp(dot(d, uSunDir), -1.0, 1.0));
+  float h = clamp(d.y, 0.0, 1.0);
+  // the dust path grows like 1 / sin(elevation): butterscotch overhead, pale haze low down
+  float haze = 1.0 - exp(-0.16 / (h + 0.04));
+  vec3 col = mix(uZenith, uHorizon, haze);
+  // the last degrees above the horizon: a bright band of haze
+  col = mix(col, uHorizon * 1.06, exp(-h * 22.0) * 0.6);
+  col = mix(col, uBelow, smoothstep(0.0, -0.2, d.y));
+  float cosAng = clamp(dot(d, uSunDir), -1.0, 1.0);
+  float ang = acos(cosAng);
   float above = smoothstep(-0.03, 0.0, d.y) * uDay;
-  // wide and tight glow, then the disc (drawn a little larger than the real 0.35 degrees so it is visible)
-  float glow = 0.55 * exp(-ang / 0.045) + 0.22 * exp(-ang / 0.22);
-  col = mix(col, uGlow, clamp(glow, 0.0, 1.0) * above);
-  col = mix(col, uSun, (1.0 - smoothstep(0.0075, 0.0105, ang)) * above);
+  // the whole half of the sky round the sun is brighter
+  col *= 1.0 + 0.22 * above * pow(max(cosAng, 0.0), 3.0);
+  // bluish aureole: a tight core and a wide skirt
+  float aureole = 0.85 * exp(-ang / 0.05) + 0.4 * exp(-ang / 0.2) + 0.12 * exp(-ang / 0.55);
+  col = mix(col, uGlow * (1.0 + 1.2 * exp(-ang / 0.05)), clamp(aureole, 0.0, 1.0) * above);
+  // the disc (drawn a little larger than the real 0.35 degrees so it is visible), with a soft limb
+  float disc = 1.0 - smoothstep(0.0065, 0.0105, ang);
+  col += uSun * (${SUN_DISC.toFixed(1)} * disc + 2.5 * exp(-ang / 0.012)) * above;
   gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }`
 
@@ -141,7 +161,9 @@ export class Atmosphere {
     this.lst = opts.lstHours ?? DEFAULT_LST_HOURS
 
     renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    // PCF with a radius: softer edges than PCFSoft, which ignores the radius
+    renderer.shadowMap.type = THREE.PCFShadowMap
+    renderer.toneMappingExposure = EXPOSURE
 
     const horizon = new THREE.Color(SKY.horizon)
     scene.background = null // the dome covers every pixel
@@ -163,7 +185,7 @@ export class Atmosphere {
       depthTest: false,
       depthWrite: false,
       fog: false,
-      toneMapped: false,
+      toneMapped: true,
     })
     this.dome = new THREE.Mesh(new THREE.SphereGeometry(SKY_RADIUS_M, 32, 16), this.skyMaterial)
     this.dome.name = 'sky'
@@ -171,7 +193,7 @@ export class Atmosphere {
     this.dome.frustumCulled = false
     scene.add(this.dome)
 
-    this.skyLight = new THREE.HemisphereLight('#f3d6b8', '#5a3a26', SKY_LIGHT_INTENSITY)
+    this.skyLight = new THREE.HemisphereLight('#f0cfa6', '#6e4a31', SKY_LIGHT_INTENSITY)
     this.skyLight.name = 'sky light'
     scene.add(this.skyLight)
 
@@ -189,6 +211,7 @@ export class Atmosphere {
     s.camera.updateProjectionMatrix()
     s.bias = -0.0004
     s.normalBias = 0.08
+    s.radius = SHADOW_SOFTNESS
     scene.add(this.sun, this.sun.target)
 
     this.setLocalSolarTime(this.lst)
