@@ -18,7 +18,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [x] T2.1 (B) Terrain loader and near tiles · deps T0.4, T1.1 · commit 2126b4c
 - [ ] T2.2 (B) Far terrain, sky, fog, sun · deps T2.1 · not started (handed off)
 - [x] T2.3 (B) Rocks · deps T2.1 · done 14 Nov by the new owner (work/t2.3 merged)
-- [ ] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3 · not started (handed off)
+- [x] T2.4 (B) Player, collision, jump-to · deps T2.1, T2.3 · done 14 Nov (work/t2.4 merged)
 - [ ] T2.5 (E) Go outside from Mission control · deps T2.4
 
 ## M2 – live CV and hazard map
@@ -88,3 +88,4 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T2.3 (WIP) · lane B · 034238c · world/rocks.ts written before the usage limit stopped the agent; compiles; no tests, not in the scene. Pushed as `wip/helmet-lane-b`
 - 14 Nov · handoff · orchestrator · loop stopped, all agents stopped, T5.1 merged, WIP pushed, HANDOFF.md written
 - 14 Nov · T2.3 · new owner (Sasha + Claude) · work/t2.3 · rocks.ts from wip/helmet-lane-b reviewed against §6.2 and kept as is; added rocks.test.ts (8 tests: F(D) within 20 % in 3 bins for k 0.05 and 0.12, determinism, sand exclusion, rough grid, demo field, rocksNear vs brute force), world/rockMesh.ts (instanced, 4 shapes × 2 detail levels = 8 draw calls; rocks generated for tiles within 170 m; all sizes drawn to 20 m, ≥ 0.3 m to 60 m, ≥ 0.6 m + demo boulders to 150 m), wired into scene.ts (`world.rocks.field.rocksNear` for collision). Seen in the browser: demo field of 12 boulders 60 m ahead of the #helmet start; 75 fps, 25 draw calls, 144k triangles with 1667 rocks drawn. Note: the #helmet start tile is 98 % sand by the orbital mask, so there are almost no natural rocks right at the start
+- 14 Nov · T2.4 · new owner · work/t2.4 · sim/player.ts (1 m/s × slopeSpeedFactor, Shift ×4, rocks standing ≥ 0.30 m block with sliding, no climbing > 25°; 5 tests), sim/jump.ts (start, 300 m before each stop, km slider; 3 tests), sim/controls.ts. New file outside the task list: `src/helmet/session.ts` = the frame loop, renderer, world and player without React (HelmetView now only loads data and draws the HUD from `HudState` 5×/s); later tasks hang the CV rig, hazard grid and nav on it. One session origin for the whole session, also across jumps. Keys J (jump menu), H (help), P (pause) work; V/R/M come with their tasks. Seen in the browser: stops 0.22 m from a 1.17 m demo boulder with 'rock in the way'; jump to the habitat (2.5 km) loads its terrain; 75 fps
