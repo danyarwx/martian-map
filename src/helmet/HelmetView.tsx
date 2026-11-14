@@ -103,12 +103,13 @@ export default function HelmetView({ entry, onExit }: Props) {
         if (abort.signal.aborted) return
         const e = entryRef.current ?? defaultEntry(routes)
         if (!entryRef.current) setPlanLabel(`Test walk: ${e.plan.legs[0].fromId} → ${e.plan.legs[0].toId}`)
-        world = new World({ index, coarse: makeCoarseGrid(terrain), origin: e.startAt, renderer })
+        world = new World({ index, coarse: makeCoarseGrid(terrain), origin: e.startAt, renderer, legs: routes.legs })
         // face along the route from the start point
         pose.headingDeg = headingAlong(e.plan.legs[e.legIndex].path, e.startAt)
         if (import.meta.env.DEV) {
           ;(window as unknown as Record<string, unknown>).__helmet = {
             pose,
+            world: () => world,
             ready: () => world?.readyAround(pose.x, pose.y) ?? false,
             /** Extra metres above the eye, for looking at the world from above while debugging. */
             lift: 0,
@@ -119,6 +120,10 @@ export default function HelmetView({ entry, onExit }: Props) {
               tiles: world?.tiles.loaded,
               fine: world?.tiles.builtSlots().filter((s) => s.entry).length,
               coarse: world?.coarseAt(pose.x, pose.y),
+              rocks: world?.rocks.field.count,
+              rocksDrawn: world?.rocks.drawn,
+              rocksNear: (r: number) => world?.rocks.field.rocksNear(pose.x, pose.y, r).map((k) => ({ x: k.x, y: k.y, z: k.z, d: k.d, h: k.h })),
+              demoRocks: world?.rocks.field.demoRocks().map((r) => ({ x: r.x, y: r.y, d: r.d })),
             }),
           }
         }
