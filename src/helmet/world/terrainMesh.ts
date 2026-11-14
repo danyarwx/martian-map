@@ -31,8 +31,8 @@ export interface TileGeometryInput {
 }
 
 /** Colour of flat coarse ground and of steep ground (sRGB), Mars albedo. */
-const FLAT = new THREE.Color().setRGB(0.47, 0.34, 0.26, THREE.SRGBColorSpace)
-const STEEP = new THREE.Color().setRGB(0.33, 0.24, 0.19, THREE.SRGBColorSpace)
+export const FLAT = new THREE.Color().setRGB(0.47, 0.34, 0.26, THREE.SRGBColorSpace)
+export const STEEP = new THREE.Color().setRGB(0.33, 0.24, 0.19, THREE.SRGBColorSpace)
 
 export function buildTileGeometry(inp: TileGeometryInput): THREE.BufferGeometry {
   const { h, stride, grid } = inp
