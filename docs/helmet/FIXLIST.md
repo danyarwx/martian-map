@@ -1,6 +1,6 @@
 # Helmet view: fix list
 
-Written 15 Nov 2026 after a full review: the code on `feat/helmet-3d` (commit `83eeb9a` + this one), one run of the
+Written 14 Nov 2026 after a full review: the code on `feat/helmet-3d` (commit `83eeb9a` + this one), one run of the
 whole demo path in a browser (Mission control → Go outside → boulders → V → re-route → R → Esc), and a design
 session with Danya. For whoever picks this up next. Read `HANDOFF.md` and `PLAN.md` first for the background.
 
@@ -29,7 +29,7 @@ Priority: **P0** = the demo is wrong or misleading without it · **P1** = clearl
      visible rocks are smaller than that.
   2. Rocks standing close together merge into one wide detection (8-connected cells of 0.5 m).
   3. The CV cameras are 256 × 192: one pixel is 5.5 cm at 10 m, so a 30 cm rock is 5 pixels tall there.
-- **Decision (Danya, 15 Nov): two levels.**
+- **Decision (Danya, 14 Nov): two levels.**
   - **Hazard rock** (taller than 30 cm): strong highlight, blocks the route.
   - **Small rock** (10–30 cm): quiet highlight as a trip risk, never blocks the route.
   - Every rock is outlined separately.
@@ -97,7 +97,7 @@ Priority: **P0** = the demo is wrong or misleading without it · **P1** = clearl
 
 ---
 
-## C. Design: rebuild the look (decisions from 15 Nov)
+## C. Design: rebuild the look (decisions from 14 Nov)
 
 Danya's verdict: the surroundings, rocks and sand look fake, and the interface "looks very AI generated".
 Decisions:
@@ -112,8 +112,9 @@ Decisions:
 | Rock levels | Two (A2): strong outline for hazard rocks, quiet outline for small rocks |
 | Guide | **Chevrons on the ground**, fading with distance. No ribbon |
 
-A clickable mockup of this direction is linked from STATUS.md once Danya has approved it. Build from that, not
-from this table alone.
+A first-draft mockup of this direction: https://claude.ai/artifact/GieNFN1R3QUiLWhbd7apHW (private until Danya
+shares it; unfinished and not approved yet, see HANDOFF.md section 6). Build from the approved mockup, not from
+this table alone.
 
 ### C1. Visor HUD shell
 - Remove every panel box (`.helmet-nav`, `.helmet-suit`, `.helmet-status`, the bottom key line).

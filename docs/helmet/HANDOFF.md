@@ -1,40 +1,37 @@
-# Helmet view: handoff
+# Helmet view: handoff (second one)
 
-Written 14 Nov 2026, ~18:15 UTC, when Danya handed the helmet work to a new owner using Claude (Max plan).
-This file is for **you** (the new owner) and for **your Claude**. Read it first, then `PLAN.md` and `STATUS.md`.
+Written 14 Nov 2026, ~22:00 UTC, by Danya's Claude session. This replaces the first handoff of the same day
+(~18:15 UTC, in git history). It is for **you** (the next owner) and for **your Claude**.
+
+Read in this order: this file → `FIXLIST.md` (your work list) → `PLAN.md` (the original spec) → `STATUS.md`
+(the board and the log).
 
 ---
 
 ## 1. In one minute
 
-- **What:** the astronaut's helmet for the Martian Map hackathon project (NASA Space Apps 2026). After the
-  crew plans a route on "Mission control" (the planner your teammates built on `main`), the astronaut walks
-  outside in a **3D Mars made from real NASA data**. **Live computer vision** in the browser finds rocks, steep
-  ground, sand and drop-offs from camera pixels. A **top-down hazard map** fills in as they walk, and the
-  planner **re-routes** around what the helmet finds.
-- **Where:** branch **`feat/helmet-3d`** of https://github.com/danyarwx/martian-map. Never push to `main`.
-- **Spec:** `docs/helmet/PLAN.md`, written to be followed by Claude agents: decisions, architecture,
-  algorithms, and 30 tasks with "done when" checks.
-- **Progress:** `docs/helmet/STATUS.md`. About **17 of 30 tasks** are done (most of the hard algorithm and data
-  work). The 3D world is half built, and the parts are not yet wired together into the live helmet.
-- **State at handoff:** everything is committed and pushed. No agents are running. One unfinished piece is on
-  branch `wip/helmet-lane-b` (rocks, see §4).
-- **Tests:** `npm test` passes 126/126 and `npm run build` is green on `feat/helmet-3d` (merge commit `fc19b85` and later).
+- **What:** the astronaut's helmet for the Martian Map project (NASA Space Apps 2026). After the crew plans a
+  route on "Mission control", the astronaut walks outside in a 3D Mars made from real NASA data. Live computer
+  vision in the browser finds hazards from camera pixels, a hazard map fills in, and the planner re-routes.
+- **Where it stands:** every task of `PLAN.md` is built and merged. The demo runs end to end with no errors.
+  It does **not** yet work well or look good. Danya's verdict after trying it: the guide line jumped around
+  (fixed), the computer vision "sees one rock when there are a lot", and the look is "very AI generated".
+- **Your job:** work through `docs/helmet/FIXLIST.md`. It has the problems found in a full review, in priority
+  order, and the design decisions Danya made.
+- **Branch:** `feat/helmet-3d`. Never push to `main` directly; open a pull request.
+- **State:** everything is committed and pushed. No agents are running. 206 tests pass, build green.
 
-## 2. Before you start (access)
+## 2. Branches and what is live
 
-1. **GitHub:** ask Danya to add you as a collaborator on `danyarwx/martian-map` (Settings → Collaborators), so
-   you can push to `feat/helmet-3d`. The repo is public, so reading works without it.
-2. **Vercel:** every push to a branch gets a preview URL. You see it in the GitHub commit status or PR checks.
-   Previews may need a Vercel login on Danya's team: ask Danya for access or for a share link.
-3. **Where to run Claude:**
-   - **Locally (recommended):** Claude Code on your laptop, in your clone. You need a real GPU to judge the 3D
-     view and the frame rate; cloud sessions render with software GL at ~2 fps.
-   - **Claude Code on the web:** create a cloud environment whose network allows `mars.nasa.gov`,
-     `trek.nasa.gov` and `planetarymaps.usgs.gov`. You only need them if you re-run the data scripts: all
-     data the app needs is already committed under `public/data/`.
-4. **Plan limits:** this work ran 3 parallel agents and hit Danya's 5-hour usage limit in about 4 hours. On Max,
-   run **at most 2 workers in parallel**, or do tasks one by one in a single session.
+| Branch | What | Note |
+|---|---|---|
+| `main` | Production, https://martian-map-nasa.vercel.app | Has the helmet (PR #5 merged at `0a80b02`), but **not** the guide-line fix |
+| `feat/helmet-3d` | Work branch. Ahead of `main` by the guide-line fix, the fix list and this handoff | **Start here** |
+| `feat/helmet-hud` | The first, scripted helmet with real rover panoramas | Backup demo only |
+| `wip/helmet-lane-b` | Old unfinished rocks work | Obsolete, superseded |
+
+Every push to a branch gets a Vercel preview URL (GitHub commit status). Previews are private to Danya's
+Vercel team: ask Danya for access or a share link.
 
 ## 3. Set up and look at it
 
@@ -42,124 +39,108 @@ This file is for **you** (the new owner) and for **your Claude**. Read it first,
 git clone https://github.com/danyarwx/martian-map && cd martian-map
 git checkout feat/helmet-3d
 npm ci
-npm test            # expect 126 passing
-npm run dev         # then open http://localhost:5173/#helmet
+npm test          # expect 206 passing
+npm run dev       # http://localhost:5173/#plan → "Go outside (helmet view)", or straight to /#helmet
 ```
 
-- **What you should see at `#helmet`:** real Jezero terrain near Three Forks, made from the 1 m HiRISE
-  elevation model with the 25 cm HiRISE photo on top.
-  - Walk with W A S D or the arrow keys; Shift hurries; drag to look; Esc returns to Mission control.
-  - The status chip reads "Test walk: habitat → three-forks". That walk is a stand-in until "Go outside"
-    (T2.5) passes the real plan.
-- **`http://localhost:5173/`** is the teammates' Mission control planner, and it is unchanged.
-- Python is only needed to rebuild data: `python3 -m venv scripts/.venv && scripts/.venv/bin/pip install -r scripts/requirements.txt`.
+- Run it on a laptop with a real GPU. Cloud sessions render at about 2 frames per second.
+- Demo steps and keys: `docs/helmet/DEMO.md`. Its screenshots and some wording describe the look before the
+  redesign.
+- In dev mode `window.__helmet` exposes the session (pose, guide, hazard grid), which is how the review moved
+  the astronaut and measured things.
 
-## 4. What exists (by folder)
+## 4. What changed since the first handoff
 
-| Area | Files | State |
-|---|---|---|
-| Contracts and frames | `src/helmet/contracts.ts`, `frames.ts` | Done. Shared types and lat/lon ↔ local metres ↔ three.js conversions |
-| CV firewall | `src/helmet/firewall.test.ts` | Done. `cv/` may not import `world/`, `sim/` or `eval/`, so the CV can't cheat |
-| Terrain data | `public/data/helmet/` (`index.json`, 241 tiles, `routes.json`), `scripts/build_helmet_tiles.py`, `scripts/export_routes.ts` | Done. 128 m tiles of 1 m elevation + grayscale 25 cm ortho + sand mask, covering the first and last 600 m of all 21 routes between the habitat and the 6 targets. Elsewhere the world falls back to the 10 m grid |
-| 3D world | `src/helmet/world/` (`tiles`, `terrainMesh`, `heightField`, `tileGrid`, `routes`, `path`, `noise`, `scene`), `sim/defaultEntry.ts`, `HelmetView.tsx` | Terrain streaming and `heightAt` are done (T2.1). Not built yet: sky/sun/far hills (T2.2), player physics, collision and jump menu (T2.4). Movement is still the simple version inside `HelmetView.tsx` |
-| Rocks | branch `wip/helmet-lane-b`, file `src/helmet/world/rocks.ts` | **Unfinished** (T2.3). 407 lines that compile, but no tests and not in the scene. Review it against PLAN §6.2 and finish it, or rewrite it |
-| Computer vision | `src/helmet/cv/` (`census`, `stereo`, `points`, `ground`, `obstacles`, `slope`, `drop`, `pipeline`, `worker`, `client`) | Done and tested on synthetic scenes. About 41 ms per frame for the full pipeline. `client.ts` runs it in a Web Worker with one frame in flight. Missing: the **camera rig** that renders two eye views and feeds the worker (`sim/cvRig.ts`, rest of T3.5) |
-| Hazard map | `src/helmet/mapping/hazardGrid.ts` | Done (T4.1). 0.5 m grid with log-odds fusion, image export for the mini-map and Leaflet, hazard clusters, and planner cells to block |
-| Planner changes | `src/lib/astar.ts`, `planner.ts`, `planner.worker.ts`, `planner.test.ts` | Done (T4.3). Optional `blocked` cells, `planFrom(...)` from any point, and a `'replan'` worker message. **Waiting for review by Dev 2**, who owns `src/lib` |
-| Sensors | `src/helmet/sensors/` (`weather`, `suit`, `warnings`), `public/data/helmet/weather.json`, `scripts/fetch_weather.py` | Logic done (part of T5.1). Missing: the HUD panel that shows it |
-| Real-photo test data | `public/data/helmet/real_stereo/` (+ `scripts/build_real_stereo.py`) | Done (T6.1). A real Perseverance Navcam stereo pair from Cheyava Falls (sol 1210), rectified, with rows aligned to 0.11 px. Missing: the view that runs the CV on it (T6.2) |
+1. **The previous owner finished the build** (14 Nov): rocks, sky, player, camera rig, hazard map, mini-map, CV
+   view, local guide, global re-route, Go outside, map hand-back, suit and weather panel, sand classifier,
+   drop-offs, real-photo view, eval harness, demo script. Merged to `main` as PR #5. Details: the STATUS log.
+2. **Guide-line fix** (`83eeb9a`, `src/helmet/nav/guide.ts`, 7 tests). The guide used to be re-planned from
+   scratch every 150 ms, so it changed whenever the astronaut turned their head. Now the guide is the planned
+   line while it is clear, and one kept detour round a rock, steep ground or a drop-off. Checked in the browser:
+   standing still and looking around, the guide changed in 9 of 11 samples before and 1 of 10 after.
+   **This fix is not on `main` yet** (FIXLIST A1).
+3. **Review and design session** (`5ca153b`): `docs/helmet/FIXLIST.md`. One small code change with it: the
+   sand warning now reads "Loose sand ahead on the route: slow down, watch your footing", because the guide no
+   longer steers round sand.
 
-## 5. What to do next (in this order)
+## 5. The work list in short (full text in FIXLIST.md)
 
-The critical path to a working demo is **T2.3 → T2.4 → T3.5 rig → T4.2 → T5.0 → T5.3**. Side tasks can run in
-parallel once their dependencies are done. Exact specs are in PLAN §9.
+**P0, do first**
+- **A1** Get the guide-line fix onto `main` (new PR `feat/helmet-3d → main`).
+- **A2** The CV finds too few rocks: recall 56 % against a target of 80 %. Decision: two levels (hazard rocks
+  over 30 cm, small rocks 10–30 cm), each rock outlined separately. Needs a contract change.
+- **A3** The real-photo test (key R) misses the obvious foreground rocks on the Perseverance photo.
+- **A4** Hazards are only on the mini-map, not highlighted in the view.
 
-1. **T2.3 rocks.** Merge `origin/wip/helmet-lane-b` into a work branch, then review, test and wire it into
-   the scene. Include the demo boulder field.
-2. **T2.4 player.** Move movement out of `HelmetView.tsx` into `sim/`, then add collision with rocks and steep
-   ground, plus the jump menu built from `index.json` → `windows`.
-3. **T3.5 camera rig.** Write `sim/cvRig.ts`: two 256×192 cameras 0.30 m apart, read their pixels each CV tick,
-   and send them to `CvClient`. This is the moment the helmet "sees" for the first time.
-4. **T4.2 fuse into map + mini-map.** CV results update the `HazardGrid`, and a mini-map draws it. Apply the
-   contract note in STATUS ("Questions") at the same time: add `CvResult.groundZ?` and `CvFrame.heights?` so
-   drop-offs work on fused heights.
-5. **T5.0 local guide, then T5.3 global re-route.** The re-route uses the planner's `'replan'` message in its
-   **own** worker instance (see Dev 2 note in STATUS).
-6. In parallel once T2.4/T3.5 are done:
-   - T2.2 sky/sun
-   - T2.5 Go outside button
-   - T4.6 HUD core, which ports compass and alerts from branch `feat/helmet-hud`
-   - T4.5 CV view (key V)
-   - T6.2 real-photo view (key R)
-   - T5.1 panel
-7. Then T4.4 eval harness (metrics), T5.2 sand, T5.4 hand the map back to Mission control, and M5 polish.
-8. **If time runs out**, cut in this order: drop-offs wiring → sand → real-photo view. Keep the core: world,
-   CV, hazard map, re-route.
+**P1**: a red walk-back warning is on screen from the first second (A5); the map handed back to Mission control
+is almost invisible (A6); the steering arrow is unreadable (B1); overlays cover the suit panel (B2); Esc leaves
+the helmet with an overlay open (B3); developer numbers in the status chip (B4); no touch controls (B5).
 
-## 6. Decisions you inherit (don't relitigate without Danya)
+**Design rebuild (section C), decided by Danya on 14 Nov**
+- Real visor HUD: thin glowing line symbols on curved glass. No boxed panels.
+- HUD green for symbols; amber and red only for warnings.
+- Essentials only on screen; the full readout and the map open with a key.
+- World as photoreal as we can: rocks, ground, sand, sky.
+- Rocks outlined in the view, sand hatched; chevrons on the ground replace the ribbon guide.
 
-All in PLAN §2. The key ones:
-- **The world:** a simulated 3D Mars built from real orbital data. Rocks are added, because orbit can't see
-  rocks under ~1.5 m.
-- **The CV:**
-  - Real algorithms, live in the browser, working from pixels only.
-  - Classic stereo + rules, no neural network.
-  - The same detector also runs on a real rover photo, to show it is credible.
-- **The screen:** the helmet is full screen with an in-helmet mini-map. Movement is free (keyboard and mouse),
-  and there is a "jump to any point" on the route.
-- **The planner:** the teammates' planner does global re-routing; the helmet's own local planner steers
-  around rocks.
-- **Warnings:** they come from sensors and data (weather, dose, daylight, walk-back), not from the camera.
-- **Dependencies:** only `three` (0.170.0) was added. No backend. System fonts only.
-- **Small deviations already made**, documented in the STATUS log: stereo uniqueness 0.8 instead of 0.95,
-  extra robustness checks in ground and slope, and a drop-off rule tweak.
+Suggested order is at the end of FIXLIST.md.
 
-## 7. Gotchas
+## 6. The design mockup (unfinished)
 
-- **Frame rate in cloud sessions:** about 2–3 fps (software rendering). Judge performance on a real laptop.
-- **NASA panorama links:** the panorama URLs inside `M20_waypoints.json` are dead (404/403). Use the
-  raw-image feed (see the CLAUDE.md data table).
-- **Weather data:** `weather.json` has only **4 sols** with full readings (the feed returns a short window;
-  latest sol 1133, April 2024). It is labelled as "latest available reading", which is fine for the demo.
-- **Orthos:** they are **grayscale** and get tinted in the material.
-- **1 m terrain coverage:** only the demo windows (first and last 600 m of each route) have it. Anywhere else
-  shows "coarse terrain".
-- **CV coordinates:**
-  - The principal point is `cx = (width − 1) / 2` for the rendered cameras.
-  - `readRenderTargetPixels` returns rows **bottom-up**, so flip them.
-  - Copy CV result buffers before you keep them.
-  - The real stereo pair's `cx`/`cy` sit at the image corner, which is correct: the NASA tile is one quarter
-    of the sensor.
-- **React StrictMode** mounts effects twice. Dispose three.js objects and terminate workers in cleanup.
-- **Session safety checks:** the session's safety checks block commands that look like getting around a
-  website's protections (spoofed referrers, probing private endpoints). Use the public NASA feeds only.
+- Link: https://claude.ai/artifact/GieNFN1R3QUiLWhbd7apHW ("Martian Map Visor HUD", a design canvas).
+  It is **private to Danya**. Danya has to share it from the page's Share menu before you can open it.
+- What is in it:
+  - **"Hazard found"** (`Main.dc.html`): the visor with heading tape, next stop, O₂ and EVA gauges, small rocks
+    in dashed green, hazard rocks outlined in red with labels, sand hatched in amber, amber chevrons bending
+    round a boulder field, the old line crossed out.
+  - **"Clear ground: essentials only"** (`Clear.dc.html`): the same visor with nothing in the way.
+- What is missing:
+  - The third artboard, **"Tab held: full readout and map"**, is listed on the canvas but its file
+    (`Data.dc.html`) was never written, so that frame is empty. The readout and map scope are already drawn
+    inside `Main.dc.html` (mode `data`); the missing file only needs to import `Main` with `mode="data"`, the
+    way `Clear.dc.html` does with `mode="clear"`.
+  - Nobody has looked at the rendered canvas yet. Treat it as a first draft: check it renders, then get
+    Danya's verdict before building from it.
+- The scene in the mockup is a drawing. It shows the HUD direction, not the target quality of the 3D world.
+- FIXLIST section C says to build from the approved mockup. **It is not approved yet.**
 
-## 8. People and reviews owed
+## 7. Things that are easy to get wrong
 
-- **Danya:** owner of the helmet (`src/helmet/`, `src/panels/`). Ask about scope, decisions and access.
-- **Dev 2:** owns `src/lib/`, `scripts/`, `public/data/`. Needs to **review T4.3** (planner changes). Open
-  question: a one-line `type` guard in `src/lib/usePlanner.ts` would let re-routes share the existing worker.
-- **Dev 1:** owns `src/map/`. Will review T5.4, which adds two optional props to `MarsMap`.
-- **Backup demo:** the earlier scripted helmet with real rover panoramas is on branch `feat/helmet-hud`.
+- **The CV may not read the world.** Nothing under `src/helmet/cv/` may import `world/`, `sim/` or `eval/`
+  (`firewall.test.ts`). Rock outlines in the view must come from the CV's own output.
+- **`src/helmet/contracts.ts` is shared.** The two-level rocks need a change there; make it once, note it in
+  STATUS, then update the users.
+- **World changes change the CV's input.** After any change to rocks, ground, sand or light: re-run
+  `node scripts/eval_helmet.cjs` and re-train the sand classifier (`cv/sandWeights.ts`).
+- **Teammates' folders:** `src/lib/` (planner) and `src/map/` belong to others. Ask before changing them.
+- **No new dependencies** without asking Danya. System fonts only. No backend.
+- **Usage limits:** three parallel agents used up a 5-hour Claude limit in about four hours. Run at most two.
+- **Dates:** everything so far happened on 14 Nov 2026 (UTC).
+
+## 8. Open decisions for Danya
+
+Listed in FIXLIST (A5, A6, B5, B6, C6, section D) and under "Questions for the human" in STATUS.md. The ones
+that block work soonest:
+1. Approve or change the visor mockup (section 6).
+2. Which demo route: one inside the 60-minute walk-back reserve, or keep the warning as a talking point (A5).
+3. Laptop-only demo, or touch controls for a tablet (B5).
 
 ## 9. Prompt to give your Claude
 
 Paste this as the first message in Claude Code, from the repo root on `feat/helmet-3d`:
 
 ```
-You are continuing the Martian Map helmet build. Read, in order: CLAUDE.md, docs/helmet/HANDOFF.md,
-docs/helmet/PLAN.md (all of it), docs/helmet/STATUS.md. Then:
-1. Run npm ci, npm test (expect 126 passing) and npm run build, and tell me if anything is red.
-2. Merge origin/wip/helmet-lane-b into a new branch work/t2.3 and review src/helmet/world/rocks.ts against
-   PLAN §6.2 and T2.3. Finish it (tests, wiring into the scene, demo boulder field), then merge into
-   feat/helmet-3d.
-3. Continue along the critical path in HANDOFF §5 (T2.4, then the T3.5 camera rig, then T4.2, T5.0, T5.3),
-   following PLAN §0 rules: one task at a time, build and tests green before each commit, commit message
-   "helmet: <task id> <title>", update STATUS.md (status line + one log line) with every task, push to
-   feat/helmet-3d, never touch main, no new dependencies.
-4. For anything visual, run the dev server and look at a screenshot of #helmet before calling it done.
-Stop and ask me when a decision is needed that PLAN.md does not answer.
+You are continuing the Martian Map helmet work. Read, in order: CLAUDE.md, docs/helmet/HANDOFF.md,
+docs/helmet/FIXLIST.md, then docs/helmet/PLAN.md §0, §2, §4 and §5, and the end of docs/helmet/STATUS.md.
+Then:
+1. Run npm ci, npm test (expect 206 passing) and npm run build. Tell me if anything is red.
+2. Start with the quick items of FIXLIST "Suggested order" step 1 (B1, B3, B4, B7), one commit each.
+3. Then FIXLIST A2 (the CV finds too few rocks): propose the contracts.ts change and the approach first, wait
+   for my OK, then implement with tests and re-run the eval. Report the recall and precision numbers.
+4. Do not start the design rebuild (FIXLIST section C) until I confirm the mockup is approved.
+Rules: one item at a time; build and tests green before each commit; commit message "helmet: <FIXLIST id>
+<title>"; one log line in docs/helmet/STATUS.md per item; push to feat/helmet-3d; never push to main; no new
+dependencies; nothing in src/helmet/cv/ may import world/, sim/ or eval/. For anything visual, run the dev
+server and look at a screenshot of #helmet before calling it done. Stop and ask when a decision is needed
+that the docs do not answer.
 ```
-
-To run it as a loop with helpers instead, use the orchestrator prompt in `docs/helmet/LOOP_PROMPT.md` with
-`/loop`, and change "at most 3 worker subagents" to **2** because of plan limits.
