@@ -18,14 +18,17 @@ export interface StereoOptions {
   aggRadius: number
   /**
    * Reject a pixel when best cost ≥ uniqueness × second-best cost (second best taken away from the
-   * best's direct neighbours). 0.95 rejects only flat, textureless cost curves; lower is stricter.
+   * best's direct neighbours). Lower is stricter. PLAN §5.1 starts from 0.95, which only rejects flat,
+   * textureless curves; on a rendered scene (obstacles.test.ts) it let through ~450 wrong pixels along the
+   * sky/horizon edge, 0.8 cut them to ~70 and kept the valid share of the synthetic tests (≥ 98.8 %).
+   * Tune it on rendered frames in the eval harness (T4.4).
    */
   uniqueness: number
   /** Largest allowed difference between the left and the right disparity map, pixels. */
   lrMaxDiff: number
 }
 
-export const STEREO_DEFAULTS: StereoOptions = { maxDisp: 48, aggRadius: 4, uniqueness: 0.95, lrMaxDiff: 1 }
+export const STEREO_DEFAULTS: StereoOptions = { maxDisp: 48, aggRadius: 4, uniqueness: 0.8, lrMaxDiff: 1 }
 
 /** Valid depth range for the helmet's CV, metres. Nearer than this is beyond maxDisp anyway. */
 export const DEPTH_MIN_M = 1
