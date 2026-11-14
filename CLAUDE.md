@@ -79,11 +79,14 @@ On `feat/tablet-nav` (both voice branches merged in, then task B): safety alerts
 - "Status" button: Mars time, time out, walk home, air temperature, dose so far
 - On arrival, the stop's science sentence is said after the task
 - Talk-back (task C) dropped: no Repeat, Where am I or hold-to-talk. Status is the only on-demand readout
-- Next: task D (heading-up map, Earth GPS) and E (MEDA/RAD data, demo mode)
+- Real weather (task E): `scripts/fetch_meda.py` builds `src/data/medaSol.ts` from Perseverance MEDA (NASA PDS), sols 120-129, medians per half hour. It drives the temperature curve, the gust hours (now 11:00-17:30, wind 95th percentile >= 8 m/s) and the conditions panel
+- Demo mode `/nav?demo=1`: Sample cache + Delta front on foot (4.3 h, the only on-foot routes that fit go past the 60 min reserve), leaves 10:30 Mars time, 60x. Script and recording checklist: `docs/DEMO.md`
+- Next: task D (heading-up map, Earth GPS), if there is time
 
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
+- `python scripts/fetch_meda.py [first last]`: rebuild the typical sol from MEDA data (streams about 15 MB per sol)
 - `npm test`: unit tests for the planner and navigation (`src/lib/*.test.ts`, `src/nav/*.test.ts`). Works on Node 21 too (`scripts/test.mjs` bundles them with esbuild)
 
 Known issues:
@@ -112,7 +115,7 @@ Folders (shared shapes live in `src/types.ts`: `Target`, `Terrain`, `Mobility`, 
 - Science goal: search for signs of ancient life. Collect the samples Perseverance cached, then revisit the rover's strongest leads
 - Form factor: habitat planning screen
 - Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR), spectral (CRISM mineral indicators). Plus rover ground imagery, and radiation and weather as static cited values
-- Demo story, 3 minutes: TBD
+- Demo story, 3 minutes: `docs/DEMO.md` (demo mode `/nav?demo=1`)
 
 ## Stack
 

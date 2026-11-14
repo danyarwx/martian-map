@@ -332,7 +332,8 @@ test('voice fallback: the browser voice speaks when the cloud voice cannot, and 
 test('time-of-day alerts: gust hours and daylight are said once, as the Mars clock passes them', () => {
   assert.deepEqual(timeAlertsBetween(DAY.gustsFrom - 20, DAY.gustsFrom - 10).map((a) => a.id), ['gusts-soon'])
   assert.deepEqual(timeAlertsBetween(DAY.gustsFrom - 10, DAY.gustsFrom - 5), [])
-  assert.deepEqual(timeAlertsBetween(DAY.sunset - 61, DAY.sunset - 29).map((a) => a.id), ['daylight-60', 'daylight-30'])
+  const evening = timeAlertsBetween(DAY.sunset - 61, DAY.sunset - 29).map((a) => a.id)
+  assert.deepEqual(evening.filter((id) => id.startsWith('daylight')), ['daylight-60', 'daylight-30'])
 
   const bus = createNavBus({ channel: false })
   const said: string[] = []

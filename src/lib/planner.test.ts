@@ -207,8 +207,10 @@ test('walk-back time is infinite behind ground nobody can walk on', async () => 
 
 test('the suggested departure keeps the excursion in daylight and out of the midday gusts when it can', async () => {
   const { assessDeparture, bestDeparture, DAY, temperatureC, timeline } = await import('./schedule.ts')
-  assert.equal(Math.round(temperatureC(DAY.coldestAt)), DAY.coldestC)
-  assert.equal(Math.round(temperatureC(DAY.warmestAt)), DAY.warmestC)
+  // The day curve passes through the measured coldest and warmest half hours.
+  assert.ok(Math.abs(temperatureC(DAY.coldestAt) - DAY.coldestC) < 0.01)
+  assert.ok(Math.abs(temperatureC(DAY.warmestAt) - DAY.warmestC) < 0.01)
+  assert.ok(DAY.gustsFrom > DAY.sunrise && DAY.gustsTo <= DAY.sunset, 'gust hours are in daylight')
   const short = bestDeparture(120)
   assert.ok(short.inDaylight)
   assert.equal(short.gustMinutes, 0)

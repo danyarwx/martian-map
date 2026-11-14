@@ -9,6 +9,7 @@ import {
   CAREER_LIMIT_MSV,
   EARTH_BACKGROUND_MSV_PER_DAY,
   evaDoseMsv,
+  CONDITIONS_SOLS,
   JEZERO_CONDITIONS,
   SURFACE_DOSE_MSV_PER_DAY,
   WALK_BACK_RESERVE_MIN,
@@ -623,8 +624,9 @@ function DeparturePanel({
         </li>
       </ul>
       <p className="source">
-        A model of a typical sol, not a forecast: daylight for 18° N, air temperature and gust hours from Perseverance
-        MEDA (Rodriguez-Manfredi et al. 2023; Newman et al. 2022). Cosmic-ray dose does not depend on the hour.
+        A typical sol, not a forecast: daylight for 18° N; air temperature and gust hours measured by Perseverance
+        MEDA on sols {CONDITIONS_SOLS[0]}–{CONDITIONS_SOLS[1]} (NASA PDS; dust devils: Newman et al. 2022). Cosmic-ray
+        dose does not depend on the hour.
       </p>
     </Fold>
   )
@@ -784,8 +786,8 @@ function SafetyPanel({ plan }: { plan: RoutePlan | null }) {
         </tbody>
       </table>
       <p className="source">
-        Typical values, not live. Radiation: Curiosity RAD, Gale crater (Hassler et al. 2014). Weather: Perseverance
-        MEDA, Jezero (Rodriguez-Manfredi et al. 2023).
+        Typical values, not live. Radiation: Curiosity RAD, Gale crater (Hassler et al. 2014). Weather: medians of
+        Perseverance MEDA measurements at Jezero, sols {CONDITIONS_SOLS[0]}–{CONDITIONS_SOLS[1]} (NASA PDS).
       </p>
     </Fold>
   )

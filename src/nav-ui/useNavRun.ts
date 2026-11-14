@@ -20,6 +20,8 @@ export interface NavRunInput {
   /** The habitat and every target by id. */
   stops: Record<string, Target>
   mobility: Mobility
+  /** Scripted demo: Mars time of departure (LMST minutes) and simulation speed, instead of the defaults. */
+  demo?: { departLmst: number; speed: number }
 }
 
 export interface NavRunView {
@@ -85,9 +87,10 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     const missionStart = Date.now()
     let missionNow = missionStart
     let lastReal = missionStart
-    clock.current = { playing: true, speed: START_SPEED }
+    const startSpeed = input.demo?.speed ?? START_SPEED
+    clock.current = { playing: true, speed: startSpeed }
     // The Mars clock: the excursion leaves at the planner's suggested departure, as on the planning screen.
-    const departLmst = bestDeparture(input.plan.totalMinutes).start
+    const departLmst = input.demo?.departLmst ?? bestDeparture(input.plan.totalMinutes).start
     const turnBack = turnBackBy(input.plan, departLmst)
     const lmstAt = (t: number) => departLmst + (t - missionStart) / 60000
     mission.current = { start: missionStart, now: () => missionNow, departLmst }
@@ -112,7 +115,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       turnBackAtMs: turnBack === null ? undefined : missionStart + (turnBack - departLmst) * 60000,
     })
     const walker = new SimulatedSource({ legs: plan.legs, mobility: input.mobility })
-    walker.setSpeedMultiplier(START_SPEED)
+    walker.setSpeedMultiplier(startSpeed)
     nav.current = tracker
     sim.current = walker
 

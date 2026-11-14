@@ -1,4 +1,5 @@
 // Static "typical conditions" for the safety panel. Each number names its source; none is live.
+import { MEDA_SOL, MEDA_SOLS } from '../data/medaSol.ts'
 
 /**
  * Dose equivalent rate on the Martian surface from galactic cosmic rays, mSv per day.
@@ -26,14 +27,31 @@ export function evaDoseMsv(hoursOutside: number): number {
  */
 export const WALK_BACK_RESERVE_MIN = 60
 
-/** Typical surface conditions at Jezero from Perseverance's MEDA weather station
- * (Rodriguez-Manfredi et al. 2023, Nature Geoscience 16, 19-28). */
+const medaRange = (key: 'airC' | 'windMs') => {
+  const v = MEDA_SOL.map((b) => b[key])
+  return [Math.min(...v), Math.max(...v)]
+}
+const [airMin, airMax] = medaRange('airC')
+const [windMin, windMax] = medaRange('windMs')
+const gustMax = Math.max(...MEDA_SOL.map((b) => b.gustMs))
+const pressures = MEDA_SOL.map((b) => b.pressurePa).sort((a, b) => a - b)
+const pressureHpa = pressures[Math.floor(pressures.length / 2)] / 100
+const minus = (c: number) => `${c < 0 ? '−' : ''}${Math.abs(Math.round(c))}`
+
+/**
+ * Typical surface conditions at Jezero, measured by Perseverance's MEDA weather station on sols
+ * MEDA_SOLS (src/data/medaSol.ts, NASA PDS). Gusts are the 95th percentile of wind in a half hour;
+ * rarer gusts above 20 m/s and dust devils also occur (Newman et al. 2022, Science Advances 8).
+ */
 export const JEZERO_CONDITIONS = [
-  { label: 'Air temperature', value: '−80 to −20 °C', note: 'night to early afternoon' },
-  { label: 'Pressure', value: '≈ 7 hPa', note: 'under 1% of Earth sea level' },
-  { label: 'Wind', value: '2–10 m/s', note: 'afternoon gusts above 20 m/s' },
+  { label: 'Air temperature', value: `${minus(airMin)} to ${minus(airMax)} °C`, note: 'before dawn to mid-afternoon' },
+  { label: 'Pressure', value: `≈ ${pressureHpa.toFixed(1)} hPa`, note: 'under 1% of Earth sea level' },
+  { label: 'Wind', value: `${Math.round(windMin)}–${Math.round(windMax)} m/s`, note: `gusts to ${Math.round(gustMax)} m/s in the afternoon` },
   { label: 'Daylight', value: '≈ 12 h', note: 'one sol lasts 24 h 39 min' },
 ]
+
+/** Sols the conditions above were measured on. */
+export const CONDITIONS_SOLS = MEDA_SOLS
 
 export type HazardKind = 'dust_storm' | 'solar_particle_event'
 

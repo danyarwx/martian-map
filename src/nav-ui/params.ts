@@ -11,14 +11,25 @@ export interface NavSelection {
   points: Target[]
 }
 
-/** The demo selection: three stops on foot, fastest route. */
+/**
+ * The demo selection: the sample cache and the delta front on foot, fastest route. Picked by planning every
+ * 2-3 target walk on the real terrain: one of the 4 that fit one excursion (4.3 h, 6.5 km), and the one that
+ * best tells the science goal (cached samples, then the lake-bottom layers most likely to keep traces of life).
+ * Like every walk that fits, it goes past the 60 min walk-back reserve (farthest point about 90 min from home).
+ */
 export const DEMO_SELECTION: NavSelection = {
-  stopIds: ['three-forks', 'delta-front', 'seitah'],
+  stopIds: ['three-forks', 'delta-front'],
   mobility: 'walk',
   profile: 'fast',
   home: null,
   points: [],
 }
+
+/** Scripted demo (`/nav?demo=1`): the demo selection, leaving at 10:30 Mars time so the gust warning comes early, at 60x. */
+export const DEMO_RUN = { departLmst: 10 * 60 + 30, speed: 60 }
+
+/** True for `/nav?demo=1`. */
+export const isDemo = (search: string) => new URLSearchParams(search).get('demo') === '1'
 
 const coord = (v: number) => v.toFixed(5)
 
@@ -48,7 +59,7 @@ export function parseNavParams(search: string, knownIds: string[]): NavSelection
     points.push({ id: `custom-${i + 1}`, name: label, summary: '', science: 'Custom destination.', task: '', lat: la, lon: lo })
   })
   const ids = (q.get('stops') ?? '').split(',').filter((id) => knownIds.includes(id))
-  if (ids.length === 0 && points.length === 0) return DEMO_SELECTION
+  if (isDemo(search) || (ids.length === 0 && points.length === 0)) return DEMO_SELECTION
   const [hl, ho] = (q.get('home') ?? '').split(',')
   const homeLat = num(hl)
   const homeLon = num(ho)

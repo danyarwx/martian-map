@@ -10,7 +10,7 @@ import type { MobilityId, RouteProfile, StopView, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
 import { Banner, EndControl, FinishedCard, NavPanel, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
-import { parseNavParams } from './params.ts'
+import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput } from './useNavRun.ts'
 import { startVoice, type Voice } from './voice/index.ts'
 import './nav.css'
@@ -49,6 +49,7 @@ const AHEAD_ROVER_M = 1000
 
 export default function NavApp() {
   const initial = useMemo(() => parseNavParams(window.location.search, site.targets.map((t) => t.id)), [])
+  const demo = useMemo(() => isDemo(window.location.search), [])
   const [selected, setSelected] = useState<string[]>(initial.stopIds)
   const [mobility, setMobility] = useState<MobilityId>(initial.mobility)
   const [profile, setProfile] = useState<RouteProfile>(initial.profile)
@@ -109,8 +110,8 @@ export default function NavApp() {
     voice.current?.radioCheck() // this tap is what unlocks audio in the browser
     setFollow(true)
     setAutoZoom(true)
-    setRun({ site, plan, habitat, stops: stopsById, mobility: MOBILITY[plan.mobility] })
-  }, [plan, habitat, stopsById])
+    setRun({ site, plan, habitat, stops: stopsById, mobility: MOBILITY[plan.mobility], demo: demo ? DEMO_RUN : undefined })
+  }, [plan, habitat, stopsById, demo])
 
   const end = useCallback(() => setRun(null), [])
 
