@@ -7,10 +7,10 @@ Lanes: A data · B world/sim · C CV core · D mapping/nav/planner · E HUD/UI/s
 Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created from main `ab4c0ca`)
 
 ## M0 – foundation (serial)
-- [ ] T0.1 Contracts and frames
-- [ ] T0.2 Dependencies (three 0.170.0) and test glob · deps T0.1
-- [ ] T0.3 Import firewall test · deps T0.2
-- [ ] T0.4 Skeleton `#helmet` · deps T0.2
+- [x] T0.1 Contracts and frames · commit dc537c3
+- [x] T0.2 Dependencies (three 0.170.0) and test glob · deps T0.1 · commit 35c771e
+- [x] T0.3 Import firewall test · deps T0.2 · commit 910dd7c
+- [x] T0.4 Skeleton `#helmet` · deps T0.2 · commit 68e303c
 
 ## M1 – real terrain
 - [ ] T1.0 (A) Export route polylines · deps T0.2
@@ -62,3 +62,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 
 ## Log
 <!-- One line per finished or blocked task: date, task, agent, commit, note. Newest at the bottom. -->
+- 14 Nov · T0.1 · orchestrator · dc537c3 · contracts.ts per §4.3 (+HAZARD constants, HazardPatch type), frames.ts with grid helpers; 5 tests
+- 14 Nov · T0.2 · orchestrator · 35c771e · three 0.170.0 + @types/three pinned; npm test runs 'src/lib/*.test.ts' 'src/helmet/**/*.test.ts' (Node expands the quoted globs, nested folders verified)
+- 14 Nov · T0.3 · orchestrator · 910dd7c · firewall test; verified it fails on a planted cv→world import
+- 14 Nov · T0.4 · orchestrator · 68e303c · #helmet lazy-loads HelmetView (three.js in its own 472 kB chunk), flat scene ~50 fps on software GL, Esc returns to Mission control. Movement lives in HelmetView for now; T2.4 moves it to sim/
