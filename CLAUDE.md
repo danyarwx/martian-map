@@ -58,6 +58,12 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
+Helmet view (Level 2), branch `feat/helmet-3d`, all planned tasks built (PR #5 to `main` is open, humans review and merge): walk the real terrain, live stereo CV (rocks, steep, sand, drop-offs), hazard mini-map, guide line, re-route, compass, suit and weather panel, real-photo test; "Go outside" in Mission control and the seen ground back on the map on Esc. Keys J V R M H P. Demo steps: `docs/helmet/DEMO.md`. Open: rock recall 56 % by detection centre (target 80 %), sand detector trained on a simulated sand look, backup video, teammates' reviews of `src/lib`, `src/map`, `src/panels` changes. Board and metrics: `docs/helmet/STATUS.md`:
+- Spec, decisions and task list for agents: `docs/helmet/PLAN.md`. Progress board: `docs/helmet/STATUS.md`. Loop prompts: `docs/helmet/LOOP_PROMPT.md`
+- Adds `three` (agreed). Touches `src/lib/` only for a "blocked cells" planner input (Dev 2 reviews) and `src/map/` only for two optional props (Dev 1 reviews)
+- Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)
+- Backup: the earlier scripted helmet with real rover panoramas, branch `feat/helmet-hud`
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
@@ -87,7 +93,7 @@ Folders (shared shapes live in `src/types.ts`: `Target`, `Terrain`, `Mobility`, 
 
 - Site: Jezero crater. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with ground photos and tilt, and thermal coverage
 - Science goal: search for signs of ancient life. Collect the samples Perseverance cached, then revisit the rover's strongest leads
-- Form factor: habitat planning screen
+- Form factor: habitat planning screen (Mission control) + helmet HUD for the walk itself (Level 2, Danya). The helmet is a 3D Mars from real orbital data with live in-browser computer vision and a top-down hazard map; spec in `docs/helmet/PLAN.md`
 - Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR), spectral (CRISM mineral indicators). Plus rover ground imagery, and radiation and weather as static cited values
 - Demo story, 3 minutes: TBD
 

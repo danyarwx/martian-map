@@ -1,0 +1,70 @@
+{
+  "fetched": "2026-11-14T17:47:26Z",
+  "source": "https://mars.nasa.gov/rss/api/?feed=weather&category=mars2020&feedtype=json",
+  "credit": "NASA/JPL-Caltech/CAB(CSIC-INTA): Perseverance MEDA",
+  "units": {
+    "min_temp": "degC",
+    "max_temp": "degC",
+    "pressure": "Pa",
+    "sunrise": "local Mars time hh:mm:ss, as given by the feed",
+    "sunset": "local Mars time hh:mm:ss, as given by the feed",
+    "ls": "deg (solar longitude)"
+  },
+  "sols": [
+    {
+      "sol": 1130,
+      "terrestrial_date": "2024-04-24",
+      "min_temp": -77.3,
+      "max_temp": -23.2,
+      "pressure": 777.1,
+      "sunrise": "06:15:41",
+      "sunset": "17:12:41",
+      "season": "late autumn",
+      "ls": 242.153
+    },
+    {
+      "sol": 1131,
+      "terrestrial_date": "2024-04-25",
+      "min_temp": -79.2,
+      "max_temp": -17.0,
+      "pressure": 774.9,
+      "sunrise": "06:16:29",
+      "sunset": "17:13:03",
+      "season": "late autumn",
+      "ls": 242.804
+    },
+    {
+      "sol": 1132,
+      "terrestrial_date": "2024-04-26",
+      "min_temp": -77.9,
+      "max_temp": -23.4,
+      "pressure": 774.1,
+      "sunrise": "06:17:18",
+      "sunset": "17:13:27",
+      "season": "late autumn",
+      "ls": 243.455
+    },
+    {
+      "sol": 1133,
+      "terrestrial_date": "2024-04-27",
+      "min_temp": -79.3,
+      "max_temp": -24.7,
+      "pressure": 778.9,
+      "sunrise": "06:18:07",
+      "sunset": "17:13:51",
+      "season": "late autumn",
+      "ls": 244.106
+    }
+  ],
+  "latest": {
+    "sol": 1133,
+    "terrestrial_date": "2024-04-27",
+    "min_temp": -79.3,
+    "max_temp": -24.7,
+    "pressure": 778.9,
+    "sunrise": "06:18:07",
+    "sunset": "17:13:51",
+    "season": "late autumn",
+    "ls": 244.106
+  }
+}

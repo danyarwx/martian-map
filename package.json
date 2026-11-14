@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/*.test.ts",
+    "test": "node --test 'src/lib/*.test.ts' 'src/helmet/**/*.test.ts'",
     "fetch-data": "bash scripts/fetch_data.sh",
     "build-terrain": "scripts/.venv/bin/python scripts/build_terrain.py"
   },
@@ -15,12 +15,14 @@
     "@huggingface/transformers": "^4.3.2",
     "leaflet": "^1.9.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "0.170.0"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.12",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/three": "0.170.0",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "~5.6.2",
     "vite": "^6.0.0"
