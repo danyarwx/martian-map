@@ -78,7 +78,8 @@ On `feat/tablet-nav` (both voice branches merged in, then task B): safety alerts
 - SIMULATION bar: "Dust storm" and "Solar flare" abort the excursion: warning, then a route straight home (`abortToHabitat` in `tracker.ts`). Texts and sources in `HAZARD_EVENTS`, `src/lib/safety.ts`
 - "Status" button: Mars time, time out, walk home, air temperature, dose so far
 - On arrival, the stop's science sentence is said after the task
-- Next: task C (talk-back buttons and hold-to-talk), D (heading-up map, Earth GPS), E (MEDA/RAD data, demo mode)
+- Talk-back (task C) dropped: no Repeat, Where am I or hold-to-talk. Status is the only on-demand readout
+- Next: task D (heading-up map, Earth GPS) and E (MEDA/RAD data, demo mode)
 
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
