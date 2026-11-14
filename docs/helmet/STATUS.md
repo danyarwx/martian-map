@@ -39,11 +39,11 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [ ] T5.3 (D) Global replan bridge · deps T4.3, T5.0
 
 ## M4 – sensors, sand, drop, real photo, hand-back
-- [ ] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6
+- [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · worker lane A2 (data + logic now; panel after T4.6), started 14 Nov
 - [ ] T5.2 (C) Sand classifier · deps T4.4 · cut #2 if late
 - [ ] T5.4 (E) Hand the map back to Mission control · deps T4.2 · Dev 1 reviews
 - [ ] T5.5 (C) Drop-offs · deps T4.2 · cut #1 if late
-- [ ] T6.1 (A) Real stereo pair at Cheyava Falls · deps T3.1 · cut #3 if late
+- [~] T6.1 (A) Real stereo pair at Cheyava Falls · deps T3.1 · cut #3 if late · worker lane A2, started 14 Nov
 - [ ] T6.2 (E) Real-photo view (R) · deps T6.1, T3.5 · cut #3 if late
 
 ## M5 – polish
