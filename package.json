@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "fetch-data": "bash scripts/fetch_data.sh"
+    "test": "node --test src/lib/*.test.ts",
+    "fetch-data": "bash scripts/fetch_data.sh",
+    "build-terrain": "scripts/.venv/bin/python scripts/build_terrain.py"
   },
   "dependencies": {
     "leaflet": "^1.9.4",

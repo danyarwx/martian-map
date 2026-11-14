@@ -19,41 +19,58 @@ What the judges will look for (taken from the challenge text):
 
 ## Status (update at every handover)
 
-Last updated: Fri 13 Nov, evening before the hackathon.
+Last updated: Sat 14 Nov, hackathon day 1.
 
 Live: https://martian-map-nasa.vercel.app (Vercel project `martian-map`, team `danyarwx-9436s-projects`)
 Repo: https://github.com/danyarwx/martian-map (public, so collaborators' pushes deploy on Vercel Hobby)
 Every push to `main` deploys production. Every other branch and PR gets a preview URL.
 
-Done:
+Done on branch `pre-hackathon` (`main` is empty for now):
 - Vite + React + TS + Leaflet app with `L.CRS.EPSG4326` (Trek tiles line up, checked on the live site)
-- Layers in `src/MarsMap.tsx`: Viking color + MOLA relief (global), CTX 6 m + HiRISE 25 cm (Jezero), THEMIS day IR (thermal)
-- Perseverance traverse + 708 waypoints from `public/data/*.json` (`npm run fetch-data` refreshes them)
-- Map opens at Perseverance's landing point, zoom 13
+- Layers: Viking color + MOLA relief (global), CTX 6 m + HiRISE 25 cm (Jezero), THEMIS day IR (thermal)
+- Perseverance traverse + 708 waypoints from `public/data/*.json`
+
+Done on branch `feat/route-planner` (not committed or merged yet): the excursion planner
+- Habitat at Perseverance's landing site, 6 selectable science targets (`src/data/jezero.ts`)
+- Fastest safe round trip through the chosen targets, planned from the slope grid (A* per leg, best visiting order). Runs in a web worker
+- Two modes: on foot (2.5 km/h, 20° limit) and crew rover (10 km/h, 15° limit). Assumptions and sources are in `src/lib/mobility.ts`
+- Check that the trip fits one excursion (8 h), with a warning when it does not
+- Stop cards with a ground-level rover photo per stop (`public/data/views/`)
+- Safety panel: radiation dose for the time outside and typical Jezero weather, static cited values (`src/lib/safety.ts`)
+- Slope grid built from the HiRISE 1 m DTM: 1523 x 711 cells of 10 m, slope overlay on the map
+- Scale bar now uses Mars's radius
+- Code split into folders (see below)
+
+Commands:
+- `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
+- `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
+- `npm test`: unit tests for the planner (`src/lib/planner.test.ts`)
 
 Known issues:
-- Scale bar uses Earth's radius, so its distances are wrong. Fix it (Mars radius 3389.5 km) or hide it before the demo
-- Waypoint tooltip only shows sol + tilt. The panorama URLs in the waypoint properties aren't used yet
-- No elevation data in the app yet. The HiRISE 1 m DTM is not served as tiles, so the GeoTIFF has to be downloaded and processed (see Data sources)
-- Everything sits in one component (`MarsMap.tsx`). Split it into `src/map/` before 2–3 people edit it at once
+- The HiRISE DTM ends at about 77.25°E. The crater rim west of that has no slope data, so the planner treats it as no-go. The last 96 of the 708 rover waypoints (about sol 1690 onward) are in that gap. All 6 targets are inside the covered area
+- All 6 targets on foot is a 20 km, 14 h trip, so it does not fit one excursion. By rover it takes 5.8 h. The demo needs a selection that fits
+- The delta front target sits on a 20° cell: at the walking limit, and over the rover limit, so the rover stops at the nearest passable cell (within 50 m)
+- Waypoint tooltip only shows sol + tilt
+- No README for the submission yet
 
 Next, in order:
-1. Kickoff: fill in "Our decisions" below
-2. Agree on shared data formats: `src/types.ts` (`Waypoint`, `RouteSegment`, `Hazard`, `LayerDef`), which files the scripts write to `public/data`, and who owns which folder
-3. `/ecc:plan` → one GitHub issue per task, each with an owner
-4. Build in parallel. Feature freeze around hour 20. Then polish, README, backup demo video
+1. Review `feat/route-planner` (branched from `pre-hackathon`) and merge it into `main`
+2. Write the 3-minute demo story (see "Our decisions") and pick the target selection it shows
+3. `/ecc:plan` → one GitHub issue per remaining task, each with an owner
+4. Feature freeze around hour 20. Then polish, README, backup demo video
 
-Folder ownership (to avoid merge conflicts):
-- Dev 1: `src/map/` (layers, controls, drawing the route)
-- Dev 2: `scripts/`, `public/data/`, `src/lib/` (slope/hazard logic, route planning)
-- Dev 3 / Danya: `src/panels/` (stop card with panorama, safety panel, HUD view)
+Folders (shared shapes live in `src/types.ts`: `Target`, `Terrain`, `Mobility`, `RouteLeg`, `RoutePlan`, `SiteConfig`):
+- `src/map/`: the Leaflet map, layers, drawing the route. Dev 1
+- `src/lib/`: planner (`astar.ts`, `planner.ts`, worker), mobility, safety numbers, terrain loading. Dev 2, together with `scripts/` and `public/data/`
+- `src/panels/`: sidebar with target list, plan summary, stop cards, safety panel. Dev 3 / Danya
+- `src/data/`: site config (habitat, targets, file paths)
 
 ## Our decisions (fill these in at kickoff and keep them current)
 
-- Site: Jezero is the leading option. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with panoramas and tilt, and thermal coverage. Confirm at kickoff
-- Science goal: TBD
-- Form factor: TBD
-- Data layers (minimum 3): TBD
+- Site: Jezero crater. It's the only site with verified walking-scale imagery (HiRISE 25 cm), a 1 m DTM, rover stops with ground photos and tilt, and thermal coverage
+- Science goal: search for signs of ancient life. Collect the samples Perseverance cached, then revisit the rover's strongest leads
+- Form factor: habitat planning screen
+- Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR). Plus rover ground imagery, and radiation and weather as static cited values
 - Demo story, 3 minutes: TBD
 
 ## Stack
@@ -72,12 +89,13 @@ Confirm every endpoint with a real request before building on it. Write down wha
 |---|---|---|
 | Basemap / optical | Mars Trek WMTS: `https://trek.nasa.gov/tiles/Mars/EQ/{LayerID}/1.0.0/default/default028mm/{z}/{y}/{x}.{ext}`. VERIFIED: `Mars_Viking_MDIM21_ClrMosaic_global_232m` (jpg, max z7) | Grid = Leaflet `L.CRS.EPSG4326` (2x1 tiles at z0, 256px). Capabilities XML lists more zoom levels than really exist, so test real tiles. Many catalog IDs 404 |
 | Site imagery (walking scale) | VERIFIED: `JEZ_hirise_soc_006_orthoMosaic_25cm_Eqc_latTs0_lon0_first_dd` (png, tiles to z17 ≈ 0.3 m/px) and `JEZ_ctx_B_soc_008_orthoMosaic_6m_Eqc_latTs0_lon0` (png, to z13) | Jezero only. Bounds in `MarsMap.tsx`. Found via Trek catalog search: `https://trek.nasa.gov/mars/TrekServices/ws/index/eq/searchItems?q=Jezero&rows=200` |
-| Site elevation | Exists in Trek catalog: `JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40` (1 m) and CTX 20 m DTM | NOT served as tiles (404). Need the GeoTIFF download (Trek UI or USGS) for slope / no-go zones. Spike C |
+| Site elevation | Exists in Trek catalog: `JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40` (1 m) and CTX 20 m DTM | NOT served as tiles (404). VERIFIED downloads: USGS Mars 2020 TRN DTMs at `https://planetarymaps.usgs.gov/mosaic/mars2020_trn/HiRISE/…` (1 m, 1.8 GB) and `/CTX/…` (20 m, 10 MB). Full URLs in `scripts/fetch_data.sh`. `scripts/build_terrain.py` turns them into the slope grid. HiRISE coverage ends at about 77.25°E |
 | Thermal | VERIFIED: `THEMIS_DayIR_ControlledMosaics_100m_v2_oct2018` (png, max z9, 65S–65N) | Our 3rd data type |
 | Topography (global) | VERIFIED: `Mars_MGS_MOLA_ClrShade_merge_global_463m` (jpg, max z7) | Too coarse to route by on foot. Fine for context |
 | Topography (local, for routing) | HiRISE DTMs: https://www.uahirise.org/dtm/ | ~1 m/px. Derive slope from it to find no-go zones |
-| Rover route (Perseverance) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json` (559 segments) and `M20_waypoints.json` (708 points) | Standard GeoJSON [lon, lat, elev]. Waypoints include sol, elevation, rover pitch/roll/tilt, distance, and panorama URLs (relative to `https://mars.nasa.gov/mmgis-maps/M20/`). Use tilt for slope warnings and panoramas for POV images |
-| Ground-level photos | Perseverance raw images: https://mars.nasa.gov/mars2020/multimedia/raw-images/ | Attach photos to waypoints by sol |
+| Rover route (Perseverance) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/M20_traverse.json` (559 segments) and `M20_waypoints.json` (708 points) | Standard GeoJSON [lon, lat, elev]. Waypoints include sol, elevation, rover pitch/roll/tilt, distance, and panorama URLs (relative to `https://mars.nasa.gov/mmgis-maps/M20/`). The panorama URLs return 403, so they can't be used |
+| Helicopter (Ingenuity) | VERIFIED: `https://mars.nasa.gov/mmgis-maps/M20/Layers/json/m20_heli_waypoints.json` | The file name is lowercase (`M20_heli…` returns 403). Saved as `public/data/M20_heli_waypoints.json`. Gives Ingenuity's final position |
+| Ground-level photos | VERIFIED: raw image API `https://mars.nasa.gov/rss/api/?feed=raw_images&category=mars2020&feedtype=json&sol=N&search=%7CNAVCAM_LEFT` | `scripts/fetch_views.py` caches one photo per stop into `public/data/views/`, picked by the sol of the nearest waypoint |
 | Geology | USGS Mars maps: https://astrogeology-usgs.hub.arcgis.com/pages/interactive-maps-mars | Geologic units for the science layer |
 | Route visual reference | https://science.nasa.gov/resource/curiositys-proposed-path-up-mount-sharp/ | Shows how NASA presents a route |
 | Atmosphere / radiation | Candidates: Perseverance MEDA, Curiosity REMS and RAD | Not confirmed yet. A static "typical conditions" panel with a cited source counts |
