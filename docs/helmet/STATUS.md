@@ -35,8 +35,8 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - [ ] T4.6 (E) HUD core (port from feat/helmet-hud) · deps T2.4
 
 ## M3 – re-route and guidance
-- [ ] T5.0 (D) Local planner + guide line · deps T4.2
-- [ ] T5.3 (D) Global replan bridge · deps T4.3, T5.0
+- [x] T5.0 (D) Local planner + guide line · deps T4.2 · done 14 Nov (work/t5)
+- [x] T5.3 (D) Global replan bridge · deps T4.3, T5.0 · done 14 Nov (work/t5)
 
 ## M4 – sensors, sand, drop, real photo, hand-back
 - [~] T5.1 (A+E) Weather cache + sensors panel + warnings · deps T4.6 · data + logic done (b3b52cc: weather.json, fetch_weather.py, sensors/weather.ts, suit.ts, warnings.ts + tests); the HUD panel is still to do with T4.6
@@ -58,6 +58,7 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 |---|---|---|---|---|---|---|
 
 ## Questions for the human
+- 14 Nov (new owner): re-route threshold. PLAN §5.8 blocks a planner cell at 30 % hazard cover; a row of boulders covers under 10 % of a 10 m cell, so it never fired. `session.ts` uses 6 % (`REPLAN_COVERAGE`). Danya: OK, or should the demo boulder field be made denser instead?
 - Contract note (orchestrator decision, applied with T4.2): add `CvResult.groundZ?: Float32Array` (one value per patch cell) and `CvFrame.heights?: HeightGrid` so drop-offs run on fused grid heights (§5.6). Optional fields, nothing existing changes
 - 14 Nov ~18:10 UTC: work handed off to another person (see `docs/helmet/HANDOFF.md`). All agents stopped; nothing in flight
 - Dev 2 (review of T4.3): `usePlanner`'s worker `onmessage` does not check `type`, so replans must go to a separate worker instance (T5.3 will do that, loading the terrain a second time, ~3 MB) unless Dev 2 adds `if ('type' in res) return` in `src/lib/usePlanner.ts`. Detours around blocked cells get no route note from `explainLeg`; walk-back times ignore blocked cells. Details in the T4.3 log line
@@ -93,3 +94,4 @@ Branch: `feat/helmet-3d` · Last sync with `origin/main`: 14 Nov (branch created
 - 14 Nov · T5.0/T5.3 (pure parts) · subagent · 7d74ac6 · nav/follow.ts, nav/localPlanner.ts (A* on the hazard grid, 0.3 ms mean), nav/replan.ts (ReplanDecider + ReplanClient with its own planner worker); 32 tests; not wired yet. Timing test now checks the median (p95 flaked when the test files ran in parallel)
 - 14 Nov · T3.5 · new owner · work/t3.5 · sim/cvRig.ts: two 256 × 192 cameras, 70° HFOV, 0.30 m apart, colour only, rows flipped, linear → display gamma in JS; session sends a frame every 150 ms with one in flight. In the browser at the Three Forks demo boulders from 8 m: worker 37 ms, 7.0 Hz, 70 % valid pixels, 5 rocks found, each within 0.3 m of a real boulder (heights 0.40–0.68 m vs 0.42–0.65 m true); 75 fps main view. The status chip shows CV ms and Hz
 - 14 Nov · T4.2 + T4.5 · new owner · work/t4.2 · mapping/fuse.ts (HazardMap: grid + version + latest detections), hud/MiniMap.tsx (north-up, ±25 m small / ±60 m large with M, route dashed, astronaut arrow, scale bar, legend), hud/CvView.tsx (V: left camera with labelled boxes, disparity ramp, ms / Hz / valid % / pose source). In the browser: walking 5 m toward the Three Forks demo boulders paints 4 rock clusters within ~1 m of the real boulders, safe ground as the seen wedge. Not done here: the contract note (CvResult.groundZ / CvFrame.heights for drop-offs on fused heights) — drop-offs are cut #1, so they wait until the core path is done
+- 14 Nov · T5.0 + T5.3 · new owner · work/t5 · session.ts runs the local planner after every CV frame (hud/GuideLine.ts: ribbon on the ground, on three.js layer 1 so the CV cameras never see it), moves to the next leg at a stop, and checks the route against the hazard map once a second (ReplanDecider, coverage 0.06 instead of 0.30: see Questions) → ReplanClient (own planner worker) → new plan, track and "Route updated" alert. HUD: alerts (sensors/warnings.ts rules for hazard ahead and slope), nav panel (next stop, distance, steering arrow). `session.exit()` fills HelmetExit (seen image + bounds, hazard clusters, plan if re-routed). #helmet now opens the whole demo excursion (4 legs) and asks the planner for the real plan at start, so times are comparable. Seen in the browser at Three Forks: boulders detected from ~16 m, 1 planner cell blocked, new route passes 7 m south of the field, walked along the guide past it without touching a rock; 75 fps, CV 30 ms at 6.5 Hz. Not done: T2.5 (Go outside button), T4.6/T5.1 panels (compass, suit), T6.2 (R), T5.4 (map side), T4.4 eval, sand, drop-off wiring

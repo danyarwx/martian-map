@@ -204,3 +204,63 @@
 .helmet-cv p {
   margin: 6px 0 0;
 }
+.helmet-alerts {
+  position: absolute;
+  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.helmet-alerts p {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  background: rgba(10, 18, 18, 0.8);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.helmet-alerts .is-info { color: var(--hud); }
+.helmet-alerts .is-caution { color: var(--hz-sand); }
+.helmet-alerts .is-danger { color: var(--hz-rock); }
+.helmet-nav {
+  position: absolute;
+  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 2px;
+  min-width: 170px;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-dim);
+  border-radius: 8px;
+  background: var(--hud-panel);
+  color: var(--hud);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.helmet-nav-label {
+  color: var(--hud-dim);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.helmet-nav strong {
+  color: var(--text, #e8ecf1);
+  font-weight: 600;
+}
+.helmet-steer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.helmet-steer-arrow {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+}
