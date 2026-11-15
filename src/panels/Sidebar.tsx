@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import StopPhoto from './StopPhoto.tsx'
 import type { PhotoData } from '../lib/usePhotoData.ts'
 import type { LatLon, MobilityId, RoutePlan, RouteProfile, SiteConfig, StopView, Target } from '../types.ts'
@@ -490,12 +490,15 @@ function StopsPanel(p: Props) {
   const row = (t: Target, custom: boolean) => {
     const on = p.selected.has(t.id)
     const no = visitNo.get(t.id)
-    const badge = blocked.has(t.id) && on ? 'badge badge--blocked' : custom ? 'badge badge--custom' : on ? 'badge' : 'badge badge--off'
+    const badge = blocked.has(t.id) && on ? 'badge badge--blocked' : !on ? null : custom ? 'badge badge--custom' : 'badge'
     return (
       <li key={t.id} className={`stop-row${p.focusId === t.id ? ' is-focus' : ''}`}>
-        <span className={badge} aria-hidden="true">
-          {blocked.has(t.id) && on ? '!' : on && no ? no : ''}
-        </span>
+        {/* Only stops on the route get a badge, so an empty circle is never mistaken for a tick box. */}
+        {badge && (
+          <span className={badge} aria-hidden="true">
+            {blocked.has(t.id) && on ? '!' : on && no ? no : ''}
+          </span>
+        )}
         <button type="button" className="info" onClick={() => p.onFocus(t.id)}>
           <strong>{t.name}</strong>
           <small>{t.summary}</small>
@@ -549,7 +552,7 @@ function StopsPanel(p: Props) {
 
       <ul className="stops">
         {(() => {
-          // Chosen stops first, the latest choice on top (a Set keeps the order things were added in).
+          // Chosen stops first (a Set keeps the order things were added in).
           // The rest keep their original order, so an unticked stop goes back to its place.
           const all: [Target, boolean][] = [...p.site.targets.map((t): [Target, boolean] => [t, false]), ...p.custom.map((t): [Target, boolean] => [t, true])]
           const byId = new Map(all.map((e) => [e[0].id, e]))
@@ -557,6 +560,9 @@ function StopsPanel(p: Props) {
             .reverse()
             .map((id) => byId.get(id))
             .filter((e): e is [Target, boolean] => e !== undefined)
+            // In visiting order, so the numbers read 1, 2, 3 down the list. A stop without a number yet
+            // (just added and still being planned, or unreachable) stays on top, newest first.
+            .sort(([a], [b]) => (visitNo.get(a.id) ?? 0) - (visitNo.get(b.id) ?? 0))
           return [...chosen, ...all.filter(([t]) => !p.selected.has(t.id))].map(([t, custom]) => row(t, custom))
         })()}
       </ul>
@@ -618,7 +624,7 @@ function CoordForm(p: {
 
 /** Hours shown on the day strip. */
 const STRIP_FROM = 4 * 60
-const STRIP_TO = 20 * 60
+const STRIP_TO = 24 * 60
 
 /** When to leave: the suggested time with its reasons, a picture of the day, and a slider to try another time. */
 function DeparturePanel({
@@ -634,9 +640,11 @@ function DeparturePanel({
 }) {
   const { best, chosen } = schedule
   const W = 372
-  const H = 96
+  /** Height of the day band; the hour labels sit under it. */
+  const B = 110
+  const H = B + 34
   const x = (minute: number) => ((minute - STRIP_FROM) / (STRIP_TO - STRIP_FROM)) * W
-  const y = (c: number) => 12 + ((DAY.warmestC - c) / (DAY.warmestC - DAY.coldestC)) * 44
+  const y = (c: number) => 12 + ((DAY.warmestC - c) / (DAY.warmestC - DAY.coldestC)) * (B - 34)
   const curve: string[] = []
   for (let t = STRIP_FROM; t <= STRIP_TO; t += 15) curve.push(`${x(t).toFixed(1)},${y(temperatureC(t)).toFixed(1)}`)
   const isBest = chosen.start === best.start
@@ -666,22 +674,39 @@ function DeparturePanel({
         </button>
       </div>
       <svg className="day" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Day chart: excursion from ${clock(chosen.start)} to ${clock(chosen.end)}, daylight ${clock(DAY.sunrise)} to ${clock(DAY.sunset)}, gust hours ${clock(DAY.gustsFrom)} to ${clock(DAY.gustsTo)}`}>
-        <rect x="0" y="0" width={W} height="64" fill="var(--bg)" rx="6" />
-        <rect x={x(DAY.sunrise)} y="0" width={x(DAY.sunset) - x(DAY.sunrise)} height="64" fill="var(--surface-2)" />
-        <rect x={x(DAY.gustsFrom)} y="0" width={x(DAY.gustsTo) - x(DAY.gustsFrom)} height="64" fill="var(--warn)" opacity="0.16" />
+        <rect x="0" y="0" width={W} height={B} fill="var(--bg)" rx="6" />
+        <rect x={x(DAY.sunrise)} y="0" width={x(DAY.sunset) - x(DAY.sunrise)} height={B} fill="var(--surface-2)" />
+        <rect x={x(DAY.gustsFrom)} y="0" width={x(DAY.gustsTo) - x(DAY.gustsFrom)} height={B} fill="var(--warn)" opacity="0.16" />
         <text x={x((DAY.gustsFrom + DAY.gustsTo) / 2)} y="11" textAnchor="middle" className="day-label" fill="var(--warn)">gusts</text>
         <polyline points={curve.join(' ')} fill="none" stroke="var(--text-2)" strokeWidth="1.5" />
         <text x={x(DAY.gustsTo) + 4} y={y(DAY.warmestC) + 8} className="day-label">{DAY.warmestC} °C</text>
         <text x={x(DAY.coldestAt) + 4} y={y(DAY.coldestC) + 4} className="day-label">{DAY.coldestC} °C</text>
-        <rect x={x(chosen.start)} y="52" width={Math.max(2, x(chosen.end) - x(chosen.start))} height="8" rx="4" fill={chosen.inDaylight ? 'var(--accent)' : 'var(--danger-line)'} />
-        {[6, 9, 12, 15, 18].map((h) => (
+        {/* The excursion bar is cut off at the chart's right edge instead of running past it. */}
+        <rect
+          x={Math.max(0, x(chosen.start))}
+          y={B - 12}
+          width={Math.max(2, Math.min(W - 4, x(chosen.end)) - Math.max(0, x(chosen.start)))}
+          height="8"
+          rx="4"
+          fill={chosen.inDaylight ? 'var(--accent)' : 'var(--danger-line)'}
+        />
+        <line x1={x(chosen.start)} x2={x(chosen.start)} y1="0" y2={B} stroke="var(--accent)" strokeWidth="2" />
+        <text
+          x={x(chosen.start) > W * 0.6 ? x(chosen.start) - 5 : x(chosen.start) + 5}
+          y={B / 2}
+          textAnchor={x(chosen.start) > W * 0.6 ? 'end' : 'start'}
+          className="day-label day-label--leave"
+        >
+          leave {clock(chosen.start)}
+        </text>
+        {[6, 9, 12, 15, 18, 21].map((h) => (
           <g key={h}>
-            <line x1={x(h * 60)} x2={x(h * 60)} y1="64" y2="68" stroke="var(--control-border)" />
-            <text x={x(h * 60)} y="80" textAnchor="middle" className="day-label">{String(h).padStart(2, '0')}:00</text>
+            <line x1={x(h * 60)} x2={x(h * 60)} y1={B} y2={B + 4} stroke="var(--control-border)" />
+            <text x={x(h * 60)} y={B + 16} textAnchor="middle" className="day-label">{String(h).padStart(2, '0')}:00</text>
           </g>
         ))}
-        <text x={x(DAY.sunrise)} y="93" textAnchor="middle" className="day-label">sunrise</text>
-        <text x={x(DAY.sunset)} y="93" textAnchor="middle" className="day-label">sunset</text>
+        <text x={x(DAY.sunrise)} y={B + 29} textAnchor="middle" className="day-label">sunrise</text>
+        <text x={x(DAY.sunset)} y={B + 29} textAnchor="middle" className="day-label">sunset</text>
       </svg>
       <label className="slider">
         <span className="visually-hidden">Departure time</span>
@@ -692,6 +717,8 @@ function DeparturePanel({
           step={15}
           value={chosen.start}
           aria-valuetext={clock(chosen.start)}
+          // How far along the track the handle is, for the orange fill to its left.
+          style={{ '--fill': `${(((chosen.start - DAY.sunrise) / (DAY.sunset - 60 - DAY.sunrise)) * 100).toFixed(1)}%` } as CSSProperties}
           onChange={(e) => onStart(Number(e.target.value))}
         />
       </label>
