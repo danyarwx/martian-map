@@ -3,7 +3,7 @@ import type { MobilityId, RoutePlan, RoutePlans, RouteProfile, StopView, Target 
 import { duration, km } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } from '../lib/safety.ts'
-import { clock, farthestWalkHome } from '../lib/schedule.ts'
+import { farthestWalkHome } from '../lib/schedule.ts'
 import type { NavState, UpcomingManeuver } from '../nav/events.ts'
 import { GPS_WARN_ACCURACY_M, type GpsStatus } from '../nav/gps.ts'
 import { spokenDistance, type Maneuver } from '../nav/instructions.ts'
@@ -173,60 +173,63 @@ export function PlanPanel(p: PlanPanelProps) {
   )
 }
 
-function StatusChip({ state }: { state: NavState }) {
-  if (state.status === 'rerouting') return <span className="chip chip--warn">Rerouting…</span>
-  if (state.status === 'at_stop') return <span className="chip chip--ok">At stop</span>
-  if (state.status === 'finished') return <span className="chip chip--ok">Finished</span>
-  if (state.status === 'off_route' || !state.onRoute) {
-    return <span className="chip chip--bad">Off route {state.offsetM} m</span>
-  }
-  return <span className="chip chip--ok">On route</span>
-}
-
 interface NavPanelProps {
   view: NavRunView
   stops: Record<string, Target>
 }
 
-/** While navigating: what is next, how far, how safe, and what was said. */
+/** One "how far, how long" row of the navigation panel. */
+function TripRow({ label, name, metres, minutes, bad, note }: {
+  label: string
+  name?: string
+  metres: number | null
+  minutes: number | null
+  bad?: boolean
+  note?: string
+}) {
+  return (
+    <section className={`trip-row${bad ? ' is-bad' : ''}`}>
+      <span className="label">{label}</span>
+      {name && <strong className="trip-name">{name}</strong>}
+      <p className="trip-figures num">
+        <span>{metres === null ? '…' : km(metres)}</span>
+        <span>{minutes === null ? '…' : duration(minutes)}</span>
+      </p>
+      {note && <p className="trip-note">{note}</p>}
+    </section>
+  )
+}
+
+/** While navigating: the next stop, all stops and back, and the way straight back to base. */
 export function NavPanel({ view, stops }: NavPanelProps) {
   const { state } = view
   const nextStop = state.nextStopId ? stops[state.nextStopId] : null
   const far = state.walkHomeMin !== null && state.walkHomeMin > WALK_BACK_RESERVE_MIN
   return (
     <div className="nav-scroll">
-      <div className="nav-head">
-        <StatusChip state={state} />
-        <span className="muted num" title="Local mean solar time at Jezero">Mars time {clock(view.lmst)}</span>
-      </div>
-      <section className="next-stop">
-        <span className="label">Next stop</span>
-        <strong>{nextStop?.name ?? '—'}</strong>
-        <p className="num">
-          {km(state.legRemainingM)} · ETA {clock(view.lmst + state.legRemainingMin)}
-        </p>
-      </section>
-      <div className="figures-big">
-        <div><span>Route left</span><strong className="num">{km(state.routeRemainingM)}</strong></div>
-        <div><span>Time left</span><strong className="num">{duration(state.routeRemainingMin)}</strong></div>
-        <div className={far ? 'is-bad' : ''}>
-          <span>Walk home</span>
-          <strong className="num">{state.walkHomeMin === null ? '—' : duration(state.walkHomeMin)}</strong>
-        </div>
-      </div>
-      <section>
-        <h2 className="label">Ahead</h2>
-        <ol className="ahead">
-          {view.upcoming.slice(0, 12).map((u) => (
-            <li key={u.maneuver.id}>
-              <ManeuverIcon m={u.maneuver} size={28} />
-              <span className="num">{spokenDistance(u.distanceM)}</span>
-              <span>{u.maneuver.text}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <TripRow label="Next stop" name={nextStop?.name ?? '—'} metres={state.legRemainingM} minutes={state.legRemainingMin} />
+      <TripRow label="All stops and back" metres={state.routeRemainingM} minutes={state.routeRemainingMin} />
+      <TripRow
+        label="Back to base now"
+        metres={view.base?.distanceM ?? null}
+        minutes={view.base?.minutes ?? null}
+        bad={far}
+        note={far ? `Walk home over ${WALK_BACK_RESERVE_MIN} min` : undefined}
+      />
     </div>
+  )
+}
+
+/** Floating on the map while the panel is hidden: the next stop, how far and how long. */
+export function NextStopCard({ view, stops }: NavPanelProps) {
+  const { state } = view
+  const nextStop = state.nextStopId ? stops[state.nextStopId] : null
+  return (
+    <section className="next-card" aria-label="Next stop">
+      <span className="label">Next stop</span>
+      <strong>{nextStop?.name ?? '—'}</strong>
+      <p className="num">{km(state.legRemainingM)} · {duration(state.legRemainingMin)}</p>
+    </section>
   )
 }
 

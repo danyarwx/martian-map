@@ -15,9 +15,9 @@ slows down on slopes. Rehearse once and note your own times.
 | Before 0:00 | Plan screen: 2 stops, on foot, Fastest. Point at the map layers | — | "One Marswalk at Jezero. Our science goal: signs of ancient life. Collect the samples Perseverance cached, then visit the lake-bottom layers." Optical (HiRISE 25 cm), topography (slope from a 1 m DTM), thermal, minerals |
 | 0:00 | Tap **Start navigation** | "Radio check." "Navigation started. 2 stops, 6.5 kilometers, about 4 hours 19 minutes." | "This is the astronaut's tablet. It talks, so hands stay free." |
 | ~0:05 | Point at the slope-coloured line | "Head … for … meters." | "The route avoids slopes over 20° on foot. Every turn is announced like a car navigator." |
-| ~0:15 | Point at **Mars time** in the panel | "Gust hours start in 15 minutes…" | "The gust hours come from real Perseverance MEDA weather data, not a guess." |
+| ~0:15 | Point at the three rows in the panel (next stop, all stops and back, back to base now) | "Gust hours start in 15 minutes…" | "The gust hours come from real Perseverance MEDA weather data, not a guess." |
 | ~0:30 | — | "Gust hours now. Watch your footing…" | |
-| ~1:00 | Point at **Walk home** going red | "Caution. Habitat is more than 60 minutes away on foot…" | "We always know how long the walk home is. 60 minutes is the emergency reserve." |
+| ~1:00 | Point at **Back to base now** going red ("Walk home over 60 min") | "Caution. Habitat is more than 60 minutes away on foot…" | "We always know how long the walk home is. 60 minutes is the emergency reserve." |
 | ~1:30 | Stop card with the rover photo appears | "Sample cache reached. Task: …" then the science sentence | "Ground-level photo from Perseverance, so the crew knows what the stop looks like." Tap **Continue** |
 | ~1:55 | Delta front stop card | Arrival, task, "Fine lake-bottom layers are where organic matter…" | "Our strongest lead for life." Tap **Continue** |
 | ~2:05 | Tap **Status** in the footer | "Status. Mars time … Out … Habitat … on foot. Air minus … degrees. Dose … millisieverts." | "Radiation dose and temperature, on request." |

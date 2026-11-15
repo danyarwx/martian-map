@@ -8,7 +8,7 @@ import { displayPlan } from '../nav/display.ts'
 import { getNavBus } from '../nav/events.ts'
 import type { MobilityId, RouteProfile, StopView, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
-import { Banner, EndControl, FinishedCard, NavPanel, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
+import { Banner, EndControl, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput } from './useNavRun.ts'
@@ -59,6 +59,8 @@ export default function NavApp() {
   const [autoZoom, setAutoZoom] = useState(true)
   /** The crew chose north-up with the compass. Heading-up is the default while following. */
   const [northUp, setNorthUp] = useState(false)
+  /** The side panel can be hidden while navigating, giving the map the whole screen. */
+  const [panelOpen, setPanelOpen] = useState(true)
   const [muted, setMuted] = useState(false)
   const voice = useRef<Voice | null>(null)
   const online = useOnline()
@@ -113,10 +115,14 @@ export default function NavApp() {
     setFollow(true)
     setAutoZoom(true)
     setNorthUp(false)
+    setPanelOpen(true)
     setRun({ site, plan, habitat, stops: stopsById, mobility: MOBILITY[plan.mobility], demo: demo ? DEMO_RUN : undefined })
   }, [plan, habitat, stopsById, demo])
 
-  const end = useCallback(() => setRun(null), [])
+  const end = useCallback(() => {
+    setRun(null)
+    setPanelOpen(true)
+  }, [])
 
   // What the map draws: the route being followed while navigating, else the planned one.
   const shownPlan = useMemo(() => (plan ? displayPlan(plan) : null), [plan])
@@ -155,9 +161,14 @@ export default function NavApp() {
   const userZoom = useCallback(() => setAutoZoom(false), [])
 
   const atStopId = s?.status === 'at_stop' ? s.visited[s.visited.length - 1] : null
+  // The stop card and the finished card live in the panel: open it when either appears.
+  const finished = s?.status === 'finished'
+  useEffect(() => {
+    if (atStopId || finished) setPanelOpen(true)
+  }, [atStopId, finished])
 
   return (
-    <div className="nav-app">
+    <div className={`nav-app${run && !panelOpen ? ' nav-app--panel-hidden' : ''}`}>
       <div className="nav-map-wrap">
         <NavMap
           site={site}
@@ -176,6 +187,19 @@ export default function NavApp() {
         />
         {run && view && <Banner upcoming={view.upcoming} state={view.state} />}
         {run && view && s?.status !== 'finished' && <SimBar view={view} controls={controls} />}
+        {run && (
+          <button
+            type="button"
+            className="map-fab panel-toggle"
+            aria-expanded={panelOpen}
+            aria-label={panelOpen ? 'Hide panel' : 'Show panel'}
+            title={panelOpen ? 'Hide panel' : 'Show panel'}
+            onClick={() => setPanelOpen((o) => !o)}
+          >
+            <span aria-hidden="true">{panelOpen ? '›' : '‹'}</span>
+          </button>
+        )}
+        {run && view && !panelOpen && s?.status !== 'finished' && <NextStopCard view={view} stops={stopsById} />}
         {run && (
           <button
             type="button"

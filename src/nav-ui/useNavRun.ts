@@ -49,6 +49,8 @@ export interface NavRunView {
   source: PositionKind
   /** GPS state while `source` is 'gps', else null. */
   gps: GpsStatus | null
+  /** The route straight back to the habitat from here, with the run's mobility and profile. Null until planned. */
+  base: { distanceM: number; minutes: number } | null
 }
 
 export type PositionKind = 'sim' | 'gps'
@@ -77,6 +79,12 @@ const LOG_SIZE = 6
 const START_SPEED = 10
 /** A jump longer than this between two positions is a reroute restart, not walking, metres. */
 const JUMP_M = 150
+/** The route home is replanned after this much mission time, ms, and after each stop. */
+const BASE_EVERY_MISSION_MS = 30_000
+/** ...but not more often than this in real time, ms, so 60x does not flood the worker. */
+const BASE_MIN_REAL_MS = 1000
+/** Closer to the habitat than this counts as at home, metres. */
+const AT_HOME_M = 20
 
 type WakeLock = { release(): Promise<void> }
 
@@ -106,13 +114,16 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     const lmstAt = (t: number) => departLmst + (t - missionStart) / 60000
     mission.current = { start: missionStart, now: () => missionNow, departLmst }
 
-    const rerouter = createWorkerRerouter({
+    const routerOptions = {
       site: input.site,
       mobility: input.mobility.id,
       profile: input.plan.profile,
       habitat: input.habitat,
       stops: input.stops,
-    })
+    }
+    const rerouter = createWorkerRerouter(routerOptions)
+    // A second worker plans the way home for the panel, so it never delays an off-route replan.
+    const baseRouter = createWorkerRerouter(routerOptions)
     // Everything below works on the drawn line, not on the terrain-cell staircase (see nav/display.ts).
     const plan = displayPlan(input.plan)
     const tracker = createNavigator({
@@ -136,6 +147,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     let walkedM = 0
     let last: { lat: number; lon: number } | null = null
     let dirty = true
+    let base: NavRunView['base'] = null
+    const baseAsk = { busy: false, mission: -Infinity, real: 0, visited: -1 }
     let source: PositionKind = 'sim'
     let gps: GpsSource | null = null
     let gpsStatus: GpsStatus | null = null
@@ -166,6 +179,31 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       }
       last = fix
       tracker.update({ ...fix, t: missionNow })
+      planBase(fix, real)
+    }
+
+    // Back to base now: replanned from here every 30 mission-seconds and after each stop.
+    const planBase = (fix: PositionFix, real: number) => {
+      const st = tracker.getState()
+      if (st.status === 'finished' || distanceM(fix, input.habitat) < AT_HOME_M) {
+        if (base?.distanceM !== 0) dirty = true
+        base = { distanceM: 0, minutes: 0 }
+        return
+      }
+      const due = base === null || missionNow - baseAsk.mission >= BASE_EVERY_MISSION_MS || st.visited.length !== baseAsk.visited
+      if (baseAsk.busy || !due || real - baseAsk.real < BASE_MIN_REAL_MS) return
+      Object.assign(baseAsk, { busy: true, mission: missionNow, real, visited: st.visited.length })
+      baseRouter
+        .requestReroute({ lat: fix.lat, lon: fix.lon }, [])
+        .then((p) => {
+          base = {
+            distanceM: p.legs.reduce((s, l) => s + l.distanceM, 0),
+            minutes: p.legs.reduce((s, l) => s + l.minutes, 0),
+          }
+          dirty = true
+        })
+        .catch(() => {})
+        .finally(() => (baseAsk.busy = false))
     }
     tracker.start()
     walker.start(onFix)
@@ -215,6 +253,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
         ...clock.current,
         source,
         gps: gpsStatus,
+        base,
       })
     }, 1000 / UPDATES_HZ)
 
@@ -235,6 +274,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       switchSource.current = null
       tracker.stop()
       rerouter.dispose()
+      baseRouter.dispose()
       wake?.release().catch(() => {})
       nav.current = null
       sim.current = null
