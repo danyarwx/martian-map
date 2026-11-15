@@ -43,7 +43,7 @@ export class World {
     this.scene.add(this.terrainGroup)
     this.rockGroup.name = 'rocks'
     this.scene.add(this.rockGroup)
-    this.rocks = new RockLayer({ group: this.rockGroup, index: init.index, origin: init.origin, legs: init.legs, planLegs: init.planLegs })
+    this.rocks = new RockLayer({ group: this.rockGroup, index: init.index, origin: init.origin, legs: init.legs, planLegs: init.planLegs, detail: this.detail, heights: this.heights })
 
     this.atmosphere = new Atmosphere(this.scene, init.renderer, { latDeg: init.origin.lat })
     this.far = buildFarTerrain(init.coarse, init.origin)

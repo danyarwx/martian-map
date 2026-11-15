@@ -83,7 +83,7 @@ export default function RealPhotoTest() {
         {error
           ? `Could not run the test: ${error}`
           : state
-            ? `Perseverance Navcam, sol ${state.calib.source.sol}, ${state.calib.source.place.split(',')[0]}. Same detector as the helmet: ${state.result.ms.toFixed(0)} ms, ${(state.valid * 100).toFixed(0)} % of pixels with depth, ${state.result.detections.length} detection${state.result.detections.length === 1 ? '' : 's'}. Rocks lower than the 0.30 m step height are left unmarked on purpose. Image: ${state.calib.source.credit}.`
+            ? `Perseverance Navcam, sol ${state.calib.source.sol}, ${state.calib.source.place.split(',')[0]}. Same detector as the helmet: ${state.result.ms.toFixed(0)} ms, ${(state.valid * 100).toFixed(0)} % of pixels with depth, ${state.result.detections.filter((d) => d.kind === 'rock' && d.level !== 'small').length} hazard rocks (over 0.30 m, solid outline), ${state.result.detections.filter((d) => d.level === 'small').length} small rocks (0.10–0.30 m, dashed). Image: ${state.calib.source.credit}.`
             : 'Running the detector on the real stereo pair…'}
       </p>
     </div>

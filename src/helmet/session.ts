@@ -8,13 +8,15 @@ import { HAZARD, type CvResult, type Detection, type HelmetEntry, type HelmetExi
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './nav/follow.ts'
+import { GuideKeeper } from './nav/guide.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
 import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
-import { GuideLine, HUD_LAYER } from './hud/GuideLine.ts'
+import { SceneOverlay } from './hud/SceneOverlay.ts'
+import { RockTracks } from './mapping/rockTracks.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
-import { CvRig } from './sim/cvRig.ts'
+import { CV_MAX_DISP, CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
 import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
 import { makeCoarseGrid } from './world/heightField.ts'
@@ -88,6 +90,9 @@ export interface CvStats {
   /** Share of the left image's pixels with a depth, 0..1. */
   valid: number
   detections: number
+  /** Of those: rocks taller than the step height, and small rocks (trip risks). */
+  hazardRocks: number
+  smallRocks: number
   frames: number
   error: string | null
 }
@@ -103,11 +108,14 @@ const HUD_EVERY_MS = 200
 /** How often the route is checked against the hazard map for a global re-route, ms. */
 const REPLAN_CHECK_MS = 1000
 /**
- * Share of a 10 m planner cell on the route that must be rock / steep / drop before it is blocked. PLAN §5.8 says
- * 30 %, but a row of boulders across the path covers well under 10 % of a planner cell, so 30 % never fires on
- * the very thing a re-route is for. 6 % is about 6 m² of obstacle in a cell (deviation, logged in STATUS.md).
+ * Share of a 10 m planner cell on the route that must be rock / steep / drop before it is blocked: PLAN §5.8's
+ * 30 %. It was 6 % for a while (a row of boulders covers under 10 % of a cell), but once the CV found most rocks,
+ * every cell with a few scattered stones was blocked and the route changed again and again. Scattered rocks are
+ * the local guide's job (it steers round them); a row of boulders is caught by the detour rule below.
  */
-const REPLAN_COVERAGE = 0.06
+const REPLAN_COVERAGE = 0.3
+/** At least this long between two re-routes, ms: a route that keeps changing cannot be followed. */
+const REPLAN_MIN_INTERVAL_MS = 30000
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
 /** Half-side of the fused height window sent with each CV frame, metres (drop-offs matter close by). */
@@ -140,7 +148,7 @@ export class HelmetSession {
   readonly controls: Controls
   readonly rig: CvRig
   readonly cv: CvClient
-  readonly cvStats: CvStats = { ms: 0, hz: 0, valid: 0, detections: 0, frames: 0, error: null }
+  readonly cvStats: CvStats = { ms: 0, hz: 0, valid: 0, detections: 0, hazardRocks: 0, smallRocks: 0, frames: 0, error: null }
   /** The latest CV result (for the CV view). */
   lastCv: CvTick | null = null
   /** Top-down map of what the camera has seen. */
@@ -150,11 +158,17 @@ export class HelmetSession {
   /** The local planner's latest guide round the hazards (null before the first one). */
   guide: LocalPlan | null = null
   private localPlanner = new LocalPlanner()
-  private guideLine: GuideLine
+  /** Keeps the shown guide steady: the planned line while it is clear, one kept detour round hazards (nav/guide.ts). */
+  private keeper = new GuideKeeper()
+  /** Rocks the CV found, remembered across frames, for the outlines in the view. */
+  readonly rocks = new RockTracks()
+  private overlay: SceneOverlay
   private decider: ReplanDecider
   private replanner: ReplanClient
   private replanAt = 0
   private rerouted: NavState['rerouted'] = null
+  /** Re-routes so far (for the log and for testing). */
+  rerouteCount = 0
   private arrived = false
   private detourTicks = 0
   private hardAheadAt = -Infinity
@@ -196,7 +210,6 @@ export class HelmetSession {
     host.appendChild(renderer.domElement)
     this.renderer = renderer
     this.camera = new THREE.PerspectiveCamera(70, host.clientWidth / Math.max(1, host.clientHeight), 0.1, 6000)
-    this.camera.layers.enable(HUD_LAYER)
 
     this.world = new World({ index: data.index, coarse: makeCoarseGrid(data.terrain), origin: this.origin, renderer, legs: data.routes.legs, planLegs: standIn ? undefined : entry.plan.legs })
     const heights = this.world.heights
@@ -219,8 +232,8 @@ export class HelmetSession {
       const stopsBefore = entry.legIndex * MOBILITY[entry.plan.mobility].stopMinutes
       this.elapsedS = 60 * (before + stopsBefore + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
     }
-    this.guideLine = new GuideLine(this.world.scene)
-    this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
+    this.overlay = new SceneOverlay(host)
+    this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE, minIntervalMs: REPLAN_MIN_INTERVAL_MS })
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
     this.replanner = new ReplanClient(JEZERO.terrain)
     // The stand-in plan of #helmet has made-up times (routes.json holds lines only): ask the planner for the real
@@ -242,7 +255,7 @@ export class HelmetSession {
     }
 
     this.rig = new CvRig(renderer)
-    this.cv = new CvClient()
+    this.cv = new CvClient({ stereo: { maxDisp: CV_MAX_DISP } })
     this.cv.onResult((result) => this.onCvResult(result))
     this.cv.onError((msg, id) => {
       console.error('helmet CV:', msg)
@@ -252,6 +265,7 @@ export class HelmetSession {
 
     this.ro = new ResizeObserver(() => {
       renderer.setSize(host.clientWidth, host.clientHeight)
+      this.overlay.resize(host.clientWidth, host.clientHeight)
       this.camera.aspect = host.clientWidth / Math.max(1, host.clientHeight)
       this.camera.updateProjectionMatrix()
     })
@@ -268,7 +282,7 @@ export class HelmetSession {
     this.setLeg(t.legIndex)
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, t.at))
     this.guide = null
-    this.guideLine.set([], this.ground.heightAt, false)
+    this.rocks.clear()
     this.hudAt = 0
   }
 
@@ -294,11 +308,14 @@ export class HelmetSession {
     st.ms = result.ms
     st.valid = valid / d.length
     st.detections = result.detections.length
+    st.smallRocks = result.detections.filter((d) => d.kind === 'rock' && d.level === 'small').length
+    st.hazardRocks = result.detections.filter((d) => d.kind === 'rock' && d.level !== 'small').length
     st.frames++
     st.error = null
     this.cvCount++
     this.lastCv = { result, pose }
     this.hazards.fuse(result)
+    this.rocks.update(result.detections, performance.now(), pose)
     this.navigate()
     for (const cb of this.cvListeners) cb(this.lastCv)
   }
@@ -307,15 +324,16 @@ export class HelmetSession {
     this.legIndex = Math.min(k, this.plan.legs.length - 1)
     this.track = buildTrack(this.plan.legs[this.legIndex].path, this.origin)
     this.arrived = false
+    this.keeper.reset()
   }
 
   /** After every CV frame: the guide round the hazards, leg changes, and the global re-route check. */
   private navigate(): void {
     const { pose } = this
     const now = performance.now()
-    const guide = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
+    const fresh = this.localPlanner.plan(this.hazards.grid, this.track, pose.x, pose.y, this.guide?.fix.s)
+    const guide = this.keeper.update(fresh, this.hazards.grid, this.track, pose.x, pose.y)
     this.guide = guide
-    this.guideLine.set(guide.path, this.ground.heightAt, guide.blocked)
 
     // next leg when this one is walked
     if (remainingM(this.track, guide.fix.s) < ARRIVE_M && guide.fix.distM < 2 * ARRIVE_M) {
@@ -380,6 +398,7 @@ export class HelmetSession {
         const same = newPath.length === oldPath.length && newPath.every((p, k) => Math.abs(p.lat - oldPath[k].lat) < 1e-7 && Math.abs(p.lon - oldPath[k].lon) < 1e-7)
         this.plan = res.plan
         this.replanned = true
+        this.rerouteCount++
         this.setLeg(0)
         this.guide = null
         this.detourTicks = 0
@@ -409,6 +428,7 @@ export class HelmetSession {
         .filter((h) => h.kind !== 'sand')
         .map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
       plan: this.replanned ? this.plan : null,
+      rerouteDeltaMin: this.replanned && this.rerouted ? this.rerouted.deltaMin : undefined,
     }
   }
 
@@ -442,7 +462,7 @@ export class HelmetSession {
   dispose(): void {
     this.renderer.setAnimationLoop(null)
     this.replanner.dispose()
-    this.guideLine.dispose()
+    this.overlay.dispose()
     this.cv.terminate()
     this.rig.dispose()
     this.cvListeners.clear()
@@ -475,6 +495,17 @@ export class HelmetSession {
     this.camera.position.set(eye.x, eye.y, eye.z)
     this.camera.lookAt(eye.x + d.x, eye.y + d.y, eye.z + d.z)
     this.renderer.render(world.scene, this.camera)
+    this.overlay.draw({
+      camera: this.camera,
+      pose,
+      rocks: this.rocks.tracks,
+      grid: this.hazards.grid,
+      gridVersion: this.hazards.version,
+      path: this.guide?.path ?? [],
+      guide: this.guide?.blocked ? 'blocked' : this.keeper.mode === 'detour' ? 'detour' : 'route',
+      heightAt: this.ground.heightAt,
+      now: performance.now(),
+    })
 
     // CV tick: both eyes → pixels → worker. One frame in flight; a busy worker means this tick is skipped.
     if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy) {

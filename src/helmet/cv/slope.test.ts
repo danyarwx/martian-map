@@ -27,7 +27,7 @@ function pipeline(disp: Float32Array, pose: Pose) {
   backProject(disp, intr, pose, cloud)
   const g = createGroundContext(cloud.capacity)
   fitGround(g, cloud, pose)
-  const rocks = detectObstacles(createObstacleContext(g), g, cloud, intr, pose)
+  const rocks = detectObstacles(createObstacleContext(g), g, cloud, intr, pose, disp)
   const s = createSlopeContext(g)
   const slopes = detectSlopes(s, g, cloud, pose)
   const measured = Array.from(s.slope).filter(Number.isFinite)
@@ -133,7 +133,7 @@ test('timing: stereo + points + ground + obstacles + slope for one frame (logs o
     const t1 = performance.now()
     backProject(disp, intr, pose, cloud)
     fitGround(g, cloud, pose)
-    detectObstacles(o, g, cloud, intr, pose)
+    detectObstacles(o, g, cloud, intr, pose, disp)
     detectSlopes(s, g, cloud, pose)
     t.push([t1 - t0, performance.now() - t1])
   }

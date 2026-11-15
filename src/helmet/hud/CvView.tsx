@@ -18,7 +18,7 @@ export default function CvView({ session, hud }: Props) {
   useEffect(() => {
     const tick = session.lastCv
     if (!ref.current || !tick) return
-    drawCv(ref.current, { width: W, height: H, rgba: session.rig.leftRgba, disparity: tick.result.disparity, detections: tick.result.detections, maxDisparity: 40 }, 2)
+    drawCv(ref.current, { width: W, height: H, rgba: session.rig.leftRgba, disparity: tick.result.disparity, detections: tick.result.detections, maxDisparity: 60 }, 2)
   }, [session, hud, W, H])
 
   const cv = hud.cv
@@ -30,8 +30,8 @@ export default function CvView({ session, hud }: Props) {
       </div>
       <canvas ref={ref} width={W * 4} height={H * 2} />
       <p>
-        {cv.ms.toFixed(0)} ms per frame · {cv.hz.toFixed(1)} Hz · {(cv.valid * 100).toFixed(0)} % of pixels with depth · {cv.detections} detection
-        {cv.detections === 1 ? '' : 's'} · pose: suit nav (simulated) · pixels only, 2 cameras 0.30 m apart
+        {cv.ms.toFixed(0)} ms per frame · {cv.hz.toFixed(1)} Hz · {(cv.valid * 100).toFixed(0)} % of pixels with depth · {cv.hazardRocks} hazard rock{cv.hazardRocks === 1 ? '' : 's'} (over 0.30 m, solid) · {cv.smallRocks} small rock
+        {cv.smallRocks === 1 ? '' : 's'} (0.10–0.30 m, dashed) · pose: suit nav (simulated) · pixels only, 2 cameras 0.30 m apart
       </p>
     </div>
   )

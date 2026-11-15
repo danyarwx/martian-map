@@ -27,7 +27,7 @@ import { cameraAxes, projectToImage } from '../cv/points.ts'
 import { createSandHook, patchOfPixel, SAND_FEATURES, SAND_NF } from '../cv/sand.ts'
 import { SAND_WEIGHTS } from '../cv/sandWeights.ts'
 import { headingToDir, localToThree } from '../frames.ts'
-import { CvRig } from '../sim/cvRig.ts'
+import { CV_MAX_DISP, CvRig } from '../sim/cvRig.ts'
 import { loadRoutes } from '../sim/defaultEntry.ts'
 import { EYE_M } from '../sim/player.ts'
 import { makeCoarseGrid } from '../world/heightField.ts'
@@ -35,7 +35,7 @@ import { BURY } from '../world/rocks.ts'
 import { World } from '../world/scene.ts'
 import { loadTileIndex, strideFor, type TileSlot } from '../world/tiles.ts'
 import { predict, prf, trainLogistic, type Prf } from './logistic.ts'
-import { mean, median, rms, ROCK_FAR_M, ROCK_MIN_STAND_M, ROCK_NEAR_M, scoreRockCells, scoreRocks, type TruthRock } from './metrics.ts'
+import { mean, median, rms, ROCK_FAR_M, ROCK_MIN_STAND_M, ROCK_NEAR_M, SMALL_FAR_M, SMALL_MIN_STAND_M, scoreRockCells, scoreRocks, scoreSmallRocks, type TruthRock } from './metrics.ts'
 import { evalWindows, poseLocal, type EvalPose } from './poses.ts'
 
 /** PLAN T4.4 targets. */
@@ -107,7 +107,11 @@ export interface EvalMetrics {
     byHeight: { from: number; to: number; truth: number; found: number; recall: number; onMap: number; recallOnMap: number }[]
     /** Recall by distance. */
     byDistance: { from: number; to: number; truth: number; found: number; recall: number; onMap: number; recallOnMap: number }[]
+    /** Small rocks (0.10–0.30 m) within 8 m: found by a detection of either level; precision of the 'small' detections. */
+    small: { truth: number; found: number; recall: number; detections: number; detectionsTrue: number; precision: number }
   }
+  /** CV image size the eval ran at. */
+  cv: { width: number; height: number; maxDisp: number }
   depth: {
     /** Ground pixels 4–6 m away with a disparity. */
     n: number
@@ -278,16 +282,18 @@ interface WorldRock extends TruthRock {
 }
 
 /** The rocks around the camera, and those of them the camera should see as obstacles. */
-function truthRocks(world: World, left: Pose, intr: StereoIntrinsics): { nearby: WorldRock[]; visible: WorldRock[]; pixels: { u: number; v: number }[] } {
+function truthRocks(world: World, left: Pose, intr: StereoIntrinsics): { nearby: WorldRock[]; visible: WorldRock[]; small: WorldRock[]; pixels: { u: number; v: number }[] } {
   const nearby: WorldRock[] = world.rocks.field.rocksNear(left.x, left.y, ROCK_FAR_M + 4).map((r) => ({ x: r.x, y: r.y, z: r.z, d: r.d, standM: r.h * (1 - BURY) }))
   const axes = cameraAxes(left)
   const proj = new Float64Array(3)
   const visible: WorldRock[] = []
+  const small: WorldRock[] = []
   const pixels: { u: number; v: number }[] = []
   for (const r of nearby) {
-    if (r.standM < ROCK_MIN_STAND_M) continue
+    if (r.standM < SMALL_MIN_STAND_M) continue
+    const isSmall = r.standM < ROCK_MIN_STAND_M
     const dist = Math.hypot(r.x - left.x, r.y - left.y)
-    if (dist < ROCK_NEAR_M || dist > ROCK_FAR_M) continue
+    if (dist < ROCK_NEAR_M || dist > (isSmall ? SMALL_FAR_M : ROCK_FAR_M)) continue
     projectToImage(r.x, r.y, r.z + r.standM / 2, intr, axes, left, proj)
     if (!(proj[2] > 0) || proj[0] < 0 || proj[0] > intr.width - 1 || proj[1] < 0 || proj[1] > intr.height - 1) continue
     // the top of the rock must not be behind a rise of the ground
@@ -300,10 +306,14 @@ function truthRocks(world: World, left: Pose, intr: StereoIntrinsics): { nearby:
       if (left.z + (top - left.z) * t < world.heights.heightAt(x, y) - 0.02) hidden = true
     }
     if (hidden) continue
+    if (isSmall) {
+      small.push(r)
+      continue
+    }
     visible.push(r)
     pixels.push({ u: proj[0], v: proj[1] })
   }
-  return { nearby, visible, pixels }
+  return { nearby, visible, small, pixels }
 }
 
 /** Looks up the world's sand mask: 1 sand, 0 not, −1 unknown (coarse tile). */
@@ -352,7 +362,10 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
   renderer.toneMapping = THREE.ACESFilmicToneMapping
   renderer.domElement.style.display = 'none'
   hooks.host.appendChild(renderer.domElement)
-  const rig = new CvRig(renderer)
+  // ?cvw=384 (&cvd=72) in the page address tries another CV image width (and disparity range)
+  const query = new URLSearchParams(location.search)
+  const rig = new CvRig(renderer, Number(query.get('cvw')) || undefined)
+  const maxDisp = Number(query.get('cvd')) || CV_MAX_DISP
   const intr = rig.intr
   const probe = new DepthProbe(renderer, intr)
   const N = intr.width * intr.height
@@ -363,13 +376,14 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
   // the pipeline of the worker (worker.ts): default tuning + the sand stage. The eval judges single frames, so
   // the sand stage paints at once here instead of waiting for a second frame.
   const sandHook = createSandHook({ persistFrames: 1 })
-  const pipeline = createCvPipeline(intr, { sandHook })
+  const pipeline = createCvPipeline(intr, { sandHook, stereo: { maxDisp } })
 
   // accumulators
   const skipped: string[] = []
   const rockTruth: { standM: number; dist: number; found: boolean; onMap: boolean }[] = []
   let rockCells = 0, rockCellsTrue = 0
   let dets = 0, detsTrue = 0, falseOnLow = 0
+  const smallSum = { truth: 0, found: 0, detections: 0, detectionsTrue: 0 }
   const rel5: number[] = []
   const binN = DEPTH_BINS.map(() => 0)
   const binAbs = DEPTH_BINS.map(() => 0)
@@ -443,6 +457,11 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
           dets += score.detections
           detsTrue += score.detectionsTrue
           falseOnLow += score.onLowRock
+          const smallScore = scoreSmallRocks(truth.small, truth.nearby, res.detections)
+          smallSum.truth += smallScore.truth
+          smallSum.found += smallScore.found
+          smallSum.detections += smallScore.detections
+          smallSum.detectionsTrue += smallScore.detectionsTrue
 
           // depth
           const poseRel5: number[] = []
@@ -604,7 +623,9 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
         },
         byHeight: by('standM', [0.3, 0.4, 0.6, 2]),
         byDistance: by('dist', [2, 4, 6, 8, 10, 12.001]),
+        small: { ...smallSum, recall: smallSum.truth ? smallSum.found / smallSum.truth : NaN, precision: smallSum.detections ? smallSum.detectionsTrue / smallSum.detections : NaN },
       },
+      cv: { width: intr.width, height: intr.height, maxDisp },
       depth: {
         n: rel5.length,
         medianRel: median(rel5.map(Math.abs)),

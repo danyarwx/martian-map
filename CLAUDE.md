@@ -58,7 +58,7 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - Mineral layer "CRISM minerals (spectral)", off by default, with its own legend: one cached image `public/data/jezero_crism_car.png` (18 m/px). Carbonate shows along the western margin, clay on the delta; the crater floor around the demo route is mostly featureless
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
-Helmet view (Level 2), branch `feat/helmet-3d`, all planned tasks built (PR #5 to `main` is open, humans review and merge): walk the real terrain, live stereo CV (rocks, steep, sand, drop-offs), hazard mini-map, guide line, re-route, compass, suit and weather panel, real-photo test; "Go outside" in Mission control and the seen ground back on the map on Esc. Keys J V R M H P. Demo steps: `docs/helmet/DEMO.md`. Open: rock recall 56 % by detection centre (target 80 %), sand detector trained on a simulated sand look, backup video, teammates' reviews of `src/lib`, `src/map`, `src/panels` changes. Board and metrics: `docs/helmet/STATUS.md`:
+Helmet view (Level 2), branch `feat/helmet-3d`, PR #6 open against `main` (PR #5 with the first build is merged). **Next owner: `docs/helmet/HANDOFF.md`, then the status table at the top of `docs/helmet/FIXLIST.md`.** Built: walk the real terrain, live stereo CV at 384 × 288 (one detection per rock, two levels: hazard over 0.30 m, small 0.10–0.30 m; steep, sand, drop-offs), visor HUD (heading tape, gauges, one-line warnings; Tab = readout and map), rock outlines, sand hatch and chevron guide drawn in the view, re-route, real-photo test, hand-back to Mission control with a note and the map brought to the seen ground. Keys: Tab M V R J H P I Esc. Demo steps: `docs/helmet/DEMO.md`. Eval: hazard-rock recall 81 %, precision 94 %, CV 59 ms per frame. Open: the visor mockup is not approved by Danya (the HUD was built from the decisions table), demo route vs the 60 min walk-back warning (A5), touch controls (B5), backup video, teammates' reviews of `src/lib`, `src/map`, `src/panels` changes. Board and metrics: `docs/helmet/STATUS.md`:
 - Spec, decisions and task list for agents: `docs/helmet/PLAN.md`. Progress board: `docs/helmet/STATUS.md`. Loop prompts: `docs/helmet/LOOP_PROMPT.md`
 - Adds `three` (agreed). Touches `src/lib/` only for a "blocked cells" planner input (Dev 2 reviews) and `src/map/` only for two optional props (Dev 1 reviews)
 - Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)
@@ -75,7 +75,7 @@ Known issues:
 - The delta front target sits on a 20° cell: at the walking limit, and over the rover limit, so the rover stops at the nearest passable cell (within 50 m)
 - Waypoint tooltip only shows sol + tilt
 - The slope overlay image still uses the old red/orange colours, not the new slope tokens. On phones the attribution overlaps the scale bar
-- No README for the submission yet
+- The README is a first version; the 3-minute demo story is still TBD
 
 Next, in order:
 1. Review `feat/route-planner` (branched from `pre-hackathon`) and merge it into `main`

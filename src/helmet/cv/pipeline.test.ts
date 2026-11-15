@@ -34,7 +34,7 @@ test('flat ground with a 0.6 m box 6 m ahead: one rock in the right place, rock 
   assert.equal(res.id, 7)
   assert.ok(res.ms > 0)
   assert.equal(res.disparity.length, intr.width * intr.height)
-  const rocks = res.detections.filter((d) => d.kind === 'rock')
+  const rocks = res.detections.filter((d) => d.kind === 'rock' && d.level !== 'small')
   console.log(`  box frame: ${res.ms.toFixed(1)} ms, detections ${JSON.stringify(res.detections.map((d) => ({ kind: d.kind, x: +d.x.toFixed(2), y: +d.y.toFixed(2), h: d.heightM && +d.heightM.toFixed(2) })))}`)
   assert.equal(rocks.length, 1, JSON.stringify(res.detections))
   const r = rocks[0]
