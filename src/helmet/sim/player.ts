@@ -49,6 +49,8 @@ export interface MoveResult {
   moved: number
   /** What stopped (or deflected) the step. */
   blocked: 'rock' | 'slope' | null
+  /** The rock the body touched this step (it may still have slid past it), for the hazard map. */
+  hit?: RockLike
   /** Ground slope under the feet after the step, degrees. */
   slopeDeg: number
   /** Speed used, m/s. */
@@ -60,15 +62,16 @@ export function rockStandsM(r: RockLike): number {
   return r.h * (1 - BURY)
 }
 
-function hitsRock(g: Ground, x: number, y: number, fromX: number, fromY: number): boolean {
+/** The rock the body would walk into at (x, y), or null. */
+function hitsRock(g: Ground, x: number, y: number, fromX: number, fromY: number): RockLike | null {
   for (const r of g.rocksNear(x, y, BODY_R_M)) {
     if (rockStandsM(r) < STEP_OVER_M) continue
     const reach = (r.d / 2) * 0.85 + BODY_R_M
     const now = Math.hypot(r.x - x, r.y - y)
     // already overlapping (after a jump): let them walk out, never further in
-    if (now < reach && now <= Math.hypot(r.x - fromX, r.y - fromY)) return true
+    if (now < reach && now <= Math.hypot(r.x - fromX, r.y - fromY)) return r
   }
-  return false
+  return null
 }
 
 /** Moves `pose` (x, y, z) one time step. Heading and pitch are the controls' business. */
@@ -76,6 +79,7 @@ export function stepPlayer(pose: Pose, inp: MoveInput, dt: number, g: Ground): M
   const slope0 = g.slopeAt(pose.x, pose.y)
   const speed = WALK_MPS * slopeSpeedFactor(Math.min(slope0, MAX_CLIMB_DEG)) * (inp.fast ? FAST_FACTOR : 1)
   let blocked: MoveResult['blocked'] = null
+  let hit: RockLike | undefined
   let moved = 0
   const len = Math.hypot(inp.fwd, inp.side)
   if (len > 0 && dt > 0) {
@@ -84,17 +88,31 @@ export function stepPlayer(pose: Pose, inp: MoveInput, dt: number, g: Ground): M
     const dx = ((f.x * inp.fwd + r.x * inp.side) / len) * speed * dt
     const dy = ((f.y * inp.fwd + r.y * inp.side) / len) * speed * dt
     const z0 = g.heightAt(pose.x, pose.y)
-    // the full step, else slide along one axis
-    for (const [sx, sy] of [
-      [dx, dy],
-      [dx, 0],
-      [0, dy],
-    ]) {
+    // The full step, else slide round the rock (the part of the step along its edge), else along one axis.
+    // Sliding along the axes alone stopped the body dead against a rock straight ahead.
+    const tries: [number, number][] = [[dx, dy]]
+    const first = hitsRock(g, pose.x + dx, pose.y + dy, pose.x, pose.y)
+    if (first) {
+      const nx = pose.x - first.x
+      const ny = pose.y - first.y
+      const nl = Math.hypot(nx, ny) || 1
+      const tx = -ny / nl
+      const ty = nx / nl
+      const along = dx * tx + dy * ty
+      // keep the step's length, so a nearly head-on step still gets round the rock instead of creeping
+      const sign = along >= 0 ? 1 : -1
+      const step = Math.hypot(dx, dy)
+      if (Math.abs(along) > step * 0.05) tries.push([tx * sign * step, ty * sign * step])
+    }
+    tries.push([dx, 0], [0, dy])
+    for (const [sx, sy] of tries) {
       if (!sx && !sy) continue
       const nx = pose.x + sx
       const ny = pose.y + sy
-      if (hitsRock(g, nx, ny, pose.x, pose.y)) {
+      const rock = hitsRock(g, nx, ny, pose.x, pose.y)
+      if (rock) {
         blocked = 'rock'
+        hit = hit ?? rock
         continue
       }
       if (g.slopeAt(nx, ny) > MAX_CLIMB_DEG && g.heightAt(nx, ny) > z0 + 1e-4) {
@@ -108,5 +126,5 @@ export function stepPlayer(pose: Pose, inp: MoveInput, dt: number, g: Ground): M
     }
   }
   pose.z = g.heightAt(pose.x, pose.y) + EYE_M
-  return { moved, blocked: moved > 0 && blocked === null ? null : blocked, slopeDeg: g.slopeAt(pose.x, pose.y), speed }
+  return { moved, blocked: moved > 0 && blocked === null ? null : blocked, slopeDeg: g.slopeAt(pose.x, pose.y), speed, hit }
 }

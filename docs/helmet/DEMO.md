@@ -7,9 +7,10 @@ look (visor HUD, outlined rocks, sand hatch, new world): `img/09-visor-current.j
 show the old 12 m boulder field; since 15 Nov the field is a 50 m band (`src/helmet/world/rocks.ts`), and steps 8–9
 (the before/after card) have no screenshot yet.
 
-Timing: from **Go outside** to the stop past the boulders is about 2.5 min of walking at normal speed (measured
-15 Nov). **Shift** walks 4× faster, so it should take under a minute, but that is not rehearsed yet: time it once,
-and check the cameras still find the band at that speed. Hold Shift from step 6 on, or the walk eats the pitch.
+Timing: from **Go outside** to the stop past the boulders is about 2 min of walking at normal speed and about 50 s
+with **Shift** held all the way (scripted walks following the guide, 15 Nov evening). Shift is 4× only on open
+ground: near the boulders the walk drops to normal speed by itself and the HUD shows "slowed near hazard", so the
+cameras see the band in time. Hold Shift from Go outside to the stop. Rehearse it once by hand and time it.
 
 On the current demo route (Delta front, Three Forks, Séítah) the farthest point is 1 h 30 min from the habitat, so the
 card shows the 60 min reserve in red, before and after alike (FIXLIST A5, open). Say "the walk home is unchanged" and
@@ -42,8 +43,9 @@ Mission control.
   and jump to "300 m before …".
 - **No re-route at the boulders**: the chevrons still steer round them (local planner). Say that instead, and show the
   hazard map (M). Without a re-route Mission control shows the short note instead of the before/after card.
-- **Stuck against the boulders**: W alone walks straight into the band, which has no gap. Turn with the mouse (drag)
-  until you face along the chevrons; they lead along the band and round its end.
+- **Against the boulders**: W alone walks straight into the band, which has no gap. The body slides along a rock it
+  touches and the helmet marks that rock on its hazard map, but you still have to turn: drag with the mouse until you
+  face along the chevrons; they lead along the band and round its end.
 - **Before/after card shows only a small change**: Esc was pressed right after the first "Route updated". The card's
   green line is the way actually walked, so walk round the band to the stop before pressing Esc.
 - **Slow**: close the CV view (V) and the hazard map (M). Check the window is in front.

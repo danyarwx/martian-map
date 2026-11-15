@@ -11,14 +11,14 @@ import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './n
 import { GuideKeeper } from './nav/guide.ts'
 import { LocalPlanner, type LocalPlan } from './nav/localPlanner.ts'
 import { remainingMinutes, remainingPath, remainingStops, ReplanClient, ReplanDecider } from './nav/replan.ts'
-import { dirToHeading, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
+import { dirToHeading, GRID_CELL_M, headingToDir, localToThree, toLatLon, toLocal } from './frames.ts'
 import { SceneOverlay } from './hud/SceneOverlay.ts'
 import { RockTracks } from './mapping/rockTracks.ts'
 import { toLatLonBounds } from './mapping/hazardGrid.ts'
 import { Controls } from './sim/controls.ts'
 import { CV_MAX_DISP, CvRig } from './sim/cvRig.ts'
 import type { JumpTarget } from './sim/jump.ts'
-import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './sim/player.ts'
+import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult, type RockLike } from './sim/player.ts'
 import { makeCoarseGrid } from './world/heightField.ts'
 import { headingAlong } from './world/path.ts'
 import type { RoutesFile } from './world/routes.ts'
@@ -44,6 +44,8 @@ export interface HudState {
   slopeDeg: number
   /** Shift held: the presenter hurries ("time ×4"). */
   fast: boolean
+  /** Shift held, but the walk is at normal speed because a hazard is near ("slowed near hazard"). */
+  slowedNearHazard: boolean
   /** What stopped the last step. */
   blocked: MoveResult['blocked']
   paused: boolean
@@ -136,6 +138,8 @@ const SAND_AHEAD_M = 6
  * The demo boulder field's half-width (rocks.ts DEMO_HALF_WIDTH_M): the rocks of the field, not the scattered ones beyond.
  */
 const DETOUR_CAUSE_M = DEMO_HALF_WIDTH_M
+/** Shift hurries only while nothing hard lies on the planned line this close ahead, metres. */
+const HURRY_CLEAR_M = 20
 /** The walked detour is recorded as a point every this many metres, at most DETOUR_TRAIL_MAX points (about 1 km). */
 const DETOUR_TRAIL_STEP_M = 2
 const DETOUR_TRAIL_MAX = 500
@@ -218,6 +222,8 @@ export class HelmetSession {
   private hudAt = 0
   private move: MoveResult = { moved: 0, blocked: null, slopeDeg: 0, speed: 0 }
   private fast = false
+  /** Shift is held (whether or not the walk is hurrying right now). */
+  private hurryHeld = false
   private cvAt = 0
   private cvPoses = new Map<number, Pose>()
   private cvCount = 0
@@ -601,6 +607,32 @@ export class HelmetSession {
     this.renderer.domElement.remove()
   }
 
+  /**
+   * The body walked into a rock: the astronaut now knows it is there, seen or not, so it goes on the hazard map
+   * like a CV rock and the guide plans round it. Without this, a rock the cameras missed (about one in five per
+   * frame) left the guide pointing straight into it and the walker stuck there (review H-P0-1). Touch is the only
+   * way the world's truth reaches the map, and only where the body actually is.
+   */
+  private feelRock(r: RockLike): void {
+    const rad = r.d / 2 + GRID_CELL_M / 2
+    const x0 = Math.floor((r.x - rad) / GRID_CELL_M) * GRID_CELL_M
+    const y0 = Math.ceil((r.y + rad) / GRID_CELL_M) * GRID_CELL_M
+    const cols = Math.ceil((r.x + rad - x0) / GRID_CELL_M)
+    const rows = Math.ceil((y0 - (r.y - rad)) / GRID_CELL_M)
+    const cls = new Uint8Array(cols * rows)
+    const conf = new Float32Array(cols * rows)
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const cx = x0 + (col + 0.5) * GRID_CELL_M
+        const cy = y0 - (row + 0.5) * GRID_CELL_M
+        if (Math.hypot(cx - r.x, cy - r.y) > rad) continue // left as "not observed"
+        cls[row * cols + col] = HAZARD.rock
+        conf[row * cols + col] = 0.95
+      }
+    }
+    this.hazards.grid.update({ x0, y0, cols, rows, cls, conf }, this.cvCount)
+  }
+
   private frame(now: number): void {
     const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000))
     this.last = now
@@ -608,13 +640,19 @@ export class HelmetSession {
 
     const ready = world.readyAround(pose.x, pose.y)
     const inp = this.controls.input()
-    this.fast = inp.fast && !this.paused
+    // Shift hurries on open ground only. Near a hazard (the guide is off the line, or something hard lies on it
+    // within HURRY_CLEAR_M) the walk drops to normal speed: at ×4 the cameras saw the boulders a frame every few
+    // metres, too late to steer round, and the guide swung from side to side (review H-P0-1).
+    this.hurryHeld = inp.fast && !this.paused
+    const nearHazard = this.keeper.mode !== 'route' || (this.guide?.hazardAheadM ?? Infinity) <= HURRY_CLEAR_M
+    this.fast = this.hurryHeld && !nearHazard
     // no walking before the ground under the feet exists, or the player would start inside it
     const still = this.paused || !ready
-    const res = stepPlayer(pose, still ? { fwd: 0, side: 0, fast: false } : inp, still ? 0 : dt, this.ground)
+    const res = stepPlayer(pose, still ? { fwd: 0, side: 0, fast: false } : { ...inp, fast: this.fast }, still ? 0 : dt, this.ground)
     if (!still) this.elapsedS += dt * (this.fast ? FAST_FACTOR : 1)
     if (res.moved > 0 || res.blocked || (!inp.fwd && !inp.side)) this.move = res
     else this.move = { ...res, blocked: this.move.blocked }
+    if (res.hit) this.feelRock(res.hit)
     pose.z += this.lift
     world.update(pose)
 
@@ -666,6 +704,7 @@ export class HelmetSession {
         legIndex: this.legIndex,
         slopeDeg: res.slopeDeg,
         fast: this.fast,
+        slowedNearHazard: this.hurryHeld && !this.fast,
         blocked: inp.fwd || inp.side ? this.move.blocked : null,
         paused: this.paused,
         cv: { ...this.cvStats },
