@@ -25,7 +25,7 @@ const walk = (pose: Pose, g: Ground, seconds: number, inp = { fwd: 1, side: 0, f
   return last
 }
 
-test('walks 2 m/s north on the level, four times that with Shift, eye 1.65 m above the ground', () => {
+test('walks at WALK_MPS north on the level, four times that with Shift, eye 1.65 m above the ground', () => {
   const g = ground(() => 100)
   const p = start()
   walk(p, g, 10)

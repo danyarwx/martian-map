@@ -10,7 +10,7 @@ import { BURY } from '../world/rocks.ts'
 
 export const EYE_M = 1.65
 /** Walking speed, m/s. Faster than a suited astronaut really walks (the planner assumes 0.7 m/s): a demo choice, so the walk does not drag. Suit time runs by the clock, not by distance. */
-export const WALK_MPS = 2.0
+export const WALK_MPS = 4.0
 /** Shift: the presenter hurries; the HUD shows "time ×4". */
 export const FAST_FACTOR = 4
 export const MAX_CLIMB_DEG = 25
