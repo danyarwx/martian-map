@@ -9,7 +9,7 @@ import type {
   Terrain,
   UnreachableReason,
 } from '../types.ts'
-import { buildCostGrid, findPath, snapToPassable } from './astar.ts'
+import { buildCostGrid, findPath, smoothCells, snapToPassable } from './astar.ts'
 import { explainLeg } from './explain.ts'
 import { cellCenter, toCell } from './geo.ts'
 import { secondsPerMetre } from './mobility.ts'
@@ -41,6 +41,11 @@ function travelSeconds(t: Terrain, secPerM: Float32Array, cells: number[]): numb
     seconds += Math.hypot(dc * t.cellMetersX, dr * t.cellMetersY) * 0.5 * (secPerM[a] + secPerM[b])
   }
   return seconds
+}
+
+/** The path straightened where the ground allows it (see smoothCells), judged by the cost the route was searched with. */
+function smooth(t: Terrain, cost: Float32Array, cells: number[]): number[] {
+  return smoothCells(cost, t.width, t.cellMetersX, t.cellMetersY, cells)
 }
 
 /** Turns a chain of grid cells into a leg with its distance, climb and steepest cell. `seconds` is real travel time. */
@@ -183,12 +188,13 @@ function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, 
       if (cells[a] < 0 || cells[b] < 0) continue
       const found = findPath(cost, t.width, t.height, t.cellMetersX, t.cellMetersY, cells[a], cells[b], fastest)
       if (!found) continue
-      const seconds = profile === 'fast' ? found.seconds : travelSeconds(t, secPerM, found.cells)
-      const leg = legFromCells(t, m, profile, found.cells, seconds, stops[a].id, stops[b].id, homeSec)
+      const path = smooth(t, cost, found.cells)
+      const leg = legFromCells(t, m, profile, path, travelSeconds(t, secPerM, path), stops[a].id, stops[b].id, homeSec)
       legs.set(key(a, b), leg)
       legs.set(key(b, a), reverseLeg(leg))
-      weight.set(key(a, b), found.seconds / 60)
-      weight.set(key(b, a), found.seconds / 60)
+      const w = travelSeconds(t, cost, path) / 60
+      weight.set(key(a, b), w)
+      weight.set(key(b, a), w)
     }
   }
 
@@ -223,19 +229,32 @@ function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, 
     if (bestOrder[k - 1] === bestOrder[k]) continue
     routeLegs.push(legs.get(key(bestOrder[k - 1], bestOrder[k]))!)
   }
-  const sum = (f: (l: RouteLeg) => number) => routeLegs.reduce((s, l) => s + f(l), 0)
-  const travelMinutes = sum((l) => l.minutes)
-  const stopMinutes = reachable.length * m.stopMinutes
-  const totalMinutes = travelMinutes + stopMinutes
-
-  return {
-    mobility: m.id,
-    profile,
-    order: bestOrder.map((i) => stops[i].id),
-    legs: routeLegs,
+  return summarise(m, profile, bestOrder.map((i) => stops[i].id), routeLegs, reachable.length, {
     unreachable,
     unreachableWhy,
     habitatNoFooting: cells[0] < 0,
+  })
+}
+
+/** Puts legs together into a plan with its totals. `stopCount` is how many stops the crew works at. */
+function summarise(
+  m: Mobility,
+  profile: RouteProfile,
+  order: string[],
+  routeLegs: RouteLeg[],
+  stopCount: number,
+  reach: Pick<RoutePlan, 'unreachable' | 'unreachableWhy' | 'habitatNoFooting'>,
+): RoutePlan {
+  const sum = (f: (l: RouteLeg) => number) => routeLegs.reduce((s, l) => s + f(l), 0)
+  const travelMinutes = sum((l) => l.minutes)
+  const stopMinutes = stopCount * m.stopMinutes
+  const totalMinutes = travelMinutes + stopMinutes
+  return {
+    mobility: m.id,
+    profile,
+    order,
+    legs: routeLegs,
+    ...reach,
     distanceM: sum((l) => l.distanceM),
     travelMinutes,
     stopMinutes,
@@ -245,6 +264,69 @@ function planOn(t: Terrain, m: Mobility, profile: RouteProfile, { stops, cells, 
     steepM: sum((l) => l.steepM),
     fitsOneEva: totalMinutes <= m.maxEvaHours * 60,
   }
+}
+
+/** Id of the first stop of a plan that starts where the crew stands instead of at the habitat. */
+export const HERE_ID = 'here'
+
+/** A start position off passable ground is moved to the nearest passable cell within this many cells (100 m). */
+const START_SNAP_CELLS = 10
+
+/**
+ * Plans from wherever the crew stands through `orderedStops` in the given order, then back to the habitat:
+ * the replan after the crew left the route. The order is kept because the crew already knows it.
+ * A stop no safe path reaches is skipped and reported in `unreachable`; the next leg starts from the last
+ * stop reached. Throws when there is no passable ground near the start, or no safe way back to the habitat.
+ * The plan's `order` starts with HERE_ID.
+ */
+export function planFixedOrder(
+  t: Terrain,
+  m: Mobility,
+  start: LatLon,
+  orderedStops: Target[],
+  habitat: Target,
+  homeSec: Float32Array | null = null,
+  profile: RouteProfile = 'fast',
+): RoutePlan {
+  const { stops, cells, secPerM } = findFooting(t, m, habitat, orderedStops)
+  const startCell = (() => {
+    const { col, row } = toCell(t, start)
+    return snapToPassable(secPerM, t.width, t.height, col, row, START_SNAP_CELLS)
+  })()
+  if (startCell < 0) throw new Error('No passable ground near the current position.')
+  const cost = profile === 'fast' ? secPerM : buildCostGrid(t, m, (deg) => gentlePenalty(m, deg))
+  const fastest = secondsPerMetre(m, 0)
+
+  const legs: RouteLeg[] = []
+  const order = [HERE_ID]
+  const unreachable: string[] = []
+  const unreachableWhy: Record<string, UnreachableReason> = {}
+  let fromCell = startCell
+  let fromId = HERE_ID
+  // stops[0] is the habitat: visit the others in order, then go home.
+  for (const k of [...stops.keys()].slice(1).concat(0)) {
+    const stop = stops[k]
+    const found =
+      cells[k] < 0
+        ? null
+        : findPath(cost, t.width, t.height, t.cellMetersX, t.cellMetersY, fromCell, cells[k], fastest)
+    if (!found) {
+      if (k === 0) throw new Error('No safe way back to the habitat from here.')
+      unreachable.push(stop.id)
+      unreachableWhy[stop.id] = cells[k] < 0 ? 'no-footing' : 'no-path'
+      continue
+    }
+    const path = smooth(t, cost, found.cells)
+    legs.push(legFromCells(t, m, profile, path, travelSeconds(t, secPerM, path), fromId, stop.id, homeSec))
+    order.push(stop.id)
+    fromCell = cells[k]
+    fromId = stop.id
+  }
+  return summarise(m, profile, order, legs, order.length - 2, {
+    unreachable,
+    unreachableWhy,
+    habitatNoFooting: cells[0] < 0,
+  })
 }
 
 /**

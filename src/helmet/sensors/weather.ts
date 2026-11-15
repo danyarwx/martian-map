@@ -1,7 +1,7 @@
 // Weather for the helmet: Perseverance MEDA readings cached by scripts/fetch_weather.py
 // (public/data/helmet/weather.json, served at /data/helmet/weather.json), and pure helpers for
 // daylight left and the air temperature at an hour of the sol.
-import { DAY } from '../../lib/schedule.ts'
+import { DAY, temperatureC } from '../../lib/schedule.ts'
 
 /** One sol of MEDA readings, as cached. Only sols with numeric temperatures and pressure are kept. */
 export interface WeatherSol {
@@ -65,21 +65,18 @@ export function daylightLeftMin(localSolarTime: string | number, sunrise: string
 
 /**
  * Air temperature at a time of the sol, °C, from the sol's measured minimum and maximum.
- * Same diurnal shape as `temperatureC` in src/lib/schedule.ts (mirrored here so the measured extremes can be
- * plugged in): coldest at DAY.coldestAt (just before sunrise), warmest at DAY.warmestAt (early afternoon),
- * a half-cosine rise between them and a slower half-cosine fall through the night. A model, not a reading:
- * MEDA's feed gives only the sol's extremes.
+ * Same diurnal shape as `temperatureC` in src/lib/schedule.ts (the MEDA typical sol), scaled so the measured
+ * extremes can be plugged in: coldest at DAY.coldestAt (just before sunrise), warmest at DAY.warmestAt (mid
+ * afternoon). A model, not a reading: MEDA's feed gives only the sol's extremes.
  * @param hour local time in hours (decimal, e.g. 10.5 = 10:30)
  */
 export function airTempAt(hour: number, minC: number, maxC: number): number {
   const day = 24 * 60
   const t = (((hour * 60) % day) + day) % day
-  const { coldestAt, warmestAt } = DAY
-  const rising = t >= coldestAt && t <= warmestAt
-  const span = rising ? warmestAt - coldestAt : day - (warmestAt - coldestAt)
-  const into = rising ? t - coldestAt : (t - warmestAt + day) % day
-  const share = (1 - Math.cos((Math.PI * into) / span)) / 2 // 0 at the start of the stretch, 1 at its end
-  return rising ? minC + (maxC - minC) * share : maxC + (minC - maxC) * share
+  // The planner's typical sol (MEDA half-hour medians), stretched so its coldest and warmest points land on
+  // this sol's measured minimum and maximum. The helmet and the planner then agree on the shape of the day.
+  const share = (temperatureC(t) - DAY.coldestC) / (DAY.warmestC - DAY.coldestC) // 0 coldest, 1 warmest
+  return minC + (maxC - minC) * share
 }
 
 /** Pressure in hPa, for display. */

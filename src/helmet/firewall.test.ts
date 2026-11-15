@@ -2,7 +2,7 @@
 // Code under src/helmet/cv/ may not import from world/, sim/ or eval/. Run with `npm test`.
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
@@ -44,7 +44,7 @@ export function violations(file: string, code: string): string[] {
     .filter((spec) => spec.startsWith('.'))
     .filter((spec) => {
       const target = resolve(join(file, '..'), spec)
-      return FORBIDDEN.some((dir) => target === dir || target.startsWith(dir + '/'))
+      return FORBIDDEN.some((dir) => target === dir || target.startsWith(dir + sep))
     })
     .map((spec) => `${relative(HELMET, file)} → ${spec}`)
 }

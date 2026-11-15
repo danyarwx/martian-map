@@ -208,8 +208,10 @@ test('walk-back time is infinite behind ground nobody can walk on', async () => 
 
 test('the suggested departure keeps the excursion in daylight and out of the midday gusts when it can', async () => {
   const { assessDeparture, bestDeparture, DAY, temperatureC, timeline } = await import('./schedule.ts')
-  assert.equal(Math.round(temperatureC(DAY.coldestAt)), DAY.coldestC)
-  assert.equal(Math.round(temperatureC(DAY.warmestAt)), DAY.warmestC)
+  // The day curve passes through the measured coldest and warmest half hours.
+  assert.ok(Math.abs(temperatureC(DAY.coldestAt) - DAY.coldestC) < 0.01)
+  assert.ok(Math.abs(temperatureC(DAY.warmestAt) - DAY.warmestC) < 0.01)
+  assert.ok(DAY.gustsFrom > DAY.sunrise && DAY.gustsTo <= DAY.sunset, 'gust hours are in daylight')
   const short = bestDeparture(120)
   assert.ok(short.inDaylight)
   assert.equal(short.gustMinutes, 0)
@@ -220,6 +222,26 @@ test('the suggested departure keeps the excursion in daylight and out of the mid
   const steps = timeline(plan, 8 * 60)
   assert.deepEqual(steps.map((s) => s.kind), ['leave', 'arrive', 'return'])
   assert.ok(Math.abs(steps.at(-1)!.at - (8 * 60 + plan.totalMinutes)) < 0.01)
+})
+
+test('a replan from off the route keeps the given order of stops and ends at the habitat', async () => {
+  const { HERE_ID, planFixedOrder } = await import('./planner.ts')
+  // 'far' first, then 'near': not the shortest order, but the one the crew is following.
+  const start = stop('x', 20, 30)
+  const plan = planFixedOrder(terrain(), MOBILITY.walk, start, [stop('far', 50, 20), stop('near', 15, 20)], habitat)
+  assert.deepEqual(plan.order, [HERE_ID, 'far', 'near', 'habitat'])
+  assert.equal(plan.legs.length, 3)
+  assert.equal(plan.legs[0].fromId, HERE_ID)
+  assert.ok(distanceM(plan.legs[0].path[0], start) < 15, 'starts where the crew stands')
+  assert.equal(plan.stopMinutes, 60)
+})
+
+test('a replan skips a stop it cannot reach and still goes home', async () => {
+  const { planFixedOrder } = await import('./planner.ts')
+  const t = terrain((c) => (c === 40 ? 30 : 0)) // closed wall east of the habitat side
+  const plan = planFixedOrder(t, MOBILITY.walk, stop('x', 20, 30), [stop('far', 50, 20), stop('near', 15, 20)], habitat)
+  assert.deepEqual(plan.order, ['here', 'near', 'habitat'])
+  assert.deepEqual(plan.unreachable, ['far'])
 })
 
 /** Blocked-cell mask for the test grid: 1 where `at(col, row)` is true. */

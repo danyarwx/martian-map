@@ -1,0 +1,321 @@
+// One navigation run: the navigator, the simulated walker and the replanning worker, wired together.
+// Positions come from the simulator, or the tablet's GPS in Earth GPS mode; everything the screen shows comes
+// from the navigation bus.
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Mobility, RoutePlan, SiteConfig, Target } from '../types.ts'
+import { distanceM } from '../lib/geo.ts'
+import type { HazardKind } from '../lib/safety.ts'
+import { bestDeparture, turnBackBy } from '../lib/schedule.ts'
+import { getNavBus, IDLE_STATE, type NavEvent, type NavState, type UpcomingManeuver } from '../nav/events.ts'
+import type { Maneuver } from '../nav/instructions.ts'
+import { GpsSource, type GpsStatus } from '../nav/gps.ts'
+import { SimulatedSource, type PositionFix } from '../nav/position.ts'
+import { createWorkerRerouter } from '../nav/reroute.ts'
+import { displayPlan } from '../nav/display.ts'
+import { createNavigator, type Navigator } from '../nav/tracker.ts'
+
+export interface NavRunInput {
+  site: SiteConfig
+  plan: RoutePlan
+  habitat: Target
+  /** The habitat and every target by id. */
+  stops: Record<string, Target>
+  mobility: Mobility
+  /** Scripted demo: Mars time of departure (LMST minutes) and simulation speed, instead of the defaults. */
+  demo?: { departLmst: number; speed: number }
+}
+
+export interface NavRunView {
+  state: NavState
+  upcoming: UpcomingManeuver[]
+  /** Last spoken announcements, newest last. Not shown on screen; kept for debugging and future use. */
+  log: NavEvent[]
+  /** The route being followed: the planned one, or the latest replan. */
+  plan: RoutePlan
+  maneuvers: Maneuver[]
+  /** Mission clock, Date.now() milliseconds. Runs faster than real time with the simulation speed-up. */
+  missionNow: number
+  missionStart: number
+  /** Mars time of day now, LMST minutes since midnight. The excursion leaves at the suggested departure. */
+  lmst: number
+  /** Latest time to turn back from the farthest point, LMST minutes; null when unknown. */
+  turnBackLmst: number | null
+  /** Mission time of the arrival at the current stop, null when not at a stop. */
+  arrivedAt: number | null
+  /** Distance actually covered, metres. */
+  walkedM: number
+  playing: boolean
+  speed: number
+  /** Where positions come from: the simulated walker or the tablet's GPS. */
+  source: PositionKind
+  /** GPS state while `source` is 'gps', else null. */
+  gps: GpsStatus | null
+  /** The route straight back to the habitat from here, with the run's mobility and profile. Null until planned. */
+  base: { distanceM: number; minutes: number } | null
+}
+
+export type PositionKind = 'sim' | 'gps'
+
+export interface NavRunControls {
+  play(): void
+  pause(): void
+  setSpeed(x: number): void
+  /** Pushes the simulated walker this many metres to the right of the route (negative: left). */
+  drift(metres: number): void
+  backToRoute(): void
+  continueFromStop(): void
+  /** Simulates a hazard warning (dust storm, solar flare). The crew then chooses: base or continue. */
+  hazard(kind: HazardKind): void
+  /** Plans the fastest route straight home and skips the stops left: for a hazard, or the crew's choice. */
+  returnToBase(reason: HazardKind | 'crew'): void
+  /** Keeps going despite the hazard warning; reminders follow every 15 Mars minutes. */
+  continueDespiteHazard(): void
+  /** Switches between the simulated walker and the tablet's GPS. GPS runs the clock in real time. */
+  setSource(kind: PositionKind): void
+}
+
+/** Screen updates per second at most. */
+const UPDATES_HZ = 5
+/** Spoken lines kept in the caption log. */
+const LOG_SIZE = 6
+/** Default simulation speed-up. */
+const START_SPEED = 10
+/** A jump longer than this between two positions is a reroute restart, not walking, metres. */
+const JUMP_M = 150
+/** The route home is replanned after this much mission time, ms, and after each stop. */
+const BASE_EVERY_MISSION_MS = 30_000
+/** ...but not more often than this in real time, ms, so 60x does not flood the worker. */
+const BASE_MIN_REAL_MS = 1000
+/** Closer to the habitat than this counts as at home, metres. */
+const AT_HOME_M = 20
+
+type WakeLock = { release(): Promise<void> }
+
+export function useNavRun(input: NavRunInput | null): { view: NavRunView | null; controls: NavRunControls } {
+  const [view, setView] = useState<NavRunView | null>(null)
+  const nav = useRef<Navigator | null>(null)
+  const sim = useRef<SimulatedSource | null>(null)
+  const clock = useRef({ playing: true, speed: START_SPEED })
+  /** Reads the mission clock for the Status button. */
+  const mission = useRef<{ start: number; now: () => number; departLmst: number } | null>(null)
+  const switchSource = useRef<((kind: PositionKind) => void) | null>(null)
+
+  useEffect(() => {
+    if (!input) {
+      setView(null)
+      return
+    }
+    const bus = getNavBus()
+    const missionStart = Date.now()
+    let missionNow = missionStart
+    let lastReal = missionStart
+    const startSpeed = input.demo?.speed ?? START_SPEED
+    clock.current = { playing: true, speed: startSpeed }
+    // The Mars clock: the excursion leaves at the planner's suggested departure, as on the planning screen.
+    const departLmst = input.demo?.departLmst ?? bestDeparture(input.plan.totalMinutes).start
+    const turnBack = turnBackBy(input.plan, departLmst)
+    const lmstAt = (t: number) => departLmst + (t - missionStart) / 60000
+    mission.current = { start: missionStart, now: () => missionNow, departLmst }
+
+    const routerOptions = {
+      site: input.site,
+      mobility: input.mobility.id,
+      profile: input.plan.profile,
+      habitat: input.habitat,
+      stops: input.stops,
+    }
+    const rerouter = createWorkerRerouter(routerOptions)
+    // A second worker plans the way home for the panel, so it never delays an off-route replan. The way
+    // home is always the fastest safe route, whatever profile the excursion uses: it is the one taken
+    // when the crew returns early or a hazard is announced.
+    const baseRouter = createWorkerRerouter({ ...routerOptions, profile: 'fast' })
+    // Everything below works on the drawn line, not on the terrain-cell staircase (see nav/display.ts).
+    const plan = displayPlan(input.plan)
+    const tracker = createNavigator({
+      plan,
+      stops: input.stops,
+      mobility: input.mobility,
+      bus,
+      requestReroute: (from, ids) =>
+        (ids.length === 0 ? baseRouter : rerouter).requestReroute(from, ids).then((p) => displayPlan(p)),
+      now: () => missionNow,
+      departLmst,
+      turnBackAtMs: turnBack === null ? undefined : missionStart + (turnBack - departLmst) * 60000,
+    })
+    const walker = new SimulatedSource({ legs: plan.legs, mobility: input.mobility })
+    walker.setSpeedMultiplier(startSpeed)
+    nav.current = tracker
+    sim.current = walker
+
+    let latest: { state: NavState; upcoming: UpcomingManeuver[] } = { state: IDLE_STATE, upcoming: [] }
+    let log: NavEvent[] = []
+    let arrivedAt: number | null = null
+    let walkedM = 0
+    let last: { lat: number; lon: number } | null = null
+    let dirty = true
+    let base: NavRunView['base'] = null
+    const baseAsk = { busy: false, mission: -Infinity, real: 0, visited: -1 }
+    let source: PositionKind = 'sim'
+    let gps: GpsSource | null = null
+    let gpsStatus: GpsStatus | null = null
+
+    const offs = [
+      bus.subscribe('state', (e) => {
+        if (!e.state) return
+        latest = { state: e.state, upcoming: bus.getUpcoming(50) }
+        dirty = true
+      }),
+      bus.subscribe('*', (e) => {
+        if (e.type === 'state') return
+        if (e.text) log = [...log, e].slice(-LOG_SIZE)
+        if (e.type === 'rerouted') walker.setPath(tracker.getPlan().legs)
+        if (e.type === 'arrive') arrivedAt = e.at
+        dirty = true
+      }),
+    ]
+
+    const onFix = (fix: PositionFix) => {
+      // The mission clock runs at the simulation speed, so stops, off-route timers and ETAs stay consistent.
+      const real = Date.now()
+      if (clock.current.playing) missionNow += (real - lastReal) * clock.current.speed
+      lastReal = real
+      if (last) {
+        const d = distanceM(last, fix)
+        if (d < JUMP_M) walkedM += d
+      }
+      last = fix
+      tracker.update({ ...fix, t: missionNow })
+      planBase(fix, real)
+    }
+
+    // Back to base now: replanned from here every 30 mission-seconds and after each stop.
+    const planBase = (fix: PositionFix, real: number) => {
+      const st = tracker.getState()
+      if (st.status === 'finished' || distanceM(fix, input.habitat) < AT_HOME_M) {
+        if (base?.distanceM !== 0) dirty = true
+        base = { distanceM: 0, minutes: 0 }
+        return
+      }
+      const due = base === null || missionNow - baseAsk.mission >= BASE_EVERY_MISSION_MS || st.visited.length !== baseAsk.visited
+      if (baseAsk.busy || !due || real - baseAsk.real < BASE_MIN_REAL_MS) return
+      Object.assign(baseAsk, { busy: true, mission: missionNow, real, visited: st.visited.length })
+      baseRouter
+        .requestReroute({ lat: fix.lat, lon: fix.lon }, [])
+        .then((p) => {
+          base = {
+            distanceM: p.legs.reduce((s, l) => s + l.distanceM, 0),
+            minutes: p.legs.reduce((s, l) => s + l.minutes, 0),
+          }
+          dirty = true
+        })
+        .catch(() => {})
+        .finally(() => (baseAsk.busy = false))
+    }
+    tracker.start()
+    walker.start(onFix)
+
+    switchSource.current = (kind) => {
+      if (kind === source) return
+      if (kind === 'gps') {
+        // Real walking runs in real time. The first fix lands where the crew is now.
+        walker.stop()
+        clock.current = { playing: true, speed: 1 }
+        walker.setSpeedMultiplier(1)
+        gps = new GpsSource({
+          anchor: last ?? input.habitat,
+          onStatus: (st) => {
+            gpsStatus = st
+            dirty = true
+          },
+        })
+        gps.start(onFix)
+      } else {
+        // The walker takes over on the route, at the navigator's position.
+        gps?.stop()
+        gps = null
+        gpsStatus = null
+        const st = tracker.getState()
+        walker.setPath(tracker.getPlan().legs)
+        walker.placeAt(st.legIndex, st.legAlongM)
+        walker.start(onFix)
+      }
+      source = kind
+      dirty = true
+    }
+
+    const timer = setInterval(() => {
+      if (!dirty) return
+      dirty = false
+      setView({
+        ...latest,
+        log,
+        plan: tracker.getPlan(),
+        maneuvers: tracker.getManeuvers(),
+        missionNow,
+        missionStart,
+        lmst: lmstAt(missionNow),
+        turnBackLmst: turnBack,
+        arrivedAt: latest.state.status === 'at_stop' ? arrivedAt : null,
+        walkedM,
+        ...clock.current,
+        source,
+        gps: gpsStatus,
+        base,
+      })
+    }, 1000 / UPDATES_HZ)
+
+    // Keep the tablet screen on while navigating, where the browser allows it.
+    let wake: WakeLock | null = null
+    const wakeApi = (globalThis.navigator as { wakeLock?: { request(type: 'screen'): Promise<WakeLock> } } | undefined)
+      ?.wakeLock
+    wakeApi
+      ?.request('screen')
+      .then((w) => (wake = w))
+      .catch(() => {})
+
+    return () => {
+      clearInterval(timer)
+      offs.forEach((off) => off())
+      walker.stop()
+      gps?.stop()
+      switchSource.current = null
+      tracker.stop()
+      rerouter.dispose()
+      baseRouter.dispose()
+      wake?.release().catch(() => {})
+      nav.current = null
+      sim.current = null
+      mission.current = null
+    }
+  }, [input])
+
+  const controls: NavRunControls = {
+    play: useCallback(() => {
+      clock.current.playing = true
+      sim.current?.resume()
+    }, []),
+    pause: useCallback(() => {
+      clock.current.playing = false
+      sim.current?.pause()
+    }, []),
+    setSpeed: useCallback((x: number) => {
+      clock.current.speed = x
+      sim.current?.setSpeedMultiplier(x)
+    }, []),
+    drift: useCallback((m: number) => sim.current?.driftOffRoute(m), []),
+    backToRoute: useCallback(() => sim.current?.driftOffRoute(0), []),
+    continueFromStop: useCallback(() => {
+      nav.current?.continueFromStop()
+      sim.current?.continueFromStop()
+    }, []),
+    hazard: useCallback((kind: HazardKind) => {
+      nav.current?.warnHazard(kind)
+    }, []),
+    returnToBase: useCallback((reason: HazardKind | 'crew') => {
+      nav.current?.returnToBase(reason)
+    }, []),
+    continueDespiteHazard: useCallback(() => nav.current?.continueDespiteHazard(), []),
+    setSource: useCallback((kind: PositionKind) => switchSource.current?.(kind), []),
+  }
+  return { view, controls }
+}

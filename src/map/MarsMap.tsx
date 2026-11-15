@@ -5,7 +5,9 @@ import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
 import { duration } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import { WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
-import { createTileLayers, MARS_CRS, MINERAL_LAYER, MINERAL_LEGEND } from './layers.ts'
+import { displayLine } from '../nav/display.ts'
+import { createBaseMap } from './baseMap.ts'
+import { MINERAL_LAYER, MINERAL_LEGEND } from './layers.ts'
 
 interface Props {
   site: SiteConfig
@@ -82,25 +84,9 @@ export default function MarsMap(props: Props) {
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
     if (!ref.current) return
-    const map = L.map(ref.current, {
-      crs: MARS_CRS,
-      center: [site.center.lat, site.center.lon],
-      zoom: site.zoom,
-      minZoom: 0,
-      maxZoom: 19,
-      worldCopyJump: false,
-    })
+    const { map, control } = createBaseMap(ref.current, site)
     mapRef.current = map
-
-    const tiles = createTileLayers()
-    const base = Object.values(tiles.base)
-    base[0].addTo(map)
-    Object.values(tiles.site).forEach((l) => l.addTo(map))
-    const control = L.control
-      .layers(tiles.base, { ...tiles.site, ...tiles.extra }, { collapsed: true })
-      .addTo(map)
     layersRef.current = control
-    L.control.scale({ imperial: false }).addTo(map)
 
     // The mineral layer explains its colours while it is on.
     const minerals = new L.Control({ position: 'bottomright' })
@@ -294,7 +280,8 @@ export default function MarsMap(props: Props) {
     group.clearLayers()
     notes.clearLayers()
     if (!plan || plan.legs.length === 0) return
-    const linesOf = (p: RoutePlan) => p.legs.map((leg) => leg.path.map((q) => [q.lat, q.lon] as L.LatLngTuple))
+    // Lines are drawn simplified: through every 10 m cell centre a straight stretch looks like stairs.
+    const linesOf = (p: RoutePlan) => p.legs.map((leg) => displayLine(leg.path).map((q) => [q.lat, q.lon] as L.LatLngTuple))
 
     // The other route: a pale dashed line under the chosen one. A wide invisible line over it takes the
     // click; both are vector lines, which lie below every marker, so stops and notes keep their clicks.
@@ -316,7 +303,7 @@ export default function MarsMap(props: Props) {
     const outline = L.polyline(lines, { color: '#0e1116', weight: 8, opacity: 0.9, interactive: false }).addTo(group)
     LEVEL_COLORS.forEach((color, level) => {
       const runs = plan.legs.flatMap((leg) =>
-        leg.sections.filter((s) => s.level === level).map((s) => s.path.map((p) => [p.lat, p.lon] as L.LatLngTuple)),
+        leg.sections.filter((s) => s.level === level).map((s) => displayLine(s.path).map((p) => [p.lat, p.lon] as L.LatLngTuple)),
       )
       if (runs.length > 0) L.polyline(runs, { color, weight: 4.5, interactive: false }).addTo(group)
     })

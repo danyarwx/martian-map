@@ -1,28 +1,37 @@
 // When to leave the habitat, and the clock time of every step of the excursion.
 // Times are minutes of local mean solar time (LMST) since midnight; a "minute" here is 1/1440 of a sol.
-// The day model is built from typical published values and is not live. Sources:
+// The day is a typical sol measured by Perseverance's MEDA weather station (src/data/medaSol.ts, built by
+// scripts/fetch_meda.py from NASA PDS data). It is a typical day, not a forecast. Sources:
+// - Air temperature and wind: MEDA medians per half hour over sols 120-129.
+// - Gust hours: the daytime half hours whose 95th-percentile wind reaches MEDA_GUST_MS. Dust devils are most
+//   frequent in the same hours (Newman et al. 2022, Science Advances 8, eabn3783).
 // - Daylight: about 12 h at Jezero's latitude (18.4 N); sunrise and sunset shift by under an hour over the year.
-// - Air temperature: about -80 C before sunrise to about -20 C in the early afternoon
-//   (Perseverance MEDA, Rodriguez-Manfredi et al. 2023, Nature Geoscience 16).
-// - Gusts and dust devils: most frequent around midday, when the ground is hottest
-//   (Perseverance MEDA, Newman et al. 2022, Science Advances 8, eabn3783).
 // Radiation from galactic cosmic rays does not depend on the time of day, so it plays no part in the choice.
+import { MEDA_BIN_MIN, MEDA_GUST_MS, MEDA_SOL, type MedaBin } from '../data/medaSol.ts'
 import type { RoutePlan } from '../types.ts'
 import { MOBILITY } from './mobility.ts'
 import { WALK_BACK_RESERVE_MIN } from './safety.ts'
 
+const SUNRISE = 6 * 60
+const SUNSET = 18 * 60
+/** Middle of a measured half hour: where its value is placed on the clock. */
+const centre = (b: MedaBin) => b.lmst + MEDA_BIN_MIN / 2
+const coldest = MEDA_SOL.reduce((a, b) => (b.airC < a.airC ? b : a))
+const warmest = MEDA_SOL.reduce((a, b) => (b.airC > a.airC ? b : a))
+const gusty = MEDA_SOL.filter((b) => b.gustMs >= MEDA_GUST_MS && b.lmst >= SUNRISE && b.lmst < SUNSET)
+
 export const DAY = {
-  sunrise: 6 * 60,
-  sunset: 18 * 60,
-  /** Coldest moment, just before sunrise, and its temperature. */
-  coldestAt: 5.5 * 60,
-  coldestC: -80,
-  /** Warmest moment and its temperature. */
-  warmestAt: 14 * 60,
-  warmestC: -20,
-  /** Hours when gusts and dust devils are most frequent. */
-  gustsFrom: 11 * 60,
-  gustsTo: 15 * 60,
+  sunrise: SUNRISE,
+  sunset: SUNSET,
+  /** Coldest moment, just before sunrise, and its temperature (measured). */
+  coldestAt: centre(coldest),
+  coldestC: coldest.airC,
+  /** Warmest moment and its temperature (measured). */
+  warmestAt: centre(warmest),
+  warmestC: warmest.airC,
+  /** Hours when gusts and dust devils are most frequent: first to last gusty half hour in daylight. */
+  gustsFrom: gusty.length ? gusty[0].lmst : 11 * 60,
+  gustsTo: gusty.length ? gusty[gusty.length - 1].lmst + MEDA_BIN_MIN : 15 * 60,
 }
 
 /** Leave no earlier than this long after sunrise: light for the first steps. */
@@ -32,16 +41,25 @@ const BEFORE_SUNSET_MIN = WALK_BACK_RESERVE_MIN
 /** Candidate departure times are this far apart. */
 const STEP_MIN = 15
 
-/** Typical air temperature at a time of day, C: a smooth rise to the afternoon peak and a slower fall through the night. */
-export function temperatureC(minute: number): number {
+/** A typical-sol value at a time of day: the measured half-hour medians, joined by straight lines. */
+function medaAt(minute: number, key: 'airC' | 'windMs' | 'gustMs'): number {
   const day = 24 * 60
-  const t = ((minute % day) + day) % day
-  const { coldestAt, coldestC, warmestAt, warmestC } = DAY
-  const rising = t >= coldestAt && t <= warmestAt
-  const span = rising ? warmestAt - coldestAt : day - (warmestAt - coldestAt)
-  const into = rising ? t - coldestAt : (t - warmestAt + day) % day
-  const share = (1 - Math.cos((Math.PI * into) / span)) / 2 // 0 at the start of the stretch, 1 at its end
-  return rising ? coldestC + (warmestC - coldestC) * share : warmestC + (coldestC - warmestC) * share
+  const n = MEDA_SOL.length
+  // Position in half hours from the first bin's centre, wrapping around midnight.
+  const pos = ((((minute - centre(MEDA_SOL[0])) % day) + day) % day) / MEDA_BIN_MIN
+  const i = Math.floor(pos) % n
+  const share = pos - Math.floor(pos)
+  return MEDA_SOL[i][key] + (MEDA_SOL[(i + 1) % n][key] - MEDA_SOL[i][key]) * share
+}
+
+/** Typical air temperature at a time of day, C. */
+export function temperatureC(minute: number): number {
+  return medaAt(minute, 'airC')
+}
+
+/** Typical wind at a time of day, m/s: the half-hour median, and the gusts (95th percentile). */
+export function windAt(minute: number): { windMs: number; gustMs: number } {
+  return { windMs: medaAt(minute, 'windMs'), gustMs: medaAt(minute, 'gustMs') }
 }
 
 export interface DepartureOption {
@@ -136,6 +154,17 @@ export function farthestWalkHome(plan: RoutePlan): { minutes: number; legIndex: 
     }
   })
   return best
+}
+
+/**
+ * Latest minute of the day to turn back from the farthest point and still be home in time: by the end of
+ * the longest allowed excursion and by sunset. Null when the walk-back times were not computed.
+ */
+export function turnBackBy(plan: RoutePlan, start: number): number | null {
+  const farthest = farthestWalkHome(plan)
+  if (!farthest) return null
+  const homeBy = Math.min(start + MOBILITY[plan.mobility].maxEvaHours * 60, DAY.sunset)
+  return homeBy - farthest.minutes
 }
 
 /** Minute of the day as HH:MM. */

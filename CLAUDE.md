@@ -64,10 +64,20 @@ Helmet view (Level 2), branch `feat/helmet-3d`, PR #6 open against `main` (PR #5
 - Cloud environment `martian-map` allows `mars.nasa.gov`, `trek.nasa.gov` and `planetarymaps.usgs.gov` (1 m DTM for task T1.1)
 - Backup: the earlier scripted helmet with real rover panoramas, branch `feat/helmet-hud`
 
+Tablet navigation at `/nav`, branch `feat/tablet-nav` (the voice branches are merged in). Landscape tablet screen with glove-sized controls (`src/nav-ui/`), turn-by-turn logic in `src/nav/`. Details: `docs/VOICE_API.md` (events and voice rules), `docs/DEMO.md` (3-minute script, demo mode `/nav?demo=1`).
+- Plan screen, then navigation: instruction banner, heading-up map (compass for north-up), voice only. Panel: next stop, all stops and back, back to base now (amber caution past the 60 min walk-back reserve, Go to base button), conditions tiles (turn back, daylight, gust hours, dose, air, wind)
+- Simulated position with a SIMULATION bar (speed, drift, dust storm, solar flare, real Earth GPS). Off route: guide back, then replan from here (`kind: 'reroute'` in the planner worker, `planFixedOrder`)
+- Safety: spoken time alerts, turn-back time, hazard popup (Go to base / Continue route). Typical sol from Perseverance MEDA (`scripts/fetch_meda.py` → `src/data/medaSol.ts`)
+- **Backend** (the only one in the repo): `api/tts.js` (OpenAI `gpt-4o-mini-tts` voice) and `api/ask.js` (voice questions: `whisper-1` + `gpt-5.4-nano`). Both need `OPENAI_API_KEY` in the Vercel environment; without it they answer 503 and the tablet uses the browser voice. Same-site requests only. The route's lines are fetched ahead at Start (`src/nav/lines.ts`). OpenAI shuts the TTS model down on 6 Jan 2027
+- Installable offline PWA (`vite-plugin-pwa`, service worker registered only from `/nav`, about 5 MB precache, helmet data left out). Trek tiles are kept once viewed
+- Web planner: "Send to tablet" next to "Go outside" opens `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
+- Not tested yet: a real tablet, Safari, GPS outdoors, the mic with a real voice
+
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that
 - `npm run build-terrain`: rebuild the slope/elevation grid from the DTM in `scripts/raw/` (HiRISE if present, else CTX)
-- `npm test`: unit tests for the planner (`src/lib/planner.test.ts`)
+- `python scripts/fetch_meda.py [first last]`: rebuild the typical sol from MEDA data (streams about 15 MB per sol)
+- `npm test`: unit tests for the planner and navigation (`src/lib/*.test.ts`, `src/nav/*.test.ts`). Works on Node 21 too (`scripts/test.mjs` bundles them with esbuild)
 
 Known issues:
 - The HiRISE DTM ends at about 77.25°E. The crater rim west of that has no slope data, so the planner treats it as no-go. The last 96 of the 708 rover waypoints (about sol 1690 onward) are in that gap. All 6 targets are inside the covered area
@@ -95,7 +105,7 @@ Folders (shared shapes live in `src/types.ts`: `Target`, `Terrain`, `Mobility`, 
 - Science goal: search for signs of ancient life. Collect the samples Perseverance cached, then revisit the rover's strongest leads
 - Form factor: habitat planning screen (Mission control) + helmet HUD for the walk itself (Level 2, Danya). The helmet is a 3D Mars from real orbital data with live in-browser computer vision and a top-down hazard map; spec in `docs/helmet/PLAN.md`
 - Data layers: optical (HiRISE 25 cm, CTX 6 m), topographic (slope from the HiRISE 1 m DTM), thermal (THEMIS day IR), spectral (CRISM mineral indicators). Plus rover ground imagery, and radiation and weather as static cited values
-- Demo story, 3 minutes: TBD
+- Demo story, 3 minutes: `docs/DEMO.md` (demo mode `/nav?demo=1`)
 
 ## Stack
 

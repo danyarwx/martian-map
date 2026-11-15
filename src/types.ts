@@ -94,6 +94,10 @@ export interface RouteNote {
   obstacle?: LatLon
   /** What the obstacle is, for its own label on the map. */
   obstacleText?: string
+  /** Steepest slope named by the note, degrees: of the avoided ground, or of the steep stretch. 0 for missing data. */
+  slopeDeg?: number
+  /** Length of a steep stretch along the route, metres. Only on 'steep' notes. */
+  lengthM?: number
 }
 
 /** A run of the path in one slope class. Consecutive runs share their joint point. */

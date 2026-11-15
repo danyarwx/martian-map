@@ -245,3 +245,94 @@ export function timeField(
   }
   return g
 }
+
+/** Grid cells on the straight line from cell `a` to cell `b`, both included (Bresenham). Neighbours touch, diagonally at most. */
+export function lineCells(width: number, a: number, b: number): number[] {
+  let col = a % width
+  let row = (a / width) | 0
+  const endCol = b % width
+  const endRow = (b / width) | 0
+  const dc = Math.abs(endCol - col)
+  const dr = Math.abs(endRow - row)
+  const sc = col < endCol ? 1 : -1
+  const sr = row < endRow ? 1 : -1
+  let err = dc - dr
+  const out = [row * width + col]
+  while (col !== endCol || row !== endRow) {
+    const e2 = 2 * err
+    if (e2 > -dr) {
+      err -= dr
+      col += sc
+    }
+    if (e2 < dc) {
+      err += dc
+      row += sr
+    }
+    out.push(row * width + col)
+  }
+  return out
+}
+
+/** A straight shortcut may take at most this much longer than the stretch of path it replaces (2%). */
+const SHORTCUT_SLACK = 1.02
+/** Shortcuts are looked for up to this many path cells ahead of where they start. */
+const SHORTCUT_MAX_CELLS = 150
+/** Stop looking farther ahead after this many shortcuts in a row were refused. */
+const SHORTCUT_MAX_MISSES = 25
+
+/**
+ * Straightens a path found on the 8-connected grid ("string pulling"). The grid only allows eight
+ * directions, so a path heading anywhere else becomes a staircase of long straight and diagonal runs.
+ * From each corner, the path is replaced by the straight line to the farthest later path cell for which
+ * the line crosses only passable ground and costs no more than the stretch it replaces (within 2%), by
+ * the same step cost as `findPath`. The result is again a chain of touching cells.
+ */
+export function smoothCells(
+  cost: Float32Array,
+  width: number,
+  cellX: number,
+  cellY: number,
+  cells: number[],
+): number[] {
+  const n = cells.length
+  if (n < 3) return cells
+  const diag = Math.hypot(cellX, cellY)
+  /** Cost of the step between two touching cells, or Infinity when it cuts a no-go corner. */
+  const step = (a: number, b: number) => {
+    const dc = (b % width) - (a % width)
+    const dr = ((b / width) | 0) - ((a / width) | 0)
+    if (dc !== 0 && dr !== 0) {
+      if (cost[a + dc] === Infinity || cost[a + dr * width] === Infinity) return Infinity
+      return diag * 0.5 * (cost[a] + cost[b])
+    }
+    return (dc !== 0 ? cellX : cellY) * 0.5 * (cost[a] + cost[b])
+  }
+  // Cost along the path up to each of its cells.
+  const along = new Float64Array(n)
+  for (let k = 1; k < n; k++) along[k] = along[k - 1] + step(cells[k - 1], cells[k])
+
+  const out = [cells[0]]
+  let i = 0
+  while (i < n - 1) {
+    let best = i + 1
+    let bestLine: number[] | null = null
+    let misses = 0
+    for (let j = i + 2; j < n && j - i <= SHORTCUT_MAX_CELLS && misses < SHORTCUT_MAX_MISSES; j++) {
+      const line = lineCells(width, cells[i], cells[j])
+      const budget = (along[j] - along[i]) * SHORTCUT_SLACK + 1e-6
+      let c = 0
+      for (let k = 1; k < line.length && c <= budget; k++) c += step(line[k - 1], line[k])
+      if (c <= budget) {
+        best = j
+        bestLine = line
+        misses = 0
+      } else {
+        misses++
+      }
+    }
+    if (bestLine) for (let k = 1; k < bestLine.length; k++) out.push(bestLine[k])
+    else out.push(cells[best])
+    i = best
+  }
+  return out
+}

@@ -11,6 +11,7 @@ import {
   CAREER_LIMIT_MSV,
   EARTH_BACKGROUND_MSV_PER_DAY,
   evaDoseMsv,
+  CONDITIONS_SOLS,
   JEZERO_CONDITIONS,
   SURFACE_DOSE_MSV_PER_DAY,
   WALK_BACK_RESERVE_MIN,
@@ -23,9 +24,11 @@ import {
   farthestWalkHome,
   temperatureC,
   timeline,
+  turnBackBy,
   type DepartureOption,
   type TimelineStep,
 } from '../lib/schedule.ts'
+import { navUrl } from '../nav-ui/params.ts'
 
 /** The clock side of the plan: when the crew leaves, and what follows from that. */
 interface Schedule {
@@ -129,14 +132,12 @@ export default function Sidebar(p: Props) {
   if (plan && plan.legs.length > 0) {
     const best = bestDeparture(plan.totalMinutes)
     const chosen = startAt === null ? best : assessDeparture(startAt, plan.totalMinutes)
-    const farthest = farthestWalkHome(plan)
-    const homeBy = Math.min(chosen.start + MOBILITY[p.mobility].maxEvaHours * 60, DAY.sunset)
     schedule = {
       best,
       chosen,
       steps: timeline(plan, chosen.start),
-      farthest,
-      turnBackBy: farthest ? homeBy - farthest.minutes : null,
+      farthest: farthestWalkHome(plan),
+      turnBackBy: turnBackBy(plan, chosen.start),
     }
   }
 
@@ -441,6 +442,22 @@ function Summary(p: Props & { schedule: Schedule | null }) {
           Go outside (helmet view)
         </button>
       )}
+      {routed && !planning && (
+        <a
+          className="btn btn--block"
+          href={navUrl({
+            stopIds: [...p.selected],
+            mobility,
+            profile: p.profile,
+            home: p.habitatMoved ? { lat: p.habitat.lat, lon: p.habitat.lon } : null,
+            points: p.custom,
+          })}
+          target="_blank"
+          rel="noopener"
+        >
+          Send to tablet
+        </a>
+      )}
     </section>
   )
 }
@@ -707,8 +724,9 @@ function DeparturePanel({
         </li>
       </ul>
       <p className="source">
-        A model of a typical sol, not a forecast: daylight for 18° N, air temperature and gust hours from Perseverance
-        MEDA (Rodriguez-Manfredi et al. 2023; Newman et al. 2022). Cosmic-ray dose does not depend on the hour.
+        A typical sol, not a forecast: daylight for 18° N; air temperature and gust hours measured by Perseverance
+        MEDA on sols {CONDITIONS_SOLS[0]}–{CONDITIONS_SOLS[1]} (NASA PDS; dust devils: Newman et al. 2022). Cosmic-ray
+        dose does not depend on the hour.
       </p>
     </Fold>
   )
@@ -870,8 +888,8 @@ function SafetyPanel({ plan, open }: { plan: RoutePlan | null; open?: boolean })
         </tbody>
       </table>
       <p className="source">
-        Typical values, not live. Radiation: Curiosity RAD, Gale crater (Hassler et al. 2014). Weather: Perseverance
-        MEDA, Jezero (Rodriguez-Manfredi et al. 2023).
+        Typical values, not live. Radiation: Curiosity RAD, Gale crater (Hassler et al. 2014). Weather: medians of
+        Perseverance MEDA measurements at Jezero, sols {CONDITIONS_SOLS[0]}–{CONDITIONS_SOLS[1]} (NASA PDS).
       </p>
     </Fold>
   )

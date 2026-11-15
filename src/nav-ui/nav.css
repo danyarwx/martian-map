@@ -1,0 +1,253 @@
+/* Tablet navigation screen (/nav). Dark only. Tokens live on :root in src/index.css. */
+.nav-app {
+  height: 100%; display: flex; font-size: var(--nav-text); line-height: 1.4;
+  background: var(--bg); color: var(--text); overflow: hidden;
+}
+/* --turn-time: map, labels, arrow and compass all turn together. */
+.nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; overflow: hidden; --turn-time: .6s; }
+/* Turns with the heading (heading-up); sized by NavMap.tsx. */
+.nav-map-rot { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform var(--turn-time) ease-out; }
+.nav-map { position: absolute; inset: 0; background: #000; touch-action: none; }
+/* Leaflet controls, moved out of the turning map so they stay upright and on screen. */
+.nav-map-ui { position: absolute; inset: 0; z-index: 999; pointer-events: none; font: 12px var(--font); }
+.nav-map-ui .leaflet-control-attribution { margin: 0; padding: 0 5px; background: rgba(255, 255, 255, .8); color: #333; }
+.nav-map-ui .leaflet-control-attribution a { color: #0078a8; }
+/* Round buttons on the map's right edge, bottom up: zoom, compass, sound. */
+.map-fab {
+  position: absolute; z-index: 1000; right: 10px; width: 56px; height: 56px; padding: 0;
+  border-radius: 50%; border: 2px solid rgba(0, 0, 0, .3); background: var(--surface); color: var(--text);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .6); cursor: pointer;
+}
+.compass { bottom: 143px; }
+.panel-toggle { top: var(--s3); font-size: 30px; line-height: 1; }
+/* End navigation: red icon under the panel toggle, confirm bubble to its left. */
+.end-fab { top: 80px; color: var(--danger); border-color: var(--danger-line); }
+.end-bubble {
+  position: absolute; z-index: 1001; top: 80px; right: 76px; width: 300px; padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2); border-radius: var(--r-xl);
+  background: rgba(14, 17, 22, .95); box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+.end-bubble strong { font-size: 20px; }
+.recentre-fab { bottom: 347px; }
+/* Voice question: mic icon; red and pulsing while listening, a turning ring while the answer comes. */
+.mic-fab { bottom: 279px; }
+.mic-fab.is-listening { background: var(--danger-line); border-color: var(--danger-line); color: #fff; animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-fab.is-thinking { color: var(--text-3); }
+.mic-fab.is-thinking::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 3px solid transparent; border-top-color: var(--accent); animation: mic-spin .9s linear infinite;
+}
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, .6); } 50% { box-shadow: 0 0 0 12px rgba(248, 81, 73, 0); } }
+@keyframes mic-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mic-fab.is-listening, .mic-fab.is-thinking::after { animation: none; } }
+/* Zoom: one pill, as wide as the round map buttons. */
+.nav-app .leaflet-control-zoom.leaflet-bar {
+  width: 56px; border-radius: 28px; overflow: hidden; border: 2px solid rgba(0, 0, 0, .3);
+  background: var(--surface); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); margin-right: 10px;
+}
+.nav-app .leaflet-control-zoom.leaflet-bar a {
+  /* !important: src/index.css sizes every Leaflet button to 40 px with !important. */
+  width: 52px !important; height: 52px !important; line-height: 52px !important; font-size: 28px !important; border-radius: 0;
+  background: var(--surface); color: var(--text); border-bottom: 1px solid var(--line);
+}
+.nav-app .leaflet-control-zoom.leaflet-bar a:last-child { border-bottom: 0; }
+.nav-app .leaflet-control-zoom.leaflet-bar a:hover { background: var(--surface-2); }
+/* Panel hidden: the map takes the whole screen, the next stop floats on it. */
+.nav-app--panel-hidden .nav-panel { display: none; }
+.next-card {
+  position: absolute; z-index: 1000; right: 76px; top: var(--s3); max-width: 260px; padding: var(--s2) var(--s3);
+  border-radius: var(--r-xl); background: rgba(14, 17, 22, .92); box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+.next-card strong { display: block; font-size: 20px; line-height: 1.2; }
+.next-card p { margin: var(--s1) 0 0; color: var(--text-2); }
+/* Panel rows: next stop, all stops and back, back to base. */
+.trip-row { padding: var(--s3); border-radius: var(--r-lg); background: var(--surface-2); }
+.trip-name { display: block; font-size: 22px; line-height: 1.2; margin-bottom: var(--s1); }
+.trip-figures { display: flex; gap: var(--s4); margin: 0; font-size: 26px; font-weight: 700; }
+.trip-note { margin: var(--s1) 0 0; font-weight: 600; }
+.trip-row.is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
+.trip-row.is-bad .trip-figures, .trip-row.is-bad .trip-note { color: var(--danger); }
+/* Caution, e.g. beyond the walk-back reserve: amber like the amber tiles. */
+.trip-row.is-warn { background: #4a3a08; outline: 2px solid var(--warn); }
+.trip-row.is-warn .trip-note { color: var(--warn); }
+/* Conditions: time limits and typical weather, two small tiles per line. */
+.cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.nav-scroll--run { gap: 12px; }
+.cond-tile { display: flex; flex-direction: column; padding: 6px var(--s3); border-radius: var(--r-lg); background: var(--surface-2); }
+.cond-tile strong { font-size: 20px; line-height: 1.2; }
+.cond-note { color: var(--text-2); font-size: 14px; line-height: 1.3; }
+.cond-tile.is-warn { background: #4a3a08; outline: 2px solid var(--warn); }
+.cond-tile.is-warn strong { color: var(--warn); }
+.cond-tile.is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
+.cond-tile.is-bad strong { color: var(--danger); }
+.compass[aria-pressed="true"] { border-color: var(--accent); }
+.sound-toggle { bottom: 211px; }
+.sound-toggle[aria-pressed="true"] { color: var(--text-3); }
+.compass-needle { position: relative; display: block; width: 30px; height: 30px; transition: transform var(--turn-time) ease-out; }
+.compass-needle svg { display: block; }
+.compass-needle b { position: absolute; left: 0; right: 0; top: -14px; text-align: center; font-size: 11px; color: #ff5b5b; }
+.nav-panel {
+  position: relative; flex: 3 1 0; min-width: 320px; max-width: 520px;
+  display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line);
+}
+.nav-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.nav-foot { flex: none; min-height: 48px; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s4); border-top: 1px solid var(--line); }
+.nav-scroll { flex: 1; overflow-y: auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
+.nav-title { margin: 0; font-size: 26px; line-height: 1.2; }
+.label { display: block; margin: 0 0 var(--s1); font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.nav-app .muted { color: var(--text-2); }
+
+/* Big glove-sized buttons */
+.big {
+  min-height: var(--nav-tap); width: 100%; padding: 0 var(--s4); border-radius: var(--r-xl);
+  border: 2px solid var(--control-border); background: var(--surface-2); color: var(--text);
+  font-size: 20px; font-weight: 600;
+}
+.big:disabled { color: var(--text-3); border-color: var(--line); }
+.big--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.big--primary:disabled { background: var(--line); border-color: var(--line); color: var(--text-3); }
+.big--danger { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger); }
+
+/* Segmented controls */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.seg button {
+  min-height: var(--nav-tap); border-radius: var(--r-lg); border: 2px solid var(--control-border);
+  background: var(--surface-2); font-size: var(--nav-text); font-weight: 600;
+}
+.seg button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-hover); }
+.seg button:disabled { color: var(--text-3); border-color: var(--line); }
+
+/* Target toggles */
+.targets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.targets button {
+  width: 100%; min-height: var(--nav-tap); display: flex; align-items: center; gap: var(--s3); text-align: left;
+  padding: var(--s2) var(--s3); border-radius: var(--r-lg); border: 2px solid var(--line-strong); background: var(--surface-2);
+}
+.targets button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.targets button:disabled { opacity: .5; }
+.targets strong { display: block; }
+.targets small { display: block; font-size: 15px; color: var(--text-2); }
+.tick {
+  flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--control-border); font-weight: 700;
+}
+.targets button[aria-pressed="true"] .tick { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Figures and chips */
+.plan-summary { display: flex; flex-direction: column; gap: var(--s2); }
+.figures-big { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+.figures-big > div { padding: var(--s2) var(--s3); border-radius: var(--r-lg); background: var(--surface-2); min-width: 0; }
+.figures-big span { display: block; font-size: 14px; color: var(--text-2); }
+.figures-big strong { display: block; font-size: 19px; line-height: 1.2; overflow-wrap: anywhere; }
+.figures-big .is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
+.figures-big .is-bad strong { color: var(--danger); }
+.chip { display: inline-block; margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-lg); font-weight: 600; }
+.chip--ok { background: var(--ok-bg); color: var(--ok); }
+.chip--warn { background: #2b2410; color: var(--warn); }
+.chip--bad { background: var(--danger-bg); color: var(--danger); }
+
+/* Navigating */
+/* Simulation controls: floating on the map, bottom left above the scale bar */
+.sim-bar, .sim-pill {
+  position: absolute; z-index: 1000; left: var(--s3); bottom: 44px;
+  background: rgba(14, 17, 22, .92); border: 2px dashed var(--warn); border-radius: var(--r-xl);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+.sim-bar { display: flex; flex-wrap: wrap; gap: var(--s2); padding: var(--s2); max-width: calc(100% - 100px); }
+.sim-bar button {
+  min-width: 56px; min-height: 56px; padding: 0 var(--s3); border-radius: var(--r-lg);
+  border: 2px solid var(--control-border); background: var(--surface-2); font-size: 17px; font-weight: 600;
+}
+.sim-bar .sim-fold, .sim-pill { color: var(--warn); font-size: 14px; font-weight: 700; letter-spacing: .06em; }
+.sim-bar .sim-fold { border-color: transparent; background: none; }
+.sim-bar .sim-hazard { border-color: var(--danger-line); color: var(--danger); }
+.sim-bar button:disabled { opacity: .45; }
+.sim-pill { min-height: 56px; padding: 0 var(--s4); }
+.confirm { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+
+/* Instruction banner on the map */
+.banner {
+  position: absolute; z-index: 1000; top: var(--s3); left: var(--s3); right: 72px; max-width: 720px;
+  padding: var(--s3) var(--s4); border-radius: var(--r-xl); background: #0b3d2a; color: #fff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .5); font-size: var(--nav-instruction); font-weight: 700;
+}
+.banner--warn { background: #4a3a08; }
+.banner--bad { background: #5a1418; }
+/* Hazard warning kept on screen after "Continue route": tap to reopen the popup. */
+.hazard-strip {
+  display: block; width: 100%; min-height: 48px; margin-top: var(--s2); padding: var(--s2) var(--s3);
+  border: 2px solid var(--danger-line); border-radius: var(--r-lg); background: #5a1418; color: #fff;
+  font: inherit; font-size: 20px; font-weight: 700; text-align: left; cursor: pointer;
+}
+.banner--bad > .hazard-strip:only-child { margin-top: 0; }
+/* Dust storm / solar flare: the crew chooses, base or continue. */
+.hazard-popup {
+  position: absolute; z-index: 1002; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100% - 2 * var(--s4))); padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3);
+  border: 3px solid var(--danger-line); border-radius: var(--r-xl); background: rgba(14, 17, 22, .97);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .7);
+}
+.hazard-popup h2 { margin: 0; font-size: 30px; color: var(--danger); }
+.hazard-home { margin: 0; font-size: 22px; font-weight: 700; }
+.big--danger-solid { background: var(--danger-line); border-color: var(--danger-line); color: #fff; }
+/* Go to base, in the Back-to-base row of the panel. */
+.trip-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.trip-row .base-go { flex: none; width: auto; min-height: 56px; padding: 0 var(--s3); font-size: 18px; }
+.base-confirm { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--s2); }
+.base-confirm strong { font-size: 20px; }
+.base-confirm p { margin: 0; color: var(--text-2); }
+.banner-main { display: flex; align-items: center; gap: var(--s4); }
+/* The way to walk: on open ground there is no path to follow, so the heading is always shown. */
+.banner-heading { margin-bottom: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(255, 255, 255, .25); font-size: 20px; font-weight: 700; }
+.banner-heading span { font-weight: 600; }
+.banner-main svg { flex: none; }
+.banner-dist { font-size: 36px; line-height: 1.1; }
+.banner-text { font-size: var(--nav-instruction); line-height: 1.2; }
+.banner-then { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid rgba(255, 255, 255, .25); font-size: 18px; font-weight: 600; opacity: .9; }
+
+/* Full-height cards over the panel: at a stop, finished */
+.overlay-card {
+  position: absolute; inset: 0; z-index: 10; overflow-y: auto; padding: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s3); background: var(--surface);
+}
+.stop-text { margin: 0; font-size: 18px; line-height: 1.4; }
+.countdown { margin: 0; font-size: 40px; line-height: 1.1; font-weight: 700; color: var(--accent-hover); }
+.overlay-card .big { margin-top: auto; flex: none; }
+
+/* Map markers */
+.nav-stop {
+  width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--on-accent); font: 700 20px var(--font); border: 3px solid #fff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, .7); position: relative;
+}
+/* A stop's name, above the circle: on hover, or for a few seconds after a tap. */
+.nav-stop-name {
+  display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  padding: 4px 10px; border-radius: var(--r-lg); background: var(--surface); color: var(--text);
+  font: 600 16px var(--font); white-space: nowrap; box-shadow: 0 0 8px rgba(0, 0, 0, .7); pointer-events: none;
+}
+.nav-stop:hover .nav-stop-name, .nav-stop--named .nav-stop-name { display: block; }
+.nav-stop--home { background: #fff; color: #0e1116; }
+.nav-stop--done { background: var(--nav-walked); }
+/* Labels stay upright while the map turns (--unturn is set by NavMap.tsx). */
+.nav-map-rot .nav-stop, .nav-map-rot .nav-hazard { transform: rotate(var(--unturn, 0deg)); transition: transform var(--turn-time) ease-out; }
+.nav-hazard { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--warn); font-size: 22px; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+.me { width: 64px; height: 64px; filter: drop-shadow(0 0 4px rgba(0, 0, 0, .8)); }
+.me-arrow { display: block; transition: transform var(--turn-time) ease-out; transform-origin: 50% 50%; }
+.nav-app .leaflet-control-layers-toggle { width: 52px; height: 52px; }
+
+/* Portrait or narrow: map on top, panel below */
+@media (orientation: portrait), (max-width: 900px) {
+  .nav-app { flex-direction: column; overflow-y: auto; }
+  .nav-map-wrap { flex: none; height: 55vh; }
+  .nav-panel { flex: none; min-width: 0; max-width: none; min-height: 45vh; border-left: 0; border-top: 1px solid var(--line); }
+  .nav-scroll { overflow: visible; }
+  .nav-body { min-height: 0; }
+  .banner { right: 64px; font-size: 22px; }
+  .banner-dist { font-size: 28px; }
+  .banner-text { font-size: 22px; }
+  .figures-big strong { font-size: 17px; }
+}
+
+/* Offline */
+.offline-chip { flex: none; margin: 0; padding: var(--s2) var(--s4); background: #2b2410; color: var(--warn); font-weight: 700; border-bottom: 1px solid var(--line); }
