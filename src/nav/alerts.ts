@@ -49,24 +49,3 @@ export function saidDuration(minutes: number): string {
   const mins = m === 0 && h > 0 ? '' : `${m} minute${m === 1 ? '' : 's'}`
   return [hours, mins].filter(Boolean).join(' ')
 }
-
-export interface StatusInput {
-  /** Minutes since leaving the habitat (mission time). */
-  minutesOut: number
-  /** Minutes on foot straight back to the habitat, null when unknown. */
-  walkHomeMin: number | null
-  lmst: number
-  /** Air temperature now, C (typical-sol model). */
-  tempC: number
-  /** Radiation dose picked up so far, mSv. */
-  doseMsv: number
-}
-
-/** The status readout: "Status. Mars time 10:45. Out 1 hour 20 minutes. ..." */
-export function statusText(s: StatusInput): string {
-  const t = Math.round(s.tempC)
-  const air = t < 0 ? `minus ${-t}` : `${t}`
-  const dose = s.doseMsv < 0.01 ? 'under 0.01' : s.doseMsv.toFixed(2)
-  const home = s.walkHomeMin === null ? '' : ` Habitat ${saidDuration(s.walkHomeMin)} on foot.`
-  return `Status. Mars time ${clock(s.lmst)}. Out ${saidDuration(s.minutesOut)}.${home} Air ${air} degrees. Dose ${dose} millisieverts.`
-}

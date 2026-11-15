@@ -4,9 +4,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Mobility, RoutePlan, SiteConfig, Target } from '../types.ts'
 import { distanceM } from '../lib/geo.ts'
-import { evaDoseMsv, type HazardKind } from '../lib/safety.ts'
-import { bestDeparture, temperatureC, turnBackBy } from '../lib/schedule.ts'
-import { statusText } from '../nav/alerts.ts'
+import type { HazardKind } from '../lib/safety.ts'
+import { bestDeparture, turnBackBy } from '../lib/schedule.ts'
 import { getNavBus, IDLE_STATE, type NavEvent, type NavState, type UpcomingManeuver } from '../nav/events.ts'
 import type { Maneuver } from '../nav/instructions.ts'
 import { GpsSource, type GpsStatus } from '../nav/gps.ts'
@@ -71,8 +70,6 @@ export interface NavRunControls {
   returnToBase(reason: HazardKind | 'crew'): void
   /** Keeps going despite the hazard warning; reminders follow every 15 Mars minutes. */
   continueDespiteHazard(): void
-  /** Says the status readout: Mars time, time out, walk home, air temperature, dose so far. */
-  status(): void
   /** Switches between the simulated walker and the tablet's GPS. GPS runs the clock in real time. */
   setSource(kind: PositionKind): void
 }
@@ -318,22 +315,6 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       nav.current?.returnToBase(reason)
     }, []),
     continueDespiteHazard: useCallback(() => nav.current?.continueDespiteHazard(), []),
-    status: useCallback(() => {
-      const m = mission.current
-      const n = nav.current
-      if (!m || !n) return
-      const now = m.now()
-      const minutesOut = (now - m.start) / 60000
-      const lmst = m.departLmst + minutesOut
-      const text = statusText({
-        minutesOut,
-        walkHomeMin: n.getState().walkHomeMin,
-        lmst,
-        tempC: temperatureC(lmst),
-        doseMsv: evaDoseMsv(minutesOut / 60),
-      })
-      getNavBus().emit({ id: `status-${now}`, type: 'status', text, priority: 'normal', at: now })
-    }, []),
     setSource: useCallback((kind: PositionKind) => switchSource.current?.(kind), []),
   }
   return { view, controls }

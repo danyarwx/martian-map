@@ -5,7 +5,7 @@ import type { LatLon, RouteLeg, RoutePlan, Target } from '../types.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import { DAY, windAt } from '../lib/schedule.ts'
 import { MEDA_BIN_MIN, MEDA_SOL } from '../data/medaSol.ts'
-import { saidDuration, statusText, timeAlertsBetween } from './alerts.ts'
+import { saidDuration, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import { askContext } from './askContext.ts'
 import { fixedLines, predictableLines } from './lines.ts'
@@ -359,13 +359,9 @@ test('time-of-day alerts: gust hours and daylight are said once, as the Mars clo
   assert.deepEqual(said, ['gusts-soon'])
 })
 
-test('the status readout spells out what a voice needs', () => {
+test('durations are spelled out for the voice', () => {
   assert.equal(saidDuration(80), '1 hour 20 minutes')
   assert.equal(saidDuration(120), '2 hours')
-  assert.equal(
-    statusText({ minutesOut: 80, walkHomeMin: 35.2, lmst: 10 * 60 + 45, tempC: -31.6, doseMsv: 0.0356 }),
-    'Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.',
-  )
 })
 
 test('a hazard aborts the excursion: warning first, then a route straight home; only once', async () => {
