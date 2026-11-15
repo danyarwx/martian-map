@@ -298,7 +298,6 @@ export function NavPanel({ view, stops, onReturn }: NavPanelProps & { onReturn?:
         label={returning ? 'Returning to base' : 'Back to base now'}
         metres={view.base?.distanceM ?? null}
         minutes={view.base?.minutes ?? null}
-        bad={far}
         note={far ? `Walk home over ${WALK_BACK_RESERVE_MIN} min` : undefined}
       >
         {canReturn && <GoToBase onReturn={onReturn} />}
