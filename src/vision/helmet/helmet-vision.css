@@ -2,7 +2,7 @@
 
 .hv-panel {
   position: absolute;
-  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
+  top: max(76px, calc(env(safe-area-inset-top, 0px) + 76px));
   left: max(12px, env(safe-area-inset-left, 0px));
   width: 230px;
   display: grid;
