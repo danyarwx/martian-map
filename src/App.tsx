@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { JEZERO } from './data/jezero.ts'
 import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
+import { usePhotoData } from './lib/usePhotoData.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import Landing from './Landing.tsx'
 import MarsMap from './map/MarsMap.tsx'
@@ -59,6 +60,7 @@ export default function App() {
   const [screen, setScreen] = useState<'landing' | 'plan'>(() => (window.location.hash === '#plan' ? 'plan' : 'landing'))
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
+  const photos = usePhotoData(site)
 
   const habitat = useMemo<Target>(
     () =>
@@ -340,6 +342,7 @@ export default function App() {
           plan={plan}
           profile={shown}
           views={views}
+          photos={photos}
           adding={adding}
           notice={notice}
           maxSelected={MAX_SELECTED}

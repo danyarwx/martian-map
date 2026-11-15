@@ -90,4 +90,5 @@ export const JEZERO: SiteConfig = {
     overlay: '/data/jezero_slope.png',
   },
   views: '/data/views/index.json',
+  frames: '/data/frames/index.json',
 }

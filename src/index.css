@@ -249,6 +249,37 @@ details[open] > summary .chevron { transform: rotate(180deg); }
 .card figure { margin: 0; }
 .card img { display: block; width: 100%; height: 220px; object-fit: cover; border-radius: var(--r-xl); background: #000; }
 .card figcaption { margin-top: var(--s2); font-size: 14px; color: var(--text-2); }
+.card img.photo-plain { height: 220px; object-fit: cover; }
+/* Photo with markers: the whole frame is shown (no cropping), so a marker's share of width and height is its place. */
+.photo-frame { position: relative; overflow: hidden; border-radius: var(--r-xl); background: #000; }
+.photo-frame img { width: 100%; height: 100%; border-radius: 0; }
+.photo-credit { color: var(--text-3); }
+.photo-credit a { color: inherit; }
+.photo-next { margin-top: var(--s2); }
+.photo-none { margin: 0; font-size: 14px; color: var(--text-2); }
+.photo-mark { position: absolute; width: 0; height: 0; pointer-events: auto; }
+.photo-mark-dot {
+  position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6);
+}
+.photo-mark-stem { position: absolute; left: -1px; bottom: 0; width: 2px; height: 28px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.photo-mark-label {
+  position: absolute; bottom: 30px; transform: translateX(-50%); white-space: nowrap;
+  padding: 2px 8px; border-radius: var(--r-sm); font-size: 13px; font-weight: 600; line-height: 1.4;
+  color: #fff; background: rgba(14, 17, 22, 0.82); border: 1px solid rgba(255, 255, 255, 0.5);
+}
+.photo-mark--left .photo-mark-label { transform: translateX(calc(-100% + 8px)); }
+.photo-mark--right .photo-mark-label { transform: translateX(-8px); }
+.photo-mark.is-main .photo-mark-dot { width: 14px; height: 14px; left: -7px; top: -7px; background: var(--accent); }
+.photo-mark.is-main .photo-mark-stem { width: 3px; left: -1.5px; height: 40px; background: var(--accent); }
+.photo-mark.is-main .photo-mark-label { bottom: 42px; color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.photo-mark.is-hidden .photo-mark-dot { background: transparent; border: 2px dashed #fff; box-shadow: none; }
+.photo-mark.is-hidden .photo-mark-stem { background: none; border-left: 2px dashed #fff; box-shadow: none; }
+.photo-mark.is-main.is-hidden .photo-mark-dot { border-color: var(--accent); background: transparent; }
+.photo-mark.is-main.is-hidden .photo-mark-stem { border-color: var(--accent); background: none; }
+.photo-mark--top .photo-mark-stem { bottom: auto; top: 0; }
+.photo-mark--top .photo-mark-label { bottom: auto; top: 30px; }
+.photo-mark--top.is-main .photo-mark-label { top: 42px; }
 .eyebrow { font-size: 14px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-hover); }
 .card h1 { margin: var(--s1) 0 0; font-size: 30px; font-weight: 600; line-height: 1.2; }
 .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }

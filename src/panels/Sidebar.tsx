@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import StopPhoto from './StopPhoto.tsx'
+import type { PhotoData } from '../lib/usePhotoData.ts'
 import type { LatLon, MobilityId, RoutePlan, RouteProfile, SiteConfig, StopView, Target } from '../types.ts'
 import type { PlannerState } from '../lib/usePlanner.ts'
 import { NOTE_SIGNS } from '../lib/explain.ts'
@@ -62,6 +64,8 @@ interface Props {
   plan: RoutePlan | null
   profile: RouteProfile
   views: Record<string, StopView>
+  /** Navcam frames and the terrain grid for photos with markers, null until loaded. */
+  photos: PhotoData | null
   /** True while the next click on the map adds a point. */
   adding: boolean
   notice: Notice | null
@@ -146,6 +150,7 @@ export default function Sidebar(p: Props) {
           selected={p.selected.has(focus.id)}
           // The cached habitat photo was taken at the landing site, so it is not shown once the habitat has moved.
           view={focus.id === p.habitat.id && p.habitatMoved ? undefined : p.views[focus.id]}
+          photos={p.photos}
           plan={p.plan}
           stops={stops}
           mobility={p.mobility}
@@ -879,6 +884,7 @@ function StopCard(p: {
   isCustom: boolean
   selected: boolean
   view?: StopView
+  photos: PhotoData | null
   plan: RoutePlan | null
   stops: Map<string, Target>
   mobility: MobilityId
@@ -902,6 +908,18 @@ function StopCard(p: {
     : 0
   const walkHome = leg && leg.walkHomeMin.length > 0 ? leg.walkHomeMin[leg.walkHomeMin.length - 1] : null
   const arriveAt = inRoute && p.schedule ? p.schedule.steps[at + 1].at : null
+  // Places to mark on the photo: the habitat and every stop of the route. A view from the stop faces the way on.
+  // Without a route only the habitat, which `stops` lists first.
+  const routeIds = plan && plan.legs.length > 0 ? [...new Set(plan.order)] : [...p.stops.keys()].slice(0, 1)
+  const landmarks = routeIds.flatMap((id) => {
+    const s = p.stops.get(id)
+    return s ? [{ id: s.id, name: s.name, lat: s.lat, lon: s.lon }] : []
+  })
+  const ahead = p.isHabitat ? route[0] : next ?? plan?.order[0]
+  const lookAt = [ahead, plan?.order[0]].flatMap((id) => {
+    const s = id ? p.stops.get(id) : undefined
+    return s && s.id !== stop.id ? [{ lat: s.lat, lon: s.lon }] : []
+  })
   const eyebrow = p.isHabitat ? 'Start and end' : inRoute ? `Stop ${at + 1} · ${p.isCustom ? 'your point' : 'science target'}` : 'Not on the route'
 
   return (
@@ -923,15 +941,7 @@ function StopCard(p: {
       </div>
       <div className="sidebar-scroll">
         <div className="card">
-          {view && (
-            <figure>
-              <img src={view.file} alt={`Ground view near ${stop.name}`} />
-              <figcaption>
-                {view.camera}, sol {view.sol}
-                {view.distanceM > 20 ? `, taken ${view.distanceM} m from this spot` : ''} · {view.credit}
-              </figcaption>
-            </figure>
-          )}
+          <StopPhoto stop={stop} landmarks={landmarks} lookAt={lookAt} photos={p.photos} fallback={view} />
           <div>
             <div className="eyebrow">{eyebrow}</div>
             <h1>{stop.name}</h1>
