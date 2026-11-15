@@ -44,6 +44,19 @@ export default function HelmetVision({ session, width, height, onStorm, onClear 
   const labels = useRef<{ scores: LabelScore[]; at: number } | null>(null)
   const cb = useRef({ onStorm, onClear })
   cb.current = { onStorm, onClear }
+  /**
+   * The image model (about 150 MB from the Hugging Face hub) is fetched only once the storm is first switched on:
+   * fetched on helmet entry it competed with the terrain tiles on the venue Wi-Fi. Until then the pixels decide alone.
+   */
+  const model = useRef<'none' | 'loading' | 'ready'>('none')
+  const requestModel = useCallback(() => {
+    if (model.current !== 'none') return
+    model.current = 'loading'
+    loadModel().then(
+      () => (model.current = 'ready'),
+      () => {}, // no model: the pixels decide alone
+    )
+  }, [])
 
   // the simulated storm lives in the 3D world: haze, sky and sun
   useEffect(() => {
@@ -75,13 +88,8 @@ export default function HelmetVision({ session, width, height, onStorm, onClear 
     let alive = true
     let modelBusy = false
     let modelAt = 0
-    let modelReady = false
     let wasStorm = false
     let stormRun = 0
-    loadModel().then(
-      () => (modelReady = true),
-      () => {}, // no model: the pixels decide alone
-    )
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
@@ -103,7 +111,7 @@ export default function HelmetVision({ session, width, height, onStorm, onClear 
       if (isStorm && !wasStorm) cb.current.onStorm?.(r)
       if (r.hazard === 'none') wasStorm = false
       else if (isStorm) wasStorm = true
-      if (modelReady && !modelBusy && now - modelAt >= MODEL_EVERY_MS) {
+      if (model.current === 'ready' && !modelBusy && now - modelAt >= MODEL_EVERY_MS) {
         modelBusy = true
         modelAt = now
         ctx.putImageData(new ImageData(rgba, width, height), 0, 0)
@@ -124,8 +132,9 @@ export default function HelmetVision({ session, width, height, onStorm, onClear 
   const toggle = useCallback(() => {
     const on = stormOnRef.current
     if (on) cb.current.onClear?.()
+    else requestModel()
     setStormOn(!on)
-  }, [])
+  }, [requestModel])
 
   // B for "blow": the same as the button, for presenting without the mouse
   useEffect(() => {
