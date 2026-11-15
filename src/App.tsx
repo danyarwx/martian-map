@@ -39,6 +39,10 @@ export default function App() {
   // Memoised: a new array on every render made the map redo its helmet layer and refit to the seen ground,
   // throwing away the user's view at every click after a trip outside.
   const helmetRoute = useMemo(() => helmetExit?.plan?.legs.map((l) => l.path), [helmetExit])
+  /** Set on a hand-back with results: the next render records the route they belong to (see the effect below). */
+  const exitPending = useRef(false)
+  /** The route (stops, mode, habitat, own points) the helmet's results belong to; null while there are none. */
+  const exitRoute = useRef<string | null>(null)
   useEffect(() => {
     const onHash = () => {
       setHelmetOpen(isHelmetHash())
@@ -90,6 +94,22 @@ export default function App() {
   useEffect(() => {
     if (plans?.gentleIsSame) setProfile('fast')
   }, [plans])
+
+  // The helmet's results (card, seen ground, hazards, lines) describe one trip: once the route is changed they are
+  // stale, so they go. The route at hand-back is recorded first (also when the hand-back itself loaded a route).
+  const routeKey = JSON.stringify([[...selected].sort(), mobility, habitatAt, custom.map((t) => [t.id, t.lat, t.lon])])
+  useEffect(() => {
+    if (exitPending.current) {
+      exitPending.current = false
+      exitRoute.current = routeKey
+      return
+    }
+    if (exitRoute.current !== null && exitRoute.current !== routeKey) {
+      exitRoute.current = null
+      setHelmetExit(null)
+      setHelmetNote(false)
+    }
+  }, [routeKey, helmetExit])
 
   useEffect(() => {
     fetch(site.views)
@@ -240,6 +260,15 @@ export default function App() {
             setHelmetExit(exit)
             setHelmetNote(true)
             setDetourView('after')
+            exitPending.current = true
+          }
+          // Opened by #helmet (no entry plan) with no route in the planner: show the route the helmet walked
+          // (its demo route has the same three stops) instead of an empty editor under the card.
+          if (!helmetEntry && selected.size === 0) {
+            setNotice(null)
+            setMobility('walk')
+            setSelected(new Set(INITIAL))
+            setEditStep(null)
           }
           setHelmetEntry(null)
           setHelmetOpen(false)

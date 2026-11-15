@@ -37,7 +37,13 @@ export default function DetourCard({ detour, view, onView, onClose }: Props) {
   const before = margin(wb.before)
   const after = margin(wb.after)
   const rows: { label: string; before: string; after: string; overBefore?: boolean; overAfter?: boolean }[] = [
-    { label: 'Time outside', before: duration(tripMin.before), after: duration(tripMin.after) },
+    {
+      // from #helmet the helmet's own demo route counts from where it started, not from the habitat: say so, or it
+      // looks like a different number from the planner's
+      label: detour.tripFrom === 'start' ? "Time left from the helmet's start" : 'Time outside',
+      before: duration(tripMin.before),
+      after: duration(tripMin.after),
+    },
     {
       label: 'Longest walk back',
       before: wb.before === null ? '–' : duration(wb.before),

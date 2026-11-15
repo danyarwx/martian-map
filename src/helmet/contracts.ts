@@ -149,8 +149,13 @@ export interface HelmetDetour {
   afterPath: LatLon[]
   /** Minutes this re-route added to the trip (negative = shorter). */
   deltaMin: number
-  /** Time outside for the whole trip: as planned, and with every re-route of this walk. */
+  /** Time outside: as planned, and with every re-route of this walk. Counted as `tripFrom` says. */
   tripMin: { before: number; after: number }
+  /**
+   * 'habitat': the whole trip, the same number as Mission control's plan (helmet opened by "Go outside").
+   * 'start': from the point where the helmet started (opened by #helmet, whose demo route has no times of its own).
+   */
+  tripFrom: 'habitat' | 'start'
   /** Longest walk straight back to the habitat on the rest of the trip, before and after the re-route. */
   walkBackMaxMin: { before: number | null; after: number | null }
 }

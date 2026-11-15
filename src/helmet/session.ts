@@ -190,6 +190,8 @@ export class HelmetSession {
   /** Time outside for the whole trip as planned, and what the re-routes of this walk added to it. */
   private tripMin: number
   private tripDeltaMin = 0
+  /** What `tripMin` counts: the whole trip, or (stand-in demo route of #helmet) the rest of it from the start point. */
+  private tripFrom: HelmetDetour['tripFrom'] = 'habitat'
   /** The first re-route that changed the line, kept for the before/after view in Mission control. */
   private detour: HelmetDetour | null = null
   /**
@@ -277,6 +279,7 @@ export class HelmetSession {
           if (this.plan !== before) return
           this.plan = res.plan
           this.tripMin = res.plan.totalMinutes // the stand-in's times are made up: compare with the real plan
+          this.tripFrom = 'start' // which starts where the helmet stands, not at the habitat
           this.setLeg(0)
           this.guide = null
           this.decider.setRoute(remainingPath(res.plan, 0))
@@ -483,7 +486,7 @@ export class HelmetSession {
    * the after-line = the way walked from the first re-route, then the current plan on to the stop.
    */
   private detourNow(d: HelmetDetour): HelmetDetour {
-    const out = { ...d, tripMin: { before: this.tripMin, after: this.tripMin + this.tripDeltaMin } }
+    const out = { ...d, tripMin: { before: this.tripMin, after: this.tripMin + this.tripDeltaMin }, tripFrom: this.tripFrom }
     const f = this.detourFollow
     if (!f) return out
     if (f.rocks.size > 0) {
@@ -528,6 +531,7 @@ export class HelmetSession {
       afterPath: after.legs[0]?.path ?? [],
       deltaMin,
       tripMin: { before: this.tripMin, after: this.tripMin + this.tripDeltaMin },
+      tripFrom: this.tripFrom,
       walkBackMaxMin: { before: walkBackMax(before, legIndex), after: walkBackMax(after, 0) },
     }
   }
