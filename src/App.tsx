@@ -221,28 +221,31 @@ export default function App() {
       </Suspense>
     )
   }
-  if (helmetOpen) {
-    return (
-      <Suspense fallback={<div className="helmet-loading">Suiting up…</div>}>
-        <HelmetView
-          entry={helmetEntry}
-          onExit={(exit) => {
-            // back to the planner
-            history.replaceState(null, '', window.location.pathname + window.location.search)
-            if (exit.seen || exit.hazards.length || exit.plan) {
-              setHelmetExit(exit)
-              setHelmetNote(true)
-            }
-            setHelmetEntry(null)
-            setHelmetOpen(false)
-          }}
-        />
-      </Suspense>
-    )
-  }
+  // The helmet opens on top of the planner, which stays mounted underneath: rebuilding the map (tiles,
+  // overlays, walk-back picture) at the same moment the 3D scene is torn down froze the page on Esc.
+  const helmet = helmetOpen && (
+    <Suspense fallback={<div className="helmet-loading">Suiting up…</div>}>
+      <HelmetView
+        entry={helmetEntry}
+        onExit={(exit) => {
+          // back to the planner
+          history.replaceState(null, '', window.location.pathname + window.location.search)
+          if (exit.seen || exit.hazards.length || exit.plan) {
+            setHelmetExit(exit)
+            setHelmetNote(true)
+          }
+          setHelmetEntry(null)
+          setHelmetOpen(false)
+        }}
+      />
+    </Suspense>
+  )
 
   return (
-    <div className="app">
+    <>
+    {helmet}
+    {/* inert while the helmet is open: Tab and clicks must not reach the planner hidden under it */}
+    <div className="app" inert={helmetOpen} aria-hidden={helmetOpen || undefined}>
       <header className="topbar">
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
@@ -326,5 +329,6 @@ export default function App() {
         />
       </div>
     </div>
+    </>
   )
 }

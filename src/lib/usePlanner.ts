@@ -33,7 +33,13 @@ export function usePlanner(site: SiteConfig, mobility: MobilityId, habitat: Targ
     worker.current = w
     w.onmessage = (e: MessageEvent<PlanResponse>) => {
       const res = e.data
-      if (res.id !== latest.current) return // an older request finished late
+      if (res.id !== latest.current) {
+        // An older request finished late: drop its plans, but keep the walk-back picture. The worker sends
+        // it only once per habitat, so dropping it here lost the lines for good after quick ticking.
+        const walkBack = res.ok ? res.walkBack : undefined
+        if (walkBack) setState((s) => ({ ...s, walkBack }))
+        return
+      }
       setState((s) =>
         res.ok
           ? {

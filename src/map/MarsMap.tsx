@@ -80,6 +80,17 @@ export default function MarsMap(props: Props) {
   const fitted = useRef<L.LatLngBounds | null>(null)
   /** Closest zoom the kept view may use: the route stays at 15, the ground the helmet saw needs more. */
   const fitMaxZoom = useRef(15)
+  /** True while the map moves because we fit it, not because the user did. */
+  const fitting = useRef(false)
+  const fitView = (map: L.Map, bounds: L.LatLngBounds, maxZoom: number) => {
+    fitting.current = true
+    try {
+      // No animation: the view must land on the route even when the tab is in the background.
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom, animate: false })
+    } finally {
+      fitting.current = false
+    }
+  }
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -137,10 +148,19 @@ export default function MarsMap(props: Props) {
     notesRef.current = L.layerGroup().addTo(map)
     stopsRef.current = L.layerGroup().addTo(map)
 
+    // Once the user pans or zooms, the view is theirs: a later resize must not snap it back to the route.
+    // Our own fits set `fitting`, and Leaflet fires these events synchronously inside them.
+    const userMoved = () => {
+      if (!fitting.current) fitted.current = null
+    }
+    map.on('movestart zoomstart', userMoved)
+
     // Leaflet does not notice when its container is resized by the layout; keep the centre where it was.
     const resize = new ResizeObserver(() => {
+      const el = map.getContainer()
+      if (el.clientWidth === 0 || el.clientHeight === 0) return // hidden: nothing to fit into
       map.invalidateSize({ pan: false })
-      if (fitted.current) map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: fitMaxZoom.current, animate: false })
+      if (fitted.current) fitView(map, fitted.current, fitMaxZoom.current)
     })
     resize.observe(ref.current)
 
@@ -182,12 +202,17 @@ export default function MarsMap(props: Props) {
     const pixels = new ImageData(walkBack.width, walkBack.height)
     pixels.data.set(walkBack.rgba)
     canvas.getContext('2d')?.putImageData(pixels, 0, 0)
+    // The picture is the size of the whole slope grid: toDataURL() encoded it on the main thread and
+    // stalled the page. toBlob() encodes it off the main thread; the picture joins the group when done.
+    let url: string | null = null
+    let alive = true
+    canvas.toBlob((blob) => {
+      if (!alive || !blob) return
+      url = URL.createObjectURL(blob)
+      const bounds: L.LatLngBoundsExpression = [[terrainMeta.south, terrainMeta.west], [terrainMeta.north, terrainMeta.east]]
+      L.imageOverlay(url, bounds, { interactive: false }).addTo(group)
+    })
     const group = L.layerGroup([
-      L.imageOverlay(
-        canvas.toDataURL(),
-        [[terrainMeta.south, terrainMeta.west], [terrainMeta.north, terrainMeta.east]],
-        { interactive: false },
-      ),
       ...walkBack.labels.map(({ minutes, at }) => {
         const reserve = minutes === WALK_BACK_RESERVE_MIN
         const html = `<div class="walkback-label${reserve ? ' walkback-label--reserve' : ''}">${minutes} min${reserve ? ' · reserve' : ''}</div>`
@@ -200,8 +225,10 @@ export default function MarsMap(props: Props) {
     ]).addTo(map)
     control.addOverlay(group, 'Walk-back time (on foot to habitat)')
     return () => {
+      alive = false
       control.removeLayer(group)
       group.remove()
+      if (url) URL.revokeObjectURL(url)
     }
   }, [terrainMeta, walkBack])
 
@@ -372,8 +399,7 @@ export default function MarsMap(props: Props) {
     if (!switched) {
       fitted.current = outline.getBounds()
       fitMaxZoom.current = 15
-      // No animation: the view must land on the route even when the tab is in the background.
-      map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+      fitView(map, fitted.current, 15)
     }
     return () => {
       map.off('zoomend', showNotes)
@@ -396,7 +422,7 @@ export default function MarsMap(props: Props) {
       // this becomes the view the map keeps (also across resizes) until the route changes
       fitted.current = L.latLngBounds([b.south - padLat, b.west - padLon], [b.north + padLat, b.east + padLon])
       fitMaxZoom.current = 17
-      map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 17, animate: false })
+      fitView(map, fitted.current, 17)
     }
     if (helmetRoute) {
       L.polyline(helmetRoute.map((leg) => leg.map((p) => [p.lat, p.lon] as [number, number])), { color: '#8fe3d6', weight: 3, dashArray: '8 6', interactive: false }).addTo(group)
