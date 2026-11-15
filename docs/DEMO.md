@@ -35,7 +35,7 @@ Backup lines if something goes wrong:
 
 - [ ] Use the deployed site, not `localhost`: `https://martian-map-nasa.vercel.app/nav?demo=1` (or the branch preview).
 - [ ] On `feat/voice-openai-tts`-based deployments, check the console says `[voice] speaking with the OpenAI voice`. Otherwise you hear the browser voice, which is fine.
-- [ ] Open the page once on the venue Wi-Fi, press **Download for offline** on the plan screen, then test with Wi-Fi off.
+- [ ] Open the page once on the venue Wi-Fi and run the demo once, so the map tiles it shows are saved on the tablet. Then test with Wi-Fi off (the voice becomes the browser voice).
 - [ ] Browser full screen (F11), zoom 100%, landscape. Close other tabs. Turn off notifications (Windows: Focus assist).
 - [ ] Volume up, the voice is the star.
 - [ ] Tap the mic once before recording and allow the microphone, so the permission prompt doesn't appear on camera.

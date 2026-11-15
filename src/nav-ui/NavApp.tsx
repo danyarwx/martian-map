@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { JEZERO } from '../data/jezero.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import { usePlanner } from '../lib/usePlanner.ts'
-import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
 import { askContext } from '../nav/askContext.ts'
 import { getNavBus } from '../nav/events.ts'
@@ -12,7 +11,6 @@ import { HAZARD_EVENTS } from '../lib/safety.ts'
 import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
 import { Banner, EndOnMap, FinishedCard, HazardPopup, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
-import { OfflineDownload } from './OfflineDownload.tsx'
 import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput, type NavRunView } from './useNavRun.ts'
 import { createAsker, type Asker, type AskState } from './voice/ask.ts'
@@ -69,7 +67,6 @@ export default function NavApp() {
   const [muted, setMuted] = useState(false)
   const voice = useRef<Voice | null>(null)
   const online = useOnline()
-  const terrainMeta = useTerrainMeta(site)
   useEffect(registerServiceWorker, [])
 
   const habitat = useMemo<Target>(
@@ -338,7 +335,6 @@ export default function NavApp() {
               onMobility={setMobility}
               onProfile={setProfile}
               onStart={start}
-              offline={<OfflineDownload bounds={terrainMeta} plan={shownPlan} />}
             />
           )}
           {view && atStopId && (

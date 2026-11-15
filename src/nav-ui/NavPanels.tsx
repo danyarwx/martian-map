@@ -122,8 +122,6 @@ interface PlanPanelProps {
   onMobility: (m: MobilityId) => void
   onProfile: (p: RouteProfile) => void
   onStart: () => void
-  /** The offline download panel, shown above the start button. */
-  offline?: ReactNode
 }
 
 /** Before departure: what to visit, how, and whether it is safe. */
@@ -195,7 +193,6 @@ export function PlanPanel(p: PlanPanelProps) {
           <p className="chip chip--bad">No safe path to {p.plan.unreachable.length} stop(s); they are left out.</p>
         )}
       </div>
-      {p.offline}
       <button type="button" className="big big--primary" disabled={!routed || p.planning} onClick={p.onStart}>
         Start navigation
       </button>
