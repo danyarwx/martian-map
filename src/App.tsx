@@ -4,7 +4,6 @@ import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
 import { usePhotoData } from './lib/usePhotoData.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
-import Landing from './Landing.tsx'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar, { type Notice } from './panels/Sidebar.tsx'
 import type { HelmetEntry, HelmetExit } from './helmet/contracts.ts'
@@ -43,7 +42,8 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   const [mobility, setMobility] = useState<MobilityId>('walk')
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set(INITIAL))
+  // The planner opens on step 1 of the route editor with no stops; the demo route stays one click away.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
   const [focusId, setFocusId] = useState<string | null>(null)
   const [views, setViews] = useState<Record<string, StopView>>({})
   /** Where the habitat was moved to, or null while it stands at the site's landing point. */
@@ -55,9 +55,7 @@ export default function App() {
   /** One line about the last action that was refused. */
   const [notice, setNotice] = useState<Notice | null>(null)
   /** Step of the step-by-step route editor, or null while the summary is shown. */
-  const [editStep, setEditStep] = useState<number | null>(null)
-  /** The landing page, or the planner. Kept in the URL hash so the browser's back button works. */
-  const [screen, setScreen] = useState<'landing' | 'plan'>(() => (window.location.hash === '#plan' ? 'plan' : 'landing'))
+  const [editStep, setEditStep] = useState<number | null>(1)
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
   const photos = usePhotoData(site)
@@ -92,12 +90,6 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : {}))
       .then(setViews)
       .catch(() => setViews({}))
-  }, [])
-
-  useEffect(() => {
-    const onHash = () => setScreen(window.location.hash === '#plan' ? 'plan' : 'landing')
-    window.addEventListener('hashchange', onHash)
-    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   useEffect(() => {
@@ -235,8 +227,8 @@ export default function App() {
         <HelmetView
           entry={helmetEntry}
           onExit={(exit) => {
-            // back to where the helmet was opened from: the planner keeps its #plan, #helmet alone goes to the start
-            history.replaceState(null, '', window.location.pathname + window.location.search + (screen === 'plan' ? '#plan' : ''))
+            // back to the planner
+            history.replaceState(null, '', window.location.pathname + window.location.search)
             if (exit.seen || exit.hazards.length || exit.plan) {
               setHelmetExit(exit)
               setHelmetNote(true)
@@ -249,46 +241,17 @@ export default function App() {
     )
   }
 
-  const openPlanner = () => {
-    window.location.hash = 'plan'
-    setScreen('plan')
-  }
-
-  if (screen === 'landing') {
-    return (
-      <Landing
-        site={site}
-        view={views[site.habitat.id]}
-        onOwn={() => {
-          setNotice(null)
-          setSelected(new Set())
-          setFocusId(null)
-          setEditStep(1)
-          openPlanner()
-        }}
-      />
-    )
-  }
-
   return (
     <div className="app">
       <header className="topbar">
-        <button
-          type="button"
-          className="brand-link"
-          aria-label="Martian Map: back to the start page"
-          onClick={() => {
-            window.location.hash = ''
-            setScreen('landing')
-          }}
-        >
+        <div className="brand">
           <span className="brand-mark" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a0e06" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 20l6-12 4 7 3-4 5 9z" />
             </svg>
           </span>
           <strong>Martian Map</strong>
-        </button>
+        </div>
         <span className="crumb">Excursion planner</span>
         <span className="sep" aria-hidden="true">/</span>
         <span>{site.name}</span>
