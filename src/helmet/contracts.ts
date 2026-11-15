@@ -131,4 +131,26 @@ export interface HelmetExit {
   plan: RoutePlan | null
   /** Minutes the helmet's last re-route added to the trip (negative = shorter). Absent when it did not re-route. */
   rerouteDeltaMin?: number
+  /** The first re-route that changed the line, for the before/after view. Absent when the line never changed. */
+  detour?: HelmetDetour
+}
+
+/** One re-route as Mission control shows it: what shut the old line, the two lines, and what the change cost. */
+export interface HelmetDetour {
+  /** Where the old line was shut. */
+  at: LatLon
+  /** What shut it: rocks taller than a step (CV level 'hazard') that the helmet found near `at`. */
+  rocks: number
+  /** Tallest of those rocks, metres; null when the line was shut by steep ground or a drop-off instead. */
+  tallestM: number | null
+  /** The old line from the re-route point to the next stop. */
+  beforePath: LatLon[]
+  /** The way the astronaut really went from the re-route point (round the whole field), then the plan on to that stop. */
+  afterPath: LatLon[]
+  /** Minutes this re-route added to the trip (negative = shorter). */
+  deltaMin: number
+  /** Time outside for the whole trip: as planned, and with every re-route of this walk. */
+  tripMin: { before: number; after: number }
+  /** Longest walk straight back to the habitat on the rest of the trip, before and after the re-route. */
+  walkBackMaxMin: { before: number | null; after: number | null }
 }

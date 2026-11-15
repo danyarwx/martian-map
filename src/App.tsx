@@ -6,6 +6,7 @@ import { usePhotoData } from './lib/usePhotoData.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar, { type Notice } from './panels/Sidebar.tsx'
+import DetourCard, { type DetourView } from './panels/DetourCard.tsx'
 import type { HelmetEntry, HelmetExit } from './helmet/contracts.ts'
 import { pointBeforeEnd } from './helmet/world/path.ts'
 import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
@@ -33,6 +34,11 @@ export default function App() {
   /** What the helmet brought back: the ground it saw, the hazards it found, its re-routed plan. */
   const [helmetExit, setHelmetExit] = useState<HelmetExit | null>(null)
   const [helmetNote, setHelmetNote] = useState(false)
+  /** Which line of the helmet's re-route the map shows strong. Opens on "after", the line the crew walked. */
+  const [detourView, setDetourView] = useState<DetourView>('after')
+  // Memoised: a new array on every render made the map redo its helmet layer and refit to the seen ground,
+  // throwing away the user's view at every click after a trip outside.
+  const helmetRoute = useMemo(() => helmetExit?.plan?.legs.map((l) => l.path), [helmetExit])
   useEffect(() => {
     const onHash = () => {
       setHelmetOpen(isHelmetHash())
@@ -233,6 +239,7 @@ export default function App() {
           if (exit.seen || exit.hazards.length || exit.plan) {
             setHelmetExit(exit)
             setHelmetNote(true)
+            setDetourView('after')
           }
           setHelmetEntry(null)
           setHelmetOpen(false)
@@ -262,7 +269,10 @@ export default function App() {
         <span className="hint">{site.scienceGoal}</span>
       </header>
       <div className="workspace">
-        {helmetExit && helmetNote && (
+        {helmetExit?.detour && helmetNote && (
+          <DetourCard detour={helmetExit.detour} view={detourView} onView={setDetourView} onClose={() => setHelmetNote(false)} />
+        )}
+        {helmetExit && !helmetExit.detour && helmetNote && (
           <p className="helmet-return" role="status">
             <span>
               Back from the helmet: {helmetExit.hazards.length} hazard{helmetExit.hazards.length === 1 ? '' : 's'} found
@@ -293,7 +303,9 @@ export default function App() {
           onProfile={setProfile}
           seenLayer={helmetExit?.seen ?? null}
           helmetHazards={helmetExit?.hazards}
-          helmetRoute={helmetExit?.plan ? helmetExit.plan.legs.map((l) => l.path) : undefined}
+          helmetRoute={helmetRoute}
+          detour={helmetExit?.detour ?? null}
+          detourView={detourView}
         />
         <Sidebar
           site={site}

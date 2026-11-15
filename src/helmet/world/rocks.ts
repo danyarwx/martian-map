@@ -13,9 +13,11 @@
 // No rock is placed where the tile's sand mask says sand. Placement is deterministic: the generator is seeded from
 // the tile id, so every session, the collision code and the eval harness get the same rocks.
 //
-// Demo boulder field ("placed for the demo", not from statistics): for each demo window, 8–14 rocks of 0.5–1.2 m
-// (tall for their width, so every one stands more than a step high) in a band across the planned path 240 m before the stop (60 % into the last 600 m), so the CV sees an obstacle
-// on the route and the re-route moment always happens. The path is the active plan's leg into that stop when the
+// Demo boulder field ("placed for the demo", not from statistics): for each demo window, about one rock of 0.5–1.2 m
+// per 1.1 m (tall for their width, so every one stands more than a step high) in a 50 m band across the planned path
+// 240 m before the stop (60 % into the last 600 m), so the CV sees an obstacle on the route and the re-route moment
+// always happens. The band was 12 m wide: the new route then moved one 10 m planner cell sideways, under a minute and
+// a line that looked the same on the map; 50 m makes the detour plain in the before/after view. The path is the active plan's leg into that stop when the
 // helmet was opened from Mission control, else the demo excursion's (routes.ts).
 import type { LatLon } from '../../types.ts'
 import { headingToDir, toLatLon, toLocal } from '../frames.ts'
@@ -170,7 +172,11 @@ export interface DemoField {
 /** Metres before the stop where the boulder field sits: 60 % into the last 600 m. */
 export const DEMO_BEFORE_STOP_M = 240
 /** Half-width of the band across the path, metres. */
-export const DEMO_HALF_WIDTH_M = 6
+export const DEMO_HALF_WIDTH_M = 25
+/** Average distance between neighbouring boulders across the band, metres (the 12 m band had 8–14 rocks). */
+export const DEMO_SPACING_M = 1.1
+/** Fewest boulders in a field; up to 6 more are added at random. */
+export const DEMO_MIN_ROCKS = Math.round((2 * DEMO_HALF_WIDTH_M) / DEMO_SPACING_M)
 
 /** One demo boulder field per window (see the header). Deterministic. */
 export function demoBoulderFields(
@@ -186,7 +192,7 @@ export function demoBoulderFields(
     const cum = cumulativeM(ap.path)
     const at = pointAtDistance(ap.path, cum[cum.length - 1] - DEMO_BEFORE_STOP_M, cum)
     const rnd = mulberry32(hashString('demo:' + w.id))
-    const count = 8 + Math.floor(rnd() * 7)
+    const count = DEMO_MIN_ROCKS + Math.floor(rnd() * 7)
     const fwd = headingToDir(at.headingDeg)
     const right = headingToDir(at.headingDeg + 90)
     const rocks: DemoRock[] = []
