@@ -42,6 +42,8 @@ export interface ObstacleOptions {
   minSmallPixels: number
   /** Small rocks are reported up to this range, metres. */
   smallMaxRangeM: number
+  /** Small rocks are reported only where the fitted ground rises less than this (rise over run; 0.27 = 15°). */
+  smallMaxSlope: number
   /** A small rock is at most this wide, metres: wider low shapes are ground the plane fit missed. */
   smallMaxWidthM: number
   /** A small rock's height above the ground right around it must reach this, metres (a bump of the ground does not). */
@@ -81,10 +83,11 @@ export const OBSTACLE_DEFAULTS: ObstacleOptions = {
   minPoints: 3,
   minPixels: 5,
   minLowPixels: 3,
-  minSmallPixels: 10,
+  minSmallPixels: 8,
   smallMaxRangeM: 8,
   smallMaxWidthM: 1.2,
-  smallMinHeightM: 0.11,
+  smallMaxSlope: 0.27,
+  smallMinHeightM: 0.07,
   retryStepM: 0.04,
   retryMinHeightM: 0.05,
   floorCorrection: true,
@@ -490,6 +493,12 @@ export function detectObstacles(
         meanDepth <= opts.smallMaxRangeM &&
         ((u1 - u0 + 1) * meanDepth) / fx <= opts.smallMaxWidthM
       groupDepth = meanDepth
+      if (small) {
+        // on steep ground the heights are too noisy for a 10 cm rock (and the slope warning already covers it)
+        const gx = groundAt(ground, sumX / m + 0.5, sumY / m) - groundAt(ground, sumX / m - 0.5, sumY / m)
+        const gy = groundAt(ground, sumX / m, sumY / m + 0.5) - groundAt(ground, sumX / m, sumY / m - 0.5)
+        if (!(Math.hypot(gx, gy) <= opts.smallMaxSlope)) continue
+      }
       if (!hazard && !small) continue
       emitted++
       // Centre = mean of the rock's pixels (its visible face); the extent comes from the image width, because stray

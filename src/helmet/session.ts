@@ -310,7 +310,7 @@ export class HelmetSession {
     this.cvCount++
     this.lastCv = { result, pose }
     this.hazards.fuse(result)
-    this.rocks.update(result.detections, performance.now(), this.pose)
+    this.rocks.update(result.detections, performance.now(), pose)
     this.navigate()
     for (const cb of this.cvListeners) cb(this.lastCv)
   }

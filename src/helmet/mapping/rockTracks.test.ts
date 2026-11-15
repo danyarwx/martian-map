@@ -41,3 +41,24 @@ test('a rock not seen for 8 s, or left 40 m behind, is forgotten', () => {
   t.update([], 8300, { x: 0, y: 60 })
   assert.equal(t.tracks.length, 0)
 })
+
+test('a rock first seen from 20 m (a metre off) and then from 5 m is one track at the near position', () => {
+  const t = new RockTracks()
+  const far: Detection = { ...rock(0.2, 20.5), distanceM: 20 }
+  t.update([far], 0, { x: 0, y: 0, headingDeg: 0 })
+  t.update([far], 150, { x: 0, y: 0, headingDeg: 0 })
+  const near: Detection = { ...rock(0, 20), distanceM: 5 }
+  t.update([near], 5000, { x: 0, y: 15, headingDeg: 0 })
+  assert.equal(t.tracks.length, 1)
+  assert.ok(Math.hypot(t.tracks[0].x, t.tracks[0].y - 20) < 0.15, `at ${t.tracks[0].x}, ${t.tracks[0].y}`)
+})
+
+test('a track in clear view from near that is not found five frames in a row is dropped; one off to the side stays', () => {
+  const t = new RockTracks()
+  t.update([{ ...rock(0, 6), distanceM: 6 }, { ...rock(8, 3), distanceM: 8.5 }], 0, { x: 0, y: 0, headingDeg: 0 })
+  for (let k = 1; k <= 4; k++) t.update([], k * 150, { x: 0, y: 0, headingDeg: 0 })
+  assert.equal(t.tracks.length, 2)
+  t.update([], 750, { x: 0, y: 0, headingDeg: 0 })
+  assert.equal(t.tracks.length, 1)
+  assert.ok(t.tracks[0].x > 7, 'the rock outside the view is kept')
+})
