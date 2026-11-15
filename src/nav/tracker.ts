@@ -36,6 +36,8 @@ const GUIDE_REPEAT_MS = 30000
 const SAY_AFTER_M = 30
 /** After a failed reroute, wait this long before trying again, milliseconds. */
 const REROUTE_RETRY_MS = 30000
+/** The walk-back caution is said again only after the crew came back this far inside the reserve, minutes. */
+export const WALKBACK_REARM_MIN = 5
 /** After the crew chose to continue despite a hazard warning, it is said again this often (mission time), ms. */
 export const HAZARD_REMINDER_MS = 15 * 60_000
 
@@ -401,14 +403,18 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         if (offsetM < DRIFT_RESET_M) driftSaid = false
       }
 
+      // A caution, not an alarm: said once each time the crew goes out past the reserve, again only after
+      // coming back well inside it (WALKBACK_REARM_MIN), so walking along the line does not repeat it.
       if (!walkBackWarned && walkHomeMin !== null && walkHomeMin > WALK_BACK_RESERVE_MIN) {
         walkBackWarned = true
         emit(
           'walkback_warning',
-          'walkback-warning',
+          `walkback-warning-${fix.t}`,
           `Caution. Habitat is more than ${WALK_BACK_RESERVE_MIN} minutes away on foot. Beyond the emergency reserve.`,
-          'high',
+          'normal',
         )
+      } else if (walkBackWarned && walkHomeMin !== null && walkHomeMin < WALK_BACK_RESERVE_MIN - WALKBACK_REARM_MIN) {
+        walkBackWarned = false
       }
       if (departLmst !== undefined) {
         const lmst = departLmst + (fix.t - startedAt) / 60000

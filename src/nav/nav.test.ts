@@ -656,3 +656,28 @@ test('typical wind: the measured half-hour values at the middle of each half hou
   const w = windAt(b.lmst + MEDA_BIN_MIN / 2)
   assert.ok(Math.abs(w.windMs - b.windMs) < 1e-9 && Math.abs(w.gustMs - b.gustMs) < 1e-9)
 })
+
+test('walk-back caution: said calmly past the reserve, again only after coming well back inside it', () => {
+  // Walking time home = straight-line distance / 10 m per minute, so 600 m out is the 60 min reserve.
+  const withHome = (l: RouteLeg): RouteLeg => ({ ...l, walkHomeMin: l.path.map((q) => { const p = proj.toXY(q); return Math.hypot(p.x, p.y) / 10 }) })
+  const legs = [
+    withHome(leg('habitat', 'a', path([0, 0], [700, 0]))),
+    withHome(leg('a', 'b', path([700, 0], [300, 0], [300, 300], [700, 300]))),
+    withHome(leg('b', 'habitat', path([700, 300], [0, 0]))),
+  ]
+  const bus = createNavBus({ channel: false })
+  const said: NavEvent[] = []
+  bus.subscribe('*', (e) => e.type === 'walkback_warning' && said.push(e))
+  const nav = createNavigator({ plan: plan(...legs), stops: { ...stops, b: stop('b', 'Rock B') }, mobility: MOBILITY.walk, bus, now: () => 0 })
+  nav.start()
+  let t = 0
+  const walk = (l: RouteLeg) => {
+    for (const q of l.path) nav.update({ ...q, headingDeg: 0, speedMps: 0.7, accuracyM: 1, t: (t += 1000) })
+    nav.continueFromStop()
+  }
+  walk(legs[0])
+  assert.equal(said.length, 1, 'past 60 min on the way out')
+  assert.equal(said[0].priority, 'normal')
+  walk(legs[1])
+  assert.equal(said.length, 2, 'back inside (30 min at 300 m), then out past the reserve again')
+})

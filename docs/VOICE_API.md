@@ -78,7 +78,7 @@ drift            Drifting left. Correct right.
 off_route        Head back to the route, 30 meters to your right.
 off_route   high Off route. Replanning.
 rerouted         New route: 2.7 kilometers to Delta front (Hawksbill Gap).
-walkback_warning Caution. Habitat is more than 60 minutes away on foot. Beyond the emergency reserve.
+walkback_warning Caution. Habitat is more than 60 minutes away on foot. Beyond the emergency reserve.   (normal priority; said again only after coming back under 55 min)
 turn_back_time   Turn-back time reached. Head back to the habitat now.
 answer           At Delta front (Hawksbill Gap), sample the fine-grained layers by hand, bed by bed. Planned working time is 30 minutes.
 nav_ended        Navigation ended.   (on arrival at the habitat; a manual End says nothing)
@@ -98,7 +98,7 @@ Every bend of 20° or more in the drawn line is its own announcement (no "…, t
 
 The round mic icon on the map (shown while navigating) lets the crew ask a question. Tap once, speak, and listening ends after a 1.2 s pause; a second tap sends early. Code: [`src/nav-ui/voice/ask.ts`](../src/nav-ui/voice/ask.ts) (flow), `listen.ts` (microphone), `silence.ts` (pause detection).
 
-1. From the tap until the answer has been said (listening, the wait and the answer), the built-in voice holds its lines (`voice.hold(true)`). Nothing interrupts in that time, safety alarms included. Held lines play afterwards under the stale rules: a high "Turn left." older than 8 s is dropped, alarms (`hazard_event`, `time_alert`, `turn_back_time`, `walkback_warning`) are never dropped.
+1. From the tap until the answer has been said (listening, the wait and the answer), the built-in voice holds its lines (`voice.hold(true)`). Nothing interrupts in that time, safety alarms included. Held lines play afterwards under the stale rules: a high "Turn left." older than 8 s is dropped, alarms (`hazard_event`, `time_alert`, `turn_back_time`) are never dropped. The walk-back caution (`walkback_warning`, normal priority) is not an alarm: it follows the normal 20 s rule.
 2. The recording and a plain-text snapshot of the navigation ([`src/nav/askContext.ts`](../src/nav/askContext.ts): next stop and its task, way home, heading, next turn, steep ground, dose, temperature, gust hours, daylight, turn-back time) go to `POST /api/ask` as multipart form data (`audio`, `context`).
 3. [`api/ask.js`](../api/ask.js) transcribes the audio (`whisper-1`) and asks a small model (`gpt-5.4-nano`) to answer from the snapshot only, in at most two short sentences. It returns `{ question, answer }` in about 1.5 s. It uses the same guards as `api/tts.js`: same-site only, audio up to 512 KB, snapshot up to 4000 characters, answer up to 300 characters. The models can be changed with the env vars `OPENAI_STT_MODEL` and `OPENAI_ASK_MODEL`.
 4. The answer goes on the bus as an `answer` event (priority `normal`). The built-in voice says it first, ahead of everything waiting (`queue.speakNow`). Your voice should do the same. When the question can't be heard (offline, no mic permission, error or no answer within 8 s), the text is "Can't hear you right now." When there was no speech, it is "Didn't catch that. Say again."

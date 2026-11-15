@@ -209,17 +209,19 @@ interface NavPanelProps {
 }
 
 /** One "how far, how long" row of the navigation panel. */
-function TripRow({ label, name, metres, minutes, bad, note, children }: {
+function TripRow({ label, name, metres, minutes, bad, warn, note, children }: {
   label: string
   name?: string
   metres: number | null
   minutes: number | null
   bad?: boolean
+  /** A caution (amber), e.g. beyond the walk-back reserve. */
+  warn?: boolean
   note?: string
   children?: ReactNode
 }) {
   return (
-    <section className={`trip-row${bad ? ' is-bad' : ''}`}>
+    <section className={`trip-row${bad ? ' is-bad' : warn ? ' is-warn' : ''}`}>
       <span className="label">{label}</span>
       {name && <strong className="trip-name">{name}</strong>}
       <div className="trip-line">
@@ -298,7 +300,8 @@ export function NavPanel({ view, stops, onReturn }: NavPanelProps & { onReturn?:
         label={returning ? 'Returning to base' : 'Back to base now'}
         metres={view.base?.distanceM ?? null}
         minutes={view.base?.minutes ?? null}
-        note={far ? `Walk home over ${WALK_BACK_RESERVE_MIN} min` : undefined}
+        warn={far}
+        note={far && state.walkHomeMin !== null ? `Caution · walk home ${duration(state.walkHomeMin)}, reserve ${WALK_BACK_RESERVE_MIN} min` : undefined}
       >
         {canReturn && <GoToBase onReturn={onReturn} />}
       </TripRow>

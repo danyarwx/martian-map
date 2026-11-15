@@ -16,8 +16,8 @@ export interface SpeechEngine {
 export const STALE_MS: Record<NavPriority, number> = { low: 6000, normal: 20000, high: Infinity }
 /** A "Turn left." said later than this would be wrong: the bend is behind the crew, milliseconds. */
 export const STALE_HIGH_INSTRUCTION_MS = 8000
-/** Safety alarms are never dropped, however long they waited. */
-const ALARMS: ReadonlySet<NavEventType> = new Set(['hazard_event', 'time_alert', 'turn_back_time', 'walkback_warning'])
+/** Safety alarms are never dropped, however long they waited. (The walk-back caution is not an alarm.) */
+const ALARMS: ReadonlySet<NavEventType> = new Set(['hazard_event', 'time_alert', 'turn_back_time'])
 
 /** How long a line may wait for its turn, milliseconds. */
 export function staleAfter(priority: NavPriority, type?: NavEventType): number {

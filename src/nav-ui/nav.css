@@ -67,6 +67,9 @@
 .trip-note { margin: var(--s1) 0 0; font-weight: 600; }
 .trip-row.is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
 .trip-row.is-bad .trip-figures, .trip-row.is-bad .trip-note { color: var(--danger); }
+/* Caution, e.g. beyond the walk-back reserve: amber like the amber tiles. */
+.trip-row.is-warn { background: #4a3a08; outline: 2px solid var(--warn); }
+.trip-row.is-warn .trip-note { color: var(--warn); }
 /* Conditions: time limits and typical weather, two small tiles per line. */
 .cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
 .nav-scroll--run { gap: 12px; }
