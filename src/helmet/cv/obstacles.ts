@@ -28,6 +28,12 @@ export interface ObstacleOptions {
    * rock, so heights read a few centimetres low, and the safe side is to call a borderline rock a hazard.
    */
   hazardMarginM: number
+  /** Beyond this range a hazard rock must stand higher: by farExtraPerM for every metre further, metres. */
+  farFromM: number
+  farExtraPerM: number
+  /** A shape lower than wideLowHeightM and wider than wideLowWidthM is ground, not a rock, metres. */
+  wideLowHeightM: number
+  wideLowWidthM: number
   /** Pixels above stepM − hazardMarginM needed for a hazard rock. */
   minPixels: number
   /** Pixels in the lower part (rockMinHagM..stepM) needed: a rock stands on the ground. */
@@ -68,6 +74,10 @@ export interface ObstacleOptions {
 export const OBSTACLE_DEFAULTS: ObstacleOptions = {
   stepM: 0.3,
   hazardMarginM: 0.04,
+  farFromM: 12,
+  farExtraPerM: 0.03,
+  wideLowHeightM: 0.45,
+  wideLowWidthM: 1.2,
   minPoints: 3,
   minPixels: 5,
   minLowPixels: 3,
@@ -450,7 +460,13 @@ export function detectObstacles(
       if (m === 0) continue
       const heightM = select(heights, m, Math.floor(opts.heightPercentile * (m - 1)))
       const meanDepth = depthSum / m
-      const hazard = heightM > hazardM && nHigh >= opts.minPixels && nLow >= opts.minLowPixels
+      // Far away the height of a point is uncertain (a depth error of a metre at 20 m), so a rock must stand
+      // clearly higher there; and a low shape wider than a boulder field's stone is a rise of the ground (a dune
+      // crest, a ripple), not a rock.
+      const farM = Math.max(0, meanDepth - opts.farFromM) * opts.farExtraPerM
+      const pieceWidthM = ((u1 - u0 + 1) * meanDepth) / fx
+      const lowAndWide = heightM < opts.wideLowHeightM + farM && pieceWidthM > opts.wideLowWidthM
+      const hazard = heightM > hazardM + farM && nHigh >= opts.minPixels && nLow >= opts.minLowPixels && !lowAndWide
       // height of the ground in a 3-pixel ring round the piece: a rock stands out of it, a bump does not
       let ringSum = 0
       let ringN = 0

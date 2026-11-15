@@ -22,6 +22,8 @@ const FADE_IN_MS = 700
 /** Rock labels (height · distance) on the nearest few hazard rocks. */
 const LABELS = 3
 const ROCK_RANGE_M = 30
+/** A rock is outlined once the CV has seen it in this many frames. */
+const MIN_HITS = 3
 
 export interface OverlayFrame {
   camera: THREE.PerspectiveCamera
@@ -210,7 +212,7 @@ export class SceneOverlay {
     const base: Screen = { x: 0, y: 0, depth: 0 }
     const top: Screen = { x: 0, y: 0, depth: 0 }
     const labelled = f.rocks
-      .filter((t) => t.level === 'hazard' && t.hits >= 2)
+      .filter((t) => t.level === 'hazard' && t.hits >= MIN_HITS)
       .map((t) => ({ t, d: Math.hypot(t.x - f.pose.x, t.y - f.pose.y) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, LABELS)
@@ -219,7 +221,7 @@ export class SceneOverlay {
     ctx.textBaseline = 'bottom'
     const labelX: number[] = []
     for (const t of f.rocks) {
-      if (t.hits < 2) continue // one sighting may be noise
+      if (t.hits < MIN_HITS) continue // one or two sightings may be noise
       const dist = Math.hypot(t.x - f.pose.x, t.y - f.pose.y)
       if (dist > ROCK_RANGE_M) continue
       const gz = t.groundZ ?? f.heightAt(t.x, t.y)
