@@ -51,15 +51,22 @@ function detect(disp: Float32Array) {
   const g = createGroundContext(cloud.capacity)
   fitGround(g, cloud, pose)
   const o = createObstacleContext(g)
-  return { dets: detectObstacles(o, g, cloud, intr, pose), patch: g.patch }
+  return { dets: detectObstacles(o, g, cloud, intr, pose, disp), patch: g.patch }
 }
 
 const near = (dets: Detection[], b: Box) =>
   dets.find((d) => Math.hypot(d.x - (b.min.x + b.max.x) / 2, d.y - (b.min.y + b.max.y) / 2) < 0.5)
 
-test('boxes of 0.2 / 0.4 / 0.8 m: the 0.2 m one is stepped over, the others are rocks with the right height and bbox', () => {
+test('boxes of 0.2 / 0.4 / 0.8 m: the 0.2 m one is a small rock that blocks nothing, the others are hazard rocks with the right height and bbox', () => {
   const { dets, patch } = detect(trueDisparity(intr, pose, scene))
-  assert.equal(near(dets, BOXES[0]), undefined, '0.2 m is below the 0.30 m step limit')
+  const low = near(dets, BOXES[0])
+  assert.ok(low, '0.2 m box is reported')
+  assert.equal(low.level, 'small', '0.2 m is below the 0.30 m step limit')
+  assert.ok(Math.abs(low.heightM! - 0.2) < 0.05, `height ${low.heightM}`)
+  {
+    const { col, row } = gridIndex(-1.6, 5.3, patch.x0, patch.y0)
+    assert.notEqual(patch.cls[row * patch.cols + col], HAZARD.rock, 'a small rock paints no rock cell')
+  }
   for (const i of [1, 2]) {
     const b = BOXES[i]
     const d = near(dets, b)
@@ -71,6 +78,12 @@ test('boxes of 0.2 / 0.4 / 0.8 m: the 0.2 m one is stepped over, the others are 
         `distance ${d.distanceM.toFixed(2)} m, conf ${d.confidence.toFixed(2)}, bbox ${d.bbox} vs ${truth} (IoU ${overlap.toFixed(2)})`,
     )
     assert.equal(d.kind, 'rock')
+    assert.equal(d.level, 'hazard')
+    assert.ok(d.outline && d.outline.length >= 6, 'outline polygon')
+    for (let k = 0; k < d.outline.length; k += 2) {
+      assert.ok(d.outline[k] >= d.bbox![0] - 1 && d.outline[k] <= d.bbox![0] + d.bbox![2] + 1, 'outline inside the box')
+      assert.ok(d.outline[k + 1] >= d.bbox![1] - 1 && d.outline[k + 1] <= d.bbox![1] + d.bbox![3] + 1, 'outline inside the box')
+    }
     assert.ok(Math.abs(d.heightM! - b.max.z) <= 0.1, `height ${d.heightM}`)
     assert.ok(d.radiusM > 0.2 && d.radiusM < 0.6, `radius ${d.radiusM}`)
     assert.ok(Math.abs(d.distanceM - Math.hypot((b.min.x + b.max.x) / 2 - pose.x, (b.min.y + b.max.y) / 2 - pose.y)) < 0.3)
@@ -80,7 +93,7 @@ test('boxes of 0.2 / 0.4 / 0.8 m: the 0.2 m one is stepped over, the others are 
     const { col, row } = gridIndex((b.min.x + b.max.x) / 2, (b.min.y + b.max.y) / 2, patch.x0, patch.y0)
     assert.equal(patch.cls[row * patch.cols + col], HAZARD.rock)
   }
-  assert.equal(dets.length, 2, `unexpected detections ${JSON.stringify(dets)}`)
+  assert.equal(dets.length, 3, `unexpected detections ${JSON.stringify(dets)}`)
 })
 
 test('patch: open ground seen is safe, ground out of view is unseen, nothing else is rock', () => {
@@ -106,31 +119,39 @@ test('patch: open ground seen is safe, ground out of view is unseen, nothing els
   assert.ok(safe > 500, `${safe} safe cells`)
 })
 
-test('end to end through stereo: rendered boxes are found, the 0.2 m one is not', () => {
+test('end to end through stereo: rendered boxes are found, the 0.2 m one only as a small rock', () => {
   const { left, right } = renderStereo(intr, pose, scene, makeTexture(256, 256, 21))
   const disp = computeDisparity(createStereoContext(intr), left, right)
   const { dets } = detect(disp)
-  assert.equal(near(dets, BOXES[0]), undefined)
+  assert.notEqual(near(dets, BOXES[0])?.level, 'hazard')
   for (const i of [1, 2]) {
     const d = near(dets, BOXES[i])
     assert.ok(d, `box ${BOXES[i].max.z} m not found in stereo`)
     console.log(`  stereo ${BOXES[i].max.z} m box: height ${d.heightM!.toFixed(3)} m, bbox ${d.bbox}, IoU ${iou(d.bbox!, silhouette(i)).toFixed(2)}`)
     assert.ok(Math.abs(d.heightM! - BOXES[i].max.z) <= 0.15, `height ${d.heightM}`)
   }
-  assert.equal(dets.length, 2, `unexpected detections ${JSON.stringify(dets.map((d) => [d.x, d.y, d.heightM]))}`)
+  assert.equal(dets.filter((d) => d.level === 'hazard').length, 2, `unexpected detections ${JSON.stringify(dets.map((d) => [d.x, d.y, d.heightM, d.level]))}`)
 })
 
-test('a single tall cell is kept (> 0.5 m), a single low one is noise', () => {
+test('thin posts (one cell wide) are rocks too: each is a clear shape in the image', () => {
   const thin = (x: number, y: number, h: number): Box => ({ min: { x: x - 0.1, y: y - 0.1, z: 0 }, max: { x: x + 0.1, y: y + 0.1, z: h } })
   // Centred in a cell so each post covers exactly one cell.
   const s: Scene = { ground: tiltedPlane(0), boxes: [thin(-0.75, 4.25, 0.9), thin(1.25, 4.25, 0.4)] }
   const { dets } = detect(trueDisparity(intr, pose, s))
   assert.ok(near(dets, s.boxes[0]), '0.9 m post')
-  assert.equal(near(dets, s.boxes[1]), undefined, '0.4 m single-cell post is dropped')
+  assert.equal(near(dets, s.boxes[1])?.level, 'hazard', '0.4 m post')
+  assert.equal(dets.length, 2)
 })
 
 test('a cluster floating in the air (a mismatch, not a rock) is not reported', () => {
   const s: Scene = { ground: tiltedPlane(0), boxes: [{ min: { x: -0.4, y: 5.5, z: 1.1 }, max: { x: 0.4, y: 6.3, z: 1.5 } }] }
   const { dets } = detect(trueDisparity(intr, pose, s))
   assert.equal(dets.length, 0, JSON.stringify(dets))
+})
+
+test('two boxes side by side at the same range are two rocks, and one behind another stays separate', () => {
+  const s: Scene = { ground: tiltedPlane(0), boxes: [box(-0.4, 6, 0.6), box(0.5, 6, 0.6), box(2.2, 5, 0.5), box(2.3, 8, 0.9)] }
+  const { dets } = detect(trueDisparity(intr, pose, s))
+  for (const b of s.boxes) assert.equal(near(dets, b)?.level, 'hazard', `box at ${b.min.x + 0.3}, ${b.min.y + 0.3}`)
+  assert.equal(new Set(s.boxes.map((b) => near(dets, b))).size, 4, 'four separate detections')
 })

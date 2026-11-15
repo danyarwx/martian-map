@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { JEZERO } from './data/jezero.ts'
 import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
+import { usePhotoData } from './lib/usePhotoData.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
 import Landing from './Landing.tsx'
 import MarsMap from './map/MarsMap.tsx'
@@ -32,6 +33,7 @@ export default function App() {
   const [helmetEntry, setHelmetEntry] = useState<HelmetEntry | null>(null)
   /** What the helmet brought back: the ground it saw, the hazards it found, its re-routed plan. */
   const [helmetExit, setHelmetExit] = useState<HelmetExit | null>(null)
+  const [helmetNote, setHelmetNote] = useState(false)
   useEffect(() => {
     const onHash = () => {
       setHelmetOpen(isHelmetHash())
@@ -58,6 +60,7 @@ export default function App() {
   const [screen, setScreen] = useState<'landing' | 'plan'>(() => (window.location.hash === '#plan' ? 'plan' : 'landing'))
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
+  const photos = usePhotoData(site)
 
   const habitat = useMemo<Target>(
     () =>
@@ -234,7 +237,10 @@ export default function App() {
           onExit={(exit) => {
             // back to where the helmet was opened from: the planner keeps its #plan, #helmet alone goes to the start
             history.replaceState(null, '', window.location.pathname + window.location.search + (screen === 'plan' ? '#plan' : ''))
-            if (exit.seen || exit.hazards.length || exit.plan) setHelmetExit(exit)
+            if (exit.seen || exit.hazards.length || exit.plan) {
+              setHelmetExit(exit)
+              setHelmetNote(true)
+            }
             setHelmetEntry(null)
             setHelmetOpen(false)
           }}
@@ -290,6 +296,19 @@ export default function App() {
         <span className="hint">{site.scienceGoal}</span>
       </header>
       <div className="workspace">
+        {helmetExit && helmetNote && (
+          <p className="helmet-return" role="status">
+            <span>
+              Back from the helmet: {helmetExit.hazards.length} hazard{helmetExit.hazards.length === 1 ? '' : 's'} found
+              {helmetExit.rerouteDeltaMin !== undefined &&
+                `, route ${Math.abs(helmetExit.rerouteDeltaMin) < 0.5 ? 'changed (under 1 min longer)' : `${helmetExit.rerouteDeltaMin > 0 ? '+' : '−'}${Math.round(Math.abs(helmetExit.rerouteDeltaMin))} min`} (dashed line)`}
+              . The ground the helmet saw is framed on the map.
+            </span>
+            <button type="button" onClick={() => setHelmetNote(false)} aria-label="Dismiss">
+              Close
+            </button>
+          </p>
+        )}
         <MarsMap
           site={site}
           habitat={habitat}
@@ -323,6 +342,7 @@ export default function App() {
           plan={plan}
           profile={shown}
           views={views}
+          photos={photos}
           adding={adding}
           notice={notice}
           maxSelected={MAX_SELECTED}

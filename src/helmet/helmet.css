@@ -1,18 +1,23 @@
-/* Helmet view. Colours derive from the :root tokens in src/index.css; hazard colours are in PLAN.md §7.3. */
+/* Helmet view (FIXLIST C1, C2): a visor HUD. Thin glowing line symbols in HUD green; amber = caution, red = danger;
+   nothing else. No panels on the glass: only the dialogs a key opens (menus, CV view, real photo) have a backdrop. */
 .helmet {
-  --hud: #8fe3d6;
-  --hud-dim: rgba(143, 227, 214, 0.55);
-  --hud-panel: rgba(10, 18, 18, 0.55);
-  --hz-safe: rgba(143, 227, 214, 0.35);
-  --hz-rock: #ff5a4e;
-  --hz-sand: #e8b04a;
+  --hud: #6dffa8;
+  --hud-dim: rgba(109, 255, 168, 0.5);
+  --hud-faint: rgba(109, 255, 168, 0.22);
+  --hud-amber: #ffb347;
+  --hud-red: #ff5d4d;
+  --hud-glow: 0 0 6px rgba(109, 255, 168, 0.55);
+  --hud-panel: rgba(4, 12, 9, 0.8);
+  --hz-safe: rgba(109, 255, 168, 0.3);
+  --hz-rock: #ff5d4d;
+  --hz-sand: #ffb347;
   --hz-steep: #ff8a3d;
   --hz-drop: #b04aff;
   position: fixed;
   inset: 0;
   background: #000;
-  color: var(--text, #e8ecf1);
-  font-family: var(--mono, Menlo, Consolas, monospace);
+  color: var(--hud);
+  font-family: var(--mono, Menlo, Consolas, "Courier New", monospace);
   overflow: hidden;
 }
 .helmet-canvas {
@@ -27,37 +32,288 @@
 .helmet-canvas canvas {
   display: block;
 }
-.helmet-status {
+/* marks drawn into the view: rock outlines, sand hatch, guide chevrons (hud/SceneOverlay.ts) */
+.helmet-scene-overlay {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  right: max(12px, env(safe-area-inset-right, 0px));
-  display: flex;
-  gap: 12px;
-  padding: 6px 10px;
-  border: 1px solid var(--hud-dim);
-  border-radius: 8px;
-  background: var(--hud-panel);
-  color: var(--hud);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
-.helmet-help {
+
+/* the glass: darker toward the rim, a faint reflection, two frame arcs */
+.visor-glass {
   position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 26%),
+    radial-gradient(ellipse 78% 74% at 50% 46%, rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.38) 86%, rgba(0, 0, 0, 0.72) 100%);
+}
+.visor-glass svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--hud-faint);
+  stroke-width: 1;
+}
+.visor-glass path {
+  vector-effect: non-scaling-stroke;
+}
+
+.visor-status,
+.visor-warnings,
+.visor-next,
+.visor-keys,
+.helmet-suit {
+  position: absolute;
+  pointer-events: none;
+  text-shadow: var(--hud-glow);
+  font-variant-numeric: tabular-nums;
+}
+.visor-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
+}
+
+/* top left: where we are in the plan, and short state flags */
+.visor-status {
+  top: max(14px, env(safe-area-inset-top, 0px));
+  left: max(18px, env(safe-area-inset-left, 0px));
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--hud-dim);
+  max-width: 30vw;
+}
+.visor-flag {
+  color: var(--hud-amber);
+  text-shadow: 0 0 6px rgba(255, 179, 71, 0.5);
+}
+
+/* top centre: heading tape */
+.visor-tape {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
   left: 50%;
-  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  width: min(460px, 56vw);
   transform: translateX(-50%);
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--hud);
+  stroke-width: 1;
+  filter: drop-shadow(0 0 3px rgba(109, 255, 168, 0.6));
+}
+.visor-tape text {
+  fill: var(--hud-dim);
+  stroke: none;
+  font-size: 9px;
+  text-anchor: middle;
+  letter-spacing: 0.04em;
+}
+.visor-tape text.is-named {
+  fill: var(--hud);
+  font-size: 11px;
+}
+.visor-tape-line {
+  stroke: var(--hud-dim);
+}
+.visor-tape-caret {
+  stroke-width: 1.4;
+}
+.visor-tape .visor-tape-heading {
+  fill: var(--hud);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+.visor-mark {
+  stroke-width: 1.4;
+}
+.visor-mark.is-guide {
+  stroke: var(--hud-amber);
+}
+
+/* under the tape: warnings, two at most */
+.visor-warnings {
+  top: max(84px, calc(env(safe-area-inset-top, 0px) + 84px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  width: min(620px, calc(100vw - 32px));
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.visor-warnings p {
   margin: 0;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: var(--hud-panel);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: center;
+}
+.visor-warnings svg {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.visor-warnings .is-info {
   color: var(--hud);
+}
+.visor-warnings .is-caution {
+  color: var(--hud-amber);
+  text-shadow: 0 0 6px rgba(255, 179, 71, 0.55);
+}
+.visor-warnings .is-danger {
+  color: var(--hud-red);
+  text-shadow: 0 0 6px rgba(255, 93, 77, 0.6);
+}
+.visor-warnings .visor-more {
+  color: var(--hud-dim);
+  font-size: 10px;
+}
+
+/* centre low: next stop */
+.visor-next {
+  left: 50%;
+  bottom: max(64px, calc(env(safe-area-inset-bottom, 0px) + 64px));
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  text-align: center;
   font-size: 12px;
   white-space: nowrap;
-  pointer-events: none;
 }
-.helmet-flag {
-  color: var(--hz-sand);
+.visor-next-name {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.visor-next-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.visor-next strong {
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+.visor-turn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--hud-dim);
+}
+.visor-turn svg {
+  fill: none;
+  stroke: var(--hud);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+.visor-off {
+  color: var(--hud-amber);
+  font-size: 11px;
+}
+
+/* lower corners: two gauges */
+.visor-gauge {
+  position: absolute;
+  bottom: max(26px, calc(env(safe-area-inset-bottom, 0px) + 26px));
+  width: clamp(76px, 9vw, 104px);
+  pointer-events: none;
+  filter: drop-shadow(0 0 3px rgba(109, 255, 168, 0.55));
+  color: var(--hud);
+}
+.visor-gauge.is-left {
+  left: max(26px, calc(env(safe-area-inset-left, 0px) + 26px));
+}
+.visor-gauge.is-right {
+  right: max(26px, calc(env(safe-area-inset-right, 0px) + 26px));
+}
+.visor-gauge.is-caution {
+  color: var(--hud-amber);
+  filter: drop-shadow(0 0 3px rgba(255, 179, 71, 0.55));
+}
+.visor-gauge.is-danger {
+  color: var(--hud-red);
+  filter: drop-shadow(0 0 3px rgba(255, 93, 77, 0.6));
+}
+.visor-gauge svg {
+  display: block;
+  fill: none;
+  stroke-linecap: round;
+}
+.visor-gauge-track {
+  stroke: currentColor;
+  opacity: 0.25;
+  stroke-width: 1.5;
+}
+.visor-gauge-fill {
+  stroke: currentColor;
+  stroke-width: 3;
+}
+.visor-gauge text {
+  fill: currentColor;
+  stroke: none;
+  text-anchor: middle;
+}
+.visor-gauge-value {
+  font-size: 22px;
+}
+.visor-gauge-label {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* key list: there for the first seconds, then gone (H brings the full list) */
+.visor-keys {
+  left: 50%;
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  color: var(--hud-dim);
+  white-space: nowrap;
+  animation: visor-keys-out 1.2s ease-in 12s forwards;
+}
+@keyframes visor-keys-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* Tab held: the full readout as plain lines on the glass */
+.helmet-suit {
+  left: max(26px, calc(env(safe-area-inset-left, 0px) + 26px));
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 4px;
+  min-width: 200px;
+  padding-left: 10px;
+  border-left: 1px solid var(--hud-dim);
+  font-size: 12px;
+}
+.helmet-nav-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-dim);
 }
 .helmet-menu {
   position: absolute;
@@ -204,124 +460,6 @@
 .helmet-cv p {
   margin: 6px 0 0;
 }
-.helmet-alerts {
-  position: absolute;
-  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
-  left: 50%;
-  transform: translateX(-50%);
-  display: grid;
-  gap: 6px;
-  justify-items: center;
-  pointer-events: none;
-  z-index: 2;
-}
-.helmet-alerts p {
-  margin: 0;
-  padding: 6px 12px;
-  border-radius: 6px;
-  border: 1px solid currentColor;
-  background: rgba(10, 18, 18, 0.8);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.helmet-alerts .is-info { color: var(--hud); }
-.helmet-alerts .is-caution { color: var(--hz-sand); }
-.helmet-alerts .is-danger { color: var(--hz-rock); }
-.helmet-nav {
-  position: absolute;
-  top: max(52px, calc(env(safe-area-inset-top, 0px) + 52px));
-  right: max(12px, env(safe-area-inset-right, 0px));
-  display: grid;
-  gap: 2px;
-  min-width: 170px;
-  padding: 8px 10px;
-  border: 1px solid var(--hud-dim);
-  border-radius: 8px;
-  background: var(--hud-panel);
-  color: var(--hud);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-}
-.helmet-nav-label {
-  color: var(--hud-dim);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.helmet-nav strong {
-  color: var(--text, #e8ecf1);
-  font-weight: 600;
-}
-.helmet-steer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 4px;
-}
-.helmet-steer-arrow {
-  display: inline-block;
-  font-size: 16px;
-  line-height: 1;
-}
-.helmet-compass {
-  position: absolute;
-  top: max(12px, env(safe-area-inset-top, 0px));
-  left: 50%;
-  transform: translateX(-50%);
-  height: 34px;
-  border-bottom: 1px solid var(--hud-dim);
-  color: var(--hud);
-  font-size: 10px;
-  overflow: hidden;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(10, 18, 18, 0.5) 20%, rgba(10, 18, 18, 0.5) 80%, transparent);
-}
-.helmet-compass-tick {
-  position: absolute;
-  bottom: 2px;
-  transform: translateX(-50%);
-  color: var(--hud-dim);
-}
-.helmet-compass-tick.is-named {
-  color: var(--hud);
-  font-size: 12px;
-  font-weight: 600;
-}
-.helmet-compass-mark {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
-  font-size: 10px;
-}
-.helmet-compass-mark.is-stop { color: #ffffff; }
-.helmet-compass-mark.is-guide { color: var(--hz-sand); top: 9px; }
-.helmet-compass-heading {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
-  padding: 0 4px;
-  background: rgba(10, 18, 18, 0.8);
-  color: var(--text, #e8ecf1);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.helmet-suit {
-  position: absolute;
-  left: max(12px, env(safe-area-inset-left, 0px));
-  bottom: max(44px, calc(env(safe-area-inset-bottom, 0px) + 44px));
-  display: grid;
-  gap: 4px;
-  min-width: 190px;
-  padding: 8px 10px;
-  border: 1px solid var(--hud-dim);
-  border-radius: 8px;
-  background: var(--hud-panel);
-  color: var(--hud);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
 .helmet-suit dl {
   margin: 0 0 4px;
   display: grid;
@@ -334,19 +472,68 @@
 }
 .helmet-suit dt { color: var(--hud-dim); }
 .helmet-suit dd { margin: 0; color: var(--text, #e8ecf1); }
-.helmet-status { top: max(54px, calc(env(safe-area-inset-top, 0px) + 54px)); }
-.helmet-nav, .helmet-alerts, .helmet-cv { top: max(94px, calc(env(safe-area-inset-top, 0px) + 94px)); }
-/* Layout: compass top centre; status top right; next stop top left; alerts under the compass; CV view under the
-   next-stop panel; suit bottom left; mini-map bottom right. Nothing shares a corner. */
-.helmet-nav {
-  right: auto;
-  left: max(12px, env(safe-area-inset-left, 0px));
-  top: max(54px, calc(env(safe-area-inset-top, 0px) + 54px));
+.helmet-suit dd {
+  color: var(--hud);
 }
-.helmet-cv { top: max(160px, calc(env(safe-area-inset-top, 0px) + 160px)); z-index: 1; }
-.helmet-alerts p { white-space: normal; text-align: center; max-width: min(460px, calc(100vw - 32px)); }
+
+/* dialogs a key opens */
+.helmet-menu,
+.helmet-cv {
+  border-color: var(--hud-dim);
+  background: var(--hud-panel);
+}
+.helmet-cv {
+  left: 50%;
+  top: max(96px, calc(env(safe-area-inset-top, 0px) + 96px));
+  transform: translateX(-50%);
+  width: min(860px, calc(100vw - 24px));
+  z-index: 1;
+}
+/* the hazard map: a scope on the glass, right of centre; larger while Tab is held */
+.helmet-minimap {
+  right: max(26px, calc(env(safe-area-inset-right, 0px) + 26px));
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  border-color: var(--hud-dim);
+  border-radius: 4px;
+  background: rgba(4, 12, 9, 0.35);
+}
 @media (max-width: 900px) {
-  .helmet-status { font-size: 11px; gap: 8px; max-width: calc(100vw - 220px); flex-wrap: wrap; justify-content: flex-end; }
-  .helmet-alerts { top: max(150px, calc(env(safe-area-inset-top, 0px) + 150px)); }
-  .helmet-help { font-size: 10px; max-width: calc(100vw - 16px); overflow: hidden; text-overflow: ellipsis; }
+  .visor-status {
+    max-width: 22vw;
+    font-size: 10px;
+  }
+  .visor-keys {
+    display: none;
+  }
+  .visor-next {
+    bottom: max(40px, calc(env(safe-area-inset-bottom, 0px) + 40px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .visor-keys {
+    animation: none;
+  }
+}
+
+/* touch screens: there is no way to walk yet (FIXLIST B5) */
+.visor-touch-note {
+  display: none;
+}
+@media (pointer: coarse) {
+  .visor-touch-note {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: 34%;
+    transform: translateX(-50%);
+    width: min(420px, calc(100vw - 48px));
+    margin: 0;
+    text-align: center;
+    font-size: 13px;
+    color: var(--hud-amber);
+    text-shadow: 0 0 6px rgba(255, 179, 71, 0.5);
+    pointer-events: none;
+  }
 }

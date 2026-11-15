@@ -76,6 +76,8 @@ export default function MarsMap(props: Props) {
   const drawn = useRef<{ plan: RoutePlan | null; other: RoutePlan | null }>({ plan: null, other: null })
   /** The route area last fitted into view. Fitted again when the map's container changes size. */
   const fitted = useRef<L.LatLngBounds | null>(null)
+  /** Closest zoom the kept view may use: the route stays at 15, the ground the helmet saw needs more. */
+  const fitMaxZoom = useRef(15)
 
   // Map, tile layers and static overlays: built once per site.
   useEffect(() => {
@@ -152,7 +154,7 @@ export default function MarsMap(props: Props) {
     // Leaflet does not notice when its container is resized by the layout; keep the centre where it was.
     const resize = new ResizeObserver(() => {
       map.invalidateSize({ pan: false })
-      if (fitted.current) map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
+      if (fitted.current) map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: fitMaxZoom.current, animate: false })
     })
     resize.observe(ref.current)
 
@@ -382,6 +384,7 @@ export default function MarsMap(props: Props) {
     drawn.current = { plan, other: otherPlan }
     if (!switched) {
       fitted.current = outline.getBounds()
+      fitMaxZoom.current = 15
       // No animation: the view must land on the route even when the tab is in the background.
       map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 15, animate: false })
     }
@@ -399,6 +402,14 @@ export default function MarsMap(props: Props) {
     if (seenLayer) {
       const b = seenLayer.bounds
       L.imageOverlay(seenLayer.png, [[b.south, b.west], [b.north, b.east]], { opacity: 0.9, interactive: false, className: 'helmet-seen' }).addTo(group)
+      // the seen ground is a few tens of metres across: frame it and bring the map to it, or nobody notices it
+      L.rectangle([[b.south, b.west], [b.north, b.east]], { color: '#8fe3d6', weight: 1, dashArray: '4 4', fill: false, interactive: false }).addTo(group)
+      const padLat = Math.max((b.north - b.south) * 0.6, 0.0012)
+      const padLon = Math.max((b.east - b.west) * 0.6, 0.0012)
+      // this becomes the view the map keeps (also across resizes) until the route changes
+      fitted.current = L.latLngBounds([b.south - padLat, b.west - padLon], [b.north + padLat, b.east + padLon])
+      fitMaxZoom.current = 17
+      map.fitBounds(fitted.current, { padding: [50, 50], maxZoom: 17, animate: false })
     }
     if (helmetRoute) {
       L.polyline(helmetRoute.map((leg) => leg.map((p) => [p.lat, p.lon] as [number, number])), { color: '#8fe3d6', weight: 3, dashArray: '8 6', interactive: false }).addTo(group)

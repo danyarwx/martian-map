@@ -79,6 +79,15 @@ export interface Detection {
   confidence: number
   /** Pixel box in the left image: x, y, width, height. */
   bbox?: [number, number, number, number]
+  /**
+   * Rocks only. 'hazard' = taller than the 0.30 m step height: it blocks the route. 'small' = 0.10–0.30 m: a trip
+   * risk that is shown but never becomes a HAZARD.rock cell. Absent = hazard.
+   */
+  level?: 'hazard' | 'small'
+  /** Outline in the left image as a closed polygon: x0, y0, x1, y1, … pixels. */
+  outline?: number[]
+  /** Ground height under the detection, local ENU metres (the CV's own ground fit). */
+  groundZ?: number
 }
 
 /** A local hazard patch in 0.5 m cells, aligned to the hazard grid. Row 0 is the northern edge. */
@@ -120,4 +129,6 @@ export interface HelmetExit {
   hazards: { at: LatLon; kind: Detection['kind']; radiusM: number }[]
   /** The plan after any re-route, or null when it did not change. */
   plan: RoutePlan | null
+  /** Minutes the helmet's last re-route added to the trip (negative = shorter). Absent when it did not re-route. */
+  rerouteDeltaMin?: number
 }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { slopeSpeedFactor } from '../../lib/mobility.ts'
 import type { Pose } from '../contracts.ts'
-import { EYE_M, stepPlayer, type Ground, type RockLike } from './player.ts'
+import { EYE_M, WALK_MPS, stepPlayer, type Ground, type RockLike } from './player.ts'
 
 const RAD = Math.PI / 180
 
@@ -25,22 +25,22 @@ const walk = (pose: Pose, g: Ground, seconds: number, inp = { fwd: 1, side: 0, f
   return last
 }
 
-test('walks 1 m/s north on the level, four times that with Shift, eye 1.65 m above the ground', () => {
+test('walks at WALK_MPS north on the level, four times that with Shift, eye 1.65 m above the ground', () => {
   const g = ground(() => 100)
   const p = start()
   walk(p, g, 10)
-  assert.ok(Math.abs(p.y - 10) < 1e-6 && Math.abs(p.x) < 1e-9)
+  assert.ok(Math.abs(p.y - 10 * WALK_MPS) < 1e-6 && Math.abs(p.x) < 1e-9)
   assert.equal(p.z, 100 + EYE_M)
   const q = start(90)
   walk(q, g, 10, { fwd: 1, side: 0, fast: true })
-  assert.ok(Math.abs(q.x - 40) < 1e-6)
+  assert.ok(Math.abs(q.x - 40 * WALK_MPS) < 1e-6)
 })
 
 test('slows down on a slope like the planner does', () => {
   const g = ground((_x, y) => y * Math.tan(10 * RAD))
   const p = start()
   walk(p, g, 10)
-  assert.ok(Math.abs(p.y - 10 * slopeSpeedFactor(10)) < 0.05)
+  assert.ok(Math.abs(p.y - 10 * WALK_MPS * slopeSpeedFactor(10)) < 0.1)
 })
 
 test('cannot climb ground steeper than 25°, but can walk down it and along its foot', () => {
@@ -74,7 +74,7 @@ test('stops at a rock taller than a step, slides round it, and steps over a smal
   // a 0.25 m high rock (stands 0.175 m) is stepped over
   const s = start()
   walk(s, ground(() => 0, [{ x: 0, y: 5, d: 0.4, h: 0.25 }]), 10)
-  assert.ok(Math.abs(s.y - 10) < 1e-6)
+  assert.ok(Math.abs(s.y - 10 * WALK_MPS) < 1e-6)
 })
 
 test('a player dropped inside a rock (after a jump) can walk out', () => {

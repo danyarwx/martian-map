@@ -157,10 +157,11 @@ test('groundCellHeights: one frame of flat ground gives heights near 0 in view, 
   const pose: Pose = { x: 0.13, y: -0.21, z: 1.65, headingDeg: 0, pitchDeg: -15 }
   const scene: Scene = { ground: tiltedPlane(0), boxes: [{ min: { x: -0.3, y: 5.7, z: 0 }, max: { x: 0.3, y: 6.3, z: 1.2 } }] }
   const cloud = createPointCloud()
-  backProject(trueDisparity(intr, pose, scene), intr, pose, cloud)
+  const disp = trueDisparity(intr, pose, scene)
+  backProject(disp, intr, pose, cloud)
   const g = createGroundContext(cloud.capacity)
   fitGround(g, cloud, pose)
-  detectObstacles(createObstacleContext(g), g, cloud, intr, pose)
+  detectObstacles(createObstacleContext(g), g, cloud, intr, pose, disp)
   const h = groundCellHeights(g, cloud, pose, { x0: 0, y0: 0, cols: 0, rows: 0, z: new Float32Array(g.nCells) })
   assert.equal(h.x0, g.patch.x0)
   assert.equal(h.cols, g.cols)

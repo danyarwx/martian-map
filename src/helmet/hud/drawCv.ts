@@ -2,6 +2,9 @@
 // Shared by the live CV view (V) and the real-photo test (R), so both show exactly the same thing.
 import type { Detection } from '../contracts.ts'
 
+/** Small rocks (0.10–0.30 m): a quiet outline, they block nothing. */
+export const SMALL_ROCK_COLOUR = '#7dffb0'
+
 export const KIND_COLOUR: Record<Detection['kind'], string> = { rock: '#ff5a4e', sand: '#e8b04a', steep: '#ff8a3d', drop: '#b04aff' }
 
 /** Disparity → colour: near warm, far cool, no match black. */
@@ -56,9 +59,24 @@ export function drawCv(canvas: HTMLCanvasElement, pic: CvPicture, scale: number)
   for (const d of pic.detections) {
     if (!d.bbox) continue
     const [bx, by, bw, bh] = d.bbox
-    const c = KIND_COLOUR[d.kind]
+    const small = d.level === 'small'
+    const c = small ? SMALL_ROCK_COLOUR : KIND_COLOUR[d.kind]
     ctx.strokeStyle = c
-    ctx.strokeRect(bx * scale, by * scale, Math.max(2, bw * scale), Math.max(2, bh * scale))
+    ctx.lineWidth = small ? 1 : 2
+    ctx.setLineDash(small ? [3, 3] : [])
+    if (d.outline && d.outline.length >= 6) {
+      ctx.beginPath()
+      for (let k = 0; k < d.outline.length; k += 2) {
+        const px = (d.outline[k] + 0.5) * scale
+        const py = (d.outline[k + 1] + 0.5) * scale
+        if (k) ctx.lineTo(px, py)
+        else ctx.moveTo(px, py)
+      }
+      ctx.closePath()
+      ctx.stroke()
+    } else ctx.strokeRect(bx * scale, by * scale, Math.max(2, bw * scale), Math.max(2, bh * scale))
+    ctx.setLineDash([])
+    if (small) continue // small rocks: outline only, no label
     const label = `${d.kind}${d.heightM ? ` ${d.heightM.toFixed(1)} m` : ''} · ${d.distanceM.toFixed(1)} m`
     const tw = ctx.measureText(label).width
     const ly = by * scale > 16 ? by * scale - 4 : (by + bh) * scale + 13
