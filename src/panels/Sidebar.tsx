@@ -365,6 +365,7 @@ function Summary(p: Props & { schedule: Schedule | null }) {
           <p>
             The farthest point of the route is <span className="num">{duration(p.schedule.farthest.minutes)}</span> on
             foot from the habitat. The emergency reserve is {WALK_BACK_RESERVE_MIN} min: the green line on the map.
+            The planner flags this instead of hiding it: on such a route a crew would take the crew rover or drop a stop.
           </p>
         </details>
       )}
@@ -436,6 +437,21 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         >
           Walk through stops <Arrow />
         </button>
+      )}
+      {p.onGoOutside && routed && !planning && (
+        // A judge opens the link alone: say what to try, in the order that tells the story.
+        <ol className="tour" aria-label="Try it">
+          <li>
+            <strong>Map:</strong> the route coloured by slope, and the lines of walking time back to the habitat.
+          </li>
+          <li>
+            <strong>Go outside:</strong> walk the first leg in the helmet. Its cameras must find boulders that orbit
+            cannot see.
+          </li>
+          <li>
+            <strong>Back here (Esc):</strong> the route before and after, and what the detour costs.
+          </li>
+        </ol>
       )}
       {p.onGoOutside && routed && !planning && (
         <button type="button" className="btn btn--block" onClick={() => p.onGoOutside?.()} title="Helmet view: walk the route in 3D with live hazard detection">

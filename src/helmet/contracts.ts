@@ -147,9 +147,11 @@ export interface HelmetDetour {
   beforePath: LatLon[]
   /** The way the astronaut really went from the re-route point (round the whole field), then the plan on to that stop. */
   afterPath: LatLon[]
-  /** Minutes this re-route added to the trip (negative = shorter). */
+  /** Minutes the way round added: `extraM` at the planner's walking speed on the level. */
   deltaMin: number
-  /** Time outside: as planned, and with every re-route of this walk. Counted as `tripFrom` says. */
+  /** Metres walked beyond the planned line to the same stop. */
+  extraM: number
+  /** Time outside: as planned, and with the way round (deltaMin) added. Counted as `tripFrom` says. */
   tripMin: { before: number; after: number }
   /**
    * 'habitat': the whole trip, the same number as Mission control's plan (helmet opened by "Go outside").

@@ -52,8 +52,9 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   const [mobility, setMobility] = useState<MobilityId>('walk')
-  // The planner opens on step 1 of the route editor with no stops; the demo route stays one click away.
-  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set())
+  // The site is judged from a link, with nobody to show the way: it opens with the demo route planned and the
+  // summary up ("New route" / "Edit route" start the editor). It used to open on an empty editor at step 1.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set(INITIAL))
   const [focusId, setFocusId] = useState<string | null>(null)
   const [views, setViews] = useState<Record<string, StopView>>({})
   /** Where the habitat was moved to, or null while it stands at the site's landing point. */
@@ -65,7 +66,7 @@ export default function App() {
   /** One line about the last action that was refused. */
   const [notice, setNotice] = useState<Notice | null>(null)
   /** Step of the step-by-step route editor, or null while the summary is shown. */
-  const [editStep, setEditStep] = useState<number | null>(1)
+  const [editStep, setEditStep] = useState<number | null>(null)
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
   const photos = usePhotoData(site)

@@ -98,10 +98,19 @@ export default function DetourCard({ detour, view, onView, onClose }: Props) {
       </table>
       <p className="detour-delta">
         Detour: <strong>{signed(detour.deltaMin)}</strong>
+        {detour.extraM >= 1 && ` (${Math.round(detour.extraM)} m more walking)`}
         {wb.before !== null &&
           wb.after !== null &&
           ` · longest walk back ${Math.round(wb.after - wb.before) === 0 ? 'unchanged' : signed(wb.after - wb.before)}`}
       </p>
+      {before?.over && (
+        // nobody is there to explain the red: say why it is red before and after alike
+        <p className="detour-note">
+          Red in both columns: on foot this route was already past the {WALK_BACK_RESERVE_MIN} min reserve before the
+          detour (the planner flags it). A crew would take the crew rover or drop a stop. The detour itself left the
+          walk home {wb.before !== null && wb.after !== null && Math.round(wb.after - wb.before) !== 0 ? `${signed(wb.after - wb.before)} longer` : 'as it was'}.
+        </p>
+      )}
     </section>
   )
 }

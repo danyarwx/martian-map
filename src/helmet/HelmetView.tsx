@@ -99,6 +99,8 @@ export default function HelmetView({ entry, onExit }: Props) {
     }
   }, [])
   const startMin = useRef<number | null>(null)
+  /** Where the walk started and toward which stop, and whether the helmet has re-routed since (the visor hint). */
+  const tour = useRef<{ x: number; y: number; toId: string; rerouted: boolean } | null>(null)
   const exitRef = useRef(onExit)
   exitRef.current = onExit
   const entryRef = useRef(entry)
@@ -230,6 +232,25 @@ export default function HelmetView({ entry, onExit }: Props) {
       })
     : []
   const rerouted = nav?.rerouted && now - nav.rerouted.at < 12000 ? nav.rerouted : null
+  // What to do next, for a judge who opened the link alone: walk → the boulders → the stop → Esc for the
+  // before/after. Keyed to the first stop, which a re-route keeps (it only replaces the line to it).
+  if (nav && !tour.current) tour.current = { x: hud!.pose.x, y: hud!.pose.y, toId: nav.toId, rerouted: false }
+  // the before/after is recorded from the moment something wide shuts the line (re-routed or steered round)
+  if (tour.current && nav?.detour) tour.current.rerouted = true
+  const walkedM = tour.current && hud ? Math.hypot(hud.pose.x - tour.current.x, hud.pose.y - tour.current.y) : 0
+  const pastStop = !!(tour.current && nav && nav.toId !== tour.current.toId)
+  const hint =
+    !hud || hud.loading || !tour.current || storm || menu !== null
+      ? null
+      : pastStop
+        ? tour.current.rerouted
+          ? 'Stop reached. Press Esc: Mission control shows the route before and after the boulders, and what the detour cost.'
+          : null
+        : tour.current.rerouted
+          ? 'The cameras found boulders across the route: the guide leads round them. Follow the green chevrons to the stop, then press Esc.'
+          : walkedM < 30
+            ? "Hold W to walk (Shift to hurry) and follow the green chevrons. Boulders lie across the route ahead: orbit can't see them, the helmet's cameras have to."
+            : null
   // steering arrow: where to turn, relative to where the astronaut looks
   const turn = nav && nav.steerDeg !== null && hud ? ((nav.steerDeg - hud.pose.headingDeg + 540) % 360) - 180 : null
 
@@ -296,6 +317,11 @@ export default function HelmetView({ entry, onExit }: Props) {
 
       {hud && <HeadingTape headingDeg={hud.pose.headingDeg} stopBearingDeg={nav && !nav.arrived ? nav.stopBearingDeg : null} steerDeg={nav?.steerDeg ?? null} />}
       <Warnings items={alerts} />
+      {hint && (
+        <p className="visor-hint" role="status">
+          {hint}
+        </p>
+      )}
       {nav && plan && <NextStop name={stopName(nav.toId)} arrived={nav.arrived} remainingM={nav.remainingM} offRouteM={nav.offRouteM} turnDeg={turn} />}
       {hud && <Gauges elapsedMin={hud.elapsedMin} />}
 

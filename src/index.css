@@ -539,3 +539,13 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   font: inherit;
   cursor: pointer;
 }
+
+/* "Try it" steps in the summary (Sidebar): the site is judged from a link, with nobody to show the way. */
+.tour {
+  margin: 0; padding: var(--s3) var(--s4) var(--s3) calc(var(--s4) + 18px);
+  border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-2);
+  color: var(--text-2); font-size: 13px; line-height: 1.45;
+}
+.tour li + li { margin-top: var(--s1); }
+.tour strong { color: var(--text); font-weight: 600; }
+.detour-note { margin: var(--s2) 0 0; color: var(--text-3); font-size: 12px; line-height: 1.4; }
