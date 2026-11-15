@@ -6,13 +6,24 @@ const NO_DATA = 255
 /**
  * Seconds per metre for every cell, Infinity where the crew may not go. Build once per mobility.
  * `penalty` multiplies the cost by slope for a search that prefers gentle ground; it must be 1 on the level.
+ * `blocked` (one byte per cell, same size as the grid, 1 = blocked) marks extra no-go cells, such as
+ * hazards the helmet found on the ground that orbit cannot see.
  */
-export function buildCostGrid(t: Terrain, m: Mobility, penalty?: (slopeDeg: number) => number): Float32Array {
+export function buildCostGrid(
+  t: Terrain,
+  m: Mobility,
+  penalty?: (slopeDeg: number) => number,
+  blocked?: Uint8Array,
+): Float32Array {
   const lookup = new Float32Array(256)
   for (let v = 0; v < 255; v++) lookup[v] = secondsPerMetre(m, v / 2) * (penalty ? penalty(v / 2) : 1)
   lookup[NO_DATA] = Infinity
   const cost = new Float32Array(t.slope.length)
   for (let i = 0; i < cost.length; i++) cost[i] = lookup[t.slope[i]]
+  if (blocked) {
+    if (blocked.length !== cost.length) throw new Error(`blocked has ${blocked.length} cells, the grid ${cost.length}`)
+    for (let i = 0; i < cost.length; i++) if (blocked[i]) cost[i] = Infinity
+  }
   return cost
 }
 

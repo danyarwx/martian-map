@@ -34,8 +34,9 @@ export default defineConfig({
       workbox: {
         // The app, and the site data the navigation screen loads: terrain grids, stop photos, mineral image.
         globPatterns: ['**/*.{js,css,html,png,jpg,json,bin}'],
-        // Rover track files and the slope picture are only used by the planning web app.
-        globIgnores: ['data/M20_*', 'data/jezero_slope.png'],
+        // Rover track files, rover photo frames and the slope picture are only used by the planning web app.
+        // The helmet's terrain tiles and weather (16 MB) are loaded by the helmet view from the network.
+        globIgnores: ['data/M20_*', 'data/jezero_slope.png', 'data/frames/**', 'data/helmet/**'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // the elevation grid is 2.1 MB
         navigateFallback: 'index.html',
         directoryIndex: null,

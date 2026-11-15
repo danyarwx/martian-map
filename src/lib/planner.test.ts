@@ -4,7 +4,8 @@ import { test } from 'node:test'
 import type { Target, Terrain } from '../types.ts'
 import { distanceM, parsePoint } from './geo.ts'
 import { MOBILITY, secondsPerMetre } from './mobility.ts'
-import { planRoute, planRoutes } from './planner.ts'
+import { PLAN_FROM_START_ID, planFrom, planRoute, planRoutes } from './planner.ts'
+import { buildCostGrid } from './astar.ts'
 
 const W = 60
 const H = 40
@@ -241,4 +242,108 @@ test('a replan skips a stop it cannot reach and still goes home', async () => {
   const plan = planFixedOrder(t, MOBILITY.walk, stop('x', 20, 30), [stop('far', 50, 20), stop('near', 15, 20)], habitat)
   assert.deepEqual(plan.order, ['here', 'near', 'habitat'])
   assert.deepEqual(plan.unreachable, ['far'])
+})
+
+/** Blocked-cell mask for the test grid: 1 where `at(col, row)` is true. */
+function blockedWhere(at: (col: number, row: number) => boolean): Uint8Array {
+  const b = new Uint8Array(W * H)
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) if (at(c, r)) b[r * W + c] = 1
+  return b
+}
+
+test('blocked cells are no-go in the cost grid, other cells keep their cost', () => {
+  const t = terrain()
+  const blocked = blockedWhere((c, r) => c === 3 && r === 4)
+  const cost = buildCostGrid(t, MOBILITY.walk, undefined, blocked)
+  assert.equal(cost[4 * W + 3], Infinity)
+  assert.equal(cost[4 * W + 4], buildCostGrid(t, MOBILITY.walk)[4 * W + 4])
+  assert.throws(() => buildCostGrid(t, MOBILITY.walk, undefined, new Uint8Array(5)))
+})
+
+test('a blocked wall on flat ground forces the route through its gap', () => {
+  // Wall of blocked cells across column 25, open only at rows 2-3, on otherwise level ground
+  const blocked = blockedWhere((c, r) => c === 25 && (r > 3 || r < 2))
+  const plan = planRoute(terrain(), MOBILITY.walk, habitat, [stop('a', 45, 20)], 'fast', { blocked })
+  assert.deepEqual(plan.unreachable, [])
+  assert.ok(plan.distanceM > 800, 'detour is longer than the straight line')
+  for (const leg of plan.legs) {
+    const crossing = leg.path.filter((p) => Math.floor(p.lon) === 25)
+    assert.ok(crossing.length > 0 && crossing.every((p) => H - p.lat < 4), 'crosses the wall inside the gap')
+  }
+  // planRoutes passes the cells on to both profiles.
+  const { fast, gentle } = planRoutes(terrain(), MOBILITY.walk, habitat, [stop('a', 45, 20)], null, { blocked })
+  for (const p of [fast, gentle]) {
+    assert.ok(p.legs[0].path.filter((q) => Math.floor(q.lon) === 25).every((q) => H - q.lat < 4), p.profile)
+  }
+  // Without the option nothing changes.
+  assert.equal(planRoute(terrain(), MOBILITY.walk, habitat, [stop('a', 45, 20)]).distanceM, 800)
+})
+
+test('a fully blocked wall makes the target behind it unreachable', () => {
+  const blocked = blockedWhere((c) => c === 25)
+  const plan = planRoute(terrain(), MOBILITY.walk, habitat, [stop('near', 15, 20), stop('far', 45, 20)], 'fast', {
+    blocked,
+  })
+  assert.deepEqual(plan.unreachableWhy, { far: 'no-path' })
+  assert.deepEqual(plan.order, ['habitat', 'near', 'habitat'])
+})
+
+test('planFrom starts where the crew is and keeps the given order of stops', () => {
+  const from = { lon: 10.3, lat: H - 30.8 } // inside cell (10, 30)
+  // 'far' is given first although 'near' is closer: the order must be kept.
+  const plan = planFrom(terrain(), MOBILITY.walk, from, [stop('far', 40, 10), stop('near', 20, 10)], habitat)
+  assert.deepEqual(plan.order, [PLAN_FROM_START_ID, 'far', 'near', 'habitat'])
+  assert.equal(plan.legs.length, 3)
+  assert.deepEqual(plan.legs.map((l) => [l.fromId, l.toId]), [['start', 'far'], ['far', 'near'], ['near', 'habitat']])
+  const first = plan.legs[0].path[0]
+  assert.ok(Math.abs(first.lon - from.lon) <= 1 && Math.abs(first.lat - from.lat) <= 1, `${first.lon}, ${first.lat}`)
+  const end = plan.legs[0].path.at(-1)!
+  assert.deepEqual([end.lon, end.lat], [40.5, H - 10.5])
+  assert.equal(plan.stopMinutes, 2 * MOBILITY.walk.stopMinutes)
+  assert.ok(Math.abs(plan.totalMinutes - plan.travelMinutes - plan.stopMinutes) < 1e-9)
+  assert.deepEqual(plan.unreachable, [])
+})
+
+test('planFrom steps off a blocked cell, goes round blocked ground and skips a stop it cannot reach', () => {
+  // The crew stands on a blocked cell (10, 20) at the end of a wall at column 10 open only to the north;
+  // stop 'shut' is boxed in by blocked cells.
+  const blocked = blockedWhere(
+    (c, r) =>
+      (c === 10 && r >= 5) ||
+      (c >= 48 && c <= 52 && r >= 28 && r <= 32 && !(c === 50 && r === 30)),
+  )
+  const from = { lon: 10.5, lat: H - 20.5 }
+  const plan = planFrom(terrain(), MOBILITY.walk, from, [stop('shut', 50, 30), stop('b', 30, 20)], stop('habitat', 5, 20), {
+    blocked,
+  })
+  assert.deepEqual(plan.order, ['start', 'b', 'habitat'])
+  assert.deepEqual(plan.unreachableWhy, { shut: 'no-path' })
+  const first = plan.legs[0].path[0]
+  assert.ok(Math.abs(first.lon - from.lon) <= 1 && Math.abs(first.lat - from.lat) <= 1, 'snapped next to the crew')
+  assert.notEqual(Math.floor(first.lon), 10, 'not on the blocked cell')
+  const home = plan.legs[1].path
+  const crossing = home.filter((p) => Math.floor(p.lon) === 10)
+  assert.ok(crossing.length > 0 && crossing.every((p) => H - p.lat < 5), 'goes home round the north end of the wall')
+})
+
+test('planFrom reports no way home instead of inventing one', () => {
+  const blocked = blockedWhere((c) => c === 25)
+  const plan = planFrom(terrain(), MOBILITY.walk, { lon: 40.5, lat: H - 20.5 }, [stop('a', 45, 20)], habitat, { blocked })
+  assert.deepEqual(plan.order, ['start', 'a'])
+  assert.deepEqual(plan.unreachableWhy, { habitat: 'no-path' })
+  assert.equal(plan.habitatNoFooting, false)
+})
+
+test('planFrom with the gentle profile reports real time', () => {
+  const plan = planFrom(steepBand(), MOBILITY.walk, { lon: 5.5, lat: H - 20.5 }, [stop('a', 45, 20)], habitat, {
+    profile: 'gentle',
+  })
+  assert.equal(plan.profile, 'gentle')
+  assert.equal(plan.maxSlopeDeg, 0)
+  assert.ok(Math.abs(plan.travelMinutes - (plan.distanceM / 2500) * 60) < 0.01, `${plan.travelMinutes}`)
+})
+
+test('planFrom throws when the crew has nowhere passable to stand', () => {
+  const blocked = blockedWhere(() => true)
+  assert.throws(() => planFrom(terrain(), MOBILITY.walk, { lon: 5.5, lat: 20.5 }, [], habitat, { blocked }), /start point/)
 })

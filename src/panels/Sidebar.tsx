@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react'
+import StopPhoto from './StopPhoto.tsx'
+import type { PhotoData } from '../lib/usePhotoData.ts'
 import type { LatLon, MobilityId, RoutePlan, RouteProfile, SiteConfig, StopView, Target } from '../types.ts'
 import type { PlannerState } from '../lib/usePlanner.ts'
 import { NOTE_SIGNS } from '../lib/explain.ts'
@@ -65,6 +67,8 @@ interface Props {
   plan: RoutePlan | null
   profile: RouteProfile
   views: Record<string, StopView>
+  /** Navcam frames and the terrain grid for photos with markers, null until loaded. */
+  photos: PhotoData | null
   /** True while the next click on the map adds a point. */
   adding: boolean
   notice: Notice | null
@@ -81,7 +85,34 @@ interface Props {
   onProfile: (profile: RouteProfile) => void
   /** Back to the route the first screen shows. */
   onDemo: () => void
+  /** Opens the helmet view on this route, 300 m before the given stop (the first stop when none is given). Absent when the crew is not on foot. */
+  onGoOutside?: (stopId?: string) => void
+  /** Clear every stop and custom point and start the editor again. */
+  onNewRoute: () => void
+  /** Step of the step-by-step editor, or null while the summary is shown. */
+  editStep: number | null
+  onEditStep: (step: number | null) => void
 }
+
+/** One line under each route choice saying what it means. */
+const ROUTE_MEANS: Record<RouteProfile, string> = {
+  fast: 'Shortest time outside',
+  gentle: 'Less steep ground, may take longer',
+}
+
+/** The three things the summary keeps behind a button. */
+type Detail = 'depart' | 'route' | 'safety'
+const DETAIL_TITLES: Record<Detail, string> = { depart: 'When to leave', route: 'Route details', safety: 'Safety' }
+
+/** The step-by-step editor: one question per step. */
+const EDIT_STEPS: { title: string; hint: string }[] = [
+  { title: 'How will the crew travel?', hint: 'Walking reaches steeper ground. The crew rover covers more distance.' },
+  { title: 'Where do you want to go?', hint: 'Tick up to 8 targets or add your own point. The planner finds the safest order.' },
+  {
+    title: 'When do you leave?',
+    hint: 'The suggested time avoids the gusty midday hours and leaves daylight to spare.',
+  },
+]
 
 export default function Sidebar(p: Props) {
   const { site } = p
@@ -89,6 +120,13 @@ export default function Sidebar(p: Props) {
   const focus = p.focusId ? stops.get(p.focusId) : undefined
   /** Departure time the user picked, or null to follow the suggestion. */
   const [startAt, setStartAt] = useState<number | null>(null)
+  /** The detail opened from the summary, or null. */
+  const [detail, setDetail] = useState<Detail | null>(null)
+  const newRoute = () => {
+    setStartAt(null)
+    setDetail(null)
+    p.onNewRoute()
+  }
   const plan = p.plan
   let schedule: Schedule | null = null
   if (plan && plan.legs.length > 0) {
@@ -113,30 +151,64 @@ export default function Sidebar(p: Props) {
           selected={p.selected.has(focus.id)}
           // The cached habitat photo was taken at the landing site, so it is not shown once the habitat has moved.
           view={focus.id === p.habitat.id && p.habitatMoved ? undefined : p.views[focus.id]}
+          photos={p.photos}
           plan={p.plan}
           stops={stops}
           mobility={p.mobility}
           schedule={schedule}
           onFocus={p.onFocus}
+          onGoOutside={p.onGoOutside}
           onToggle={p.onToggle}
           onRemovePoint={p.onRemovePoint}
+          onNewRoute={newRoute}
         />
+      ) : p.editStep !== null ? (
+        <Wizard {...p} step={p.editStep} schedule={schedule} customStart={startAt !== null} onStart={setStartAt} />
+      ) : detail ? (
+        <>
+          <div className="card-head">
+            <button type="button" className="back" onClick={() => setDetail(null)}>
+              <BackArrow />
+              Route overview
+            </button>
+          </div>
+          <div className="sidebar-scroll">
+            <h1 className="detail-title">{DETAIL_TITLES[detail]}</h1>
+            {detail === 'depart' &&
+              (schedule ? (
+                <DeparturePanel schedule={schedule} custom={startAt !== null} onStart={setStartAt} open />
+              ) : (
+                <NothingYet />
+              ))}
+            {detail === 'route' &&
+              (plan && plan.legs.length > 0 ? (
+                <RoutePanel
+                  plan={plan}
+                  mobility={p.mobility}
+                  stops={stops}
+                  schedule={schedule}
+                  terrainSource={p.planner.terrainSource}
+                  open
+                />
+              ) : (
+                <NothingYet />
+              ))}
+            {detail === 'safety' && <SafetyPanel plan={plan} open />}
+          </div>
+        </>
       ) : (
         <>
           <Summary {...p} schedule={schedule} />
           <div className="sidebar-scroll">
-            <MobilityPanel mobility={p.mobility} onMobility={p.onMobility} />
-            <StopsPanel {...p} />
-            {schedule && <DeparturePanel schedule={schedule} custom={startAt !== null} onStart={setStartAt} />}
-            <RoutePanel
-              plan={p.plan}
-              mobility={p.mobility}
-              stops={stops}
-              schedule={schedule}
-              terrainSource={p.planner.terrainSource}
-            />
-            <SafetyPanel plan={p.plan} />
+            <RouteStops {...p} onNewRoute={newRoute} />
           </div>
+          <nav className="details-nav" aria-label="More about this route">
+            {(Object.keys(DETAIL_TITLES) as Detail[]).map((id) => (
+              <button key={id} type="button" className="btn" onClick={() => setDetail(id)}>
+                {DETAIL_TITLES[id]}
+              </button>
+            ))}
+          </nav>
         </>
       )}
     </aside>
@@ -167,7 +239,9 @@ const Chevron = () => (
 )
 
 /** A panel that stays closed until asked for: its header says what is inside and the one value worth seeing closed. */
-function Fold({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
+function Fold({ title, hint, open, children }: { title: string; hint?: ReactNode; open?: boolean; children: ReactNode }) {
+  // Opened on its own page (a detail or an editor step), where the page already carries the title.
+  if (open) return <section className="panel">{children}</section>
   return (
     <details className="panel fold">
       <summary>
@@ -200,8 +274,11 @@ function Summary(p: Props & { schedule: Schedule | null }) {
       <section className="summary" aria-live="polite">
         <div className="empty">
           <strong>No stops yet</strong>
-          <p className="muted">Tick a target below, or add your own point on the map.</p>
-          <button type="button" className="btn btn--primary" onClick={p.onDemo}>
+          <p className="muted">Plan a route step by step, or start from the demo walk.</p>
+          <button type="button" className="btn btn--primary" onClick={() => p.onEditStep(1)}>
+            Plan a route step by step
+          </button>
+          <button type="button" className="btn btn--block" onClick={p.onDemo}>
             Use the demo route (3 stops)
           </button>
         </div>
@@ -296,7 +373,7 @@ function Summary(p: Props & { schedule: Schedule | null }) {
           <Alert />
           <span>
             <strong>Not enough daylight</strong> for a {clock(p.schedule.chosen.start)} departure. Pick an earlier time
-            in step 3.
+            under When to leave.
           </span>
         </div>
       )}
@@ -323,13 +400,14 @@ function Summary(p: Props & { schedule: Schedule | null }) {
         </p>
       )}
       {plans && routed && !plans.gentleIsSame && (
-        <div className="choice choice--inset" role="group" aria-label="Which route">
+        <div className="choice choice--inset choice--route" role="group" aria-label="Which route">
           {(['fast', 'gentle'] as const).map((id) => {
             const option = plans[id]
             return (
               <button key={id} type="button" aria-pressed={id === p.profile} onClick={() => p.onProfile(id)}>
                 {!option.fitsOneEva && <em className="tag">over {m.maxEvaHours} h</em>}
                 <strong>{ROUTE_LABELS[id]}</strong>
+                <span className="means">{ROUTE_MEANS[id]}</span>
                 <small>
                   {duration(option.totalMinutes)} · {Math.round(option.steepM / 10) * 10} m steep
                 </small>
@@ -345,8 +423,8 @@ function Summary(p: Props & { schedule: Schedule | null }) {
               Switch to the crew rover
             </button>
           )}
-          <button type="button" className={`btn btn--block${mobility === 'walk' ? '' : ' btn--primary'}`} onClick={() => firstStop && p.onFocus(firstStop)}>
-            Review stops to drop one
+          <button type="button" className={`btn btn--block${mobility === 'walk' ? '' : ' btn--primary'}`} onClick={() => p.onEditStep(2)}>
+            Choose fewer stops
           </button>
         </div>
       ) : (
@@ -357,6 +435,11 @@ function Summary(p: Props & { schedule: Schedule | null }) {
           onClick={() => firstStop && p.onFocus(firstStop)}
         >
           Walk through stops <Arrow />
+        </button>
+      )}
+      {p.onGoOutside && routed && !planning && (
+        <button type="button" className="btn btn--block" onClick={() => p.onGoOutside?.()} title="Helmet view: walk the route in 3D with live hazard detection">
+          Go outside (helmet view)
         </button>
       )}
       {routed && !planning && (
@@ -382,7 +465,6 @@ function Summary(p: Props & { schedule: Schedule | null }) {
 function MobilityPanel({ mobility, onMobility }: { mobility: MobilityId; onMobility: (m: MobilityId) => void }) {
   return (
     <section className="panel">
-      <h2 className="step">1 · How the crew moves</h2>
       <div className="choice" role="group" aria-label="How the crew moves">
         {Object.values(MOBILITY).map((m) => (
           <button key={m.id} type="button" aria-pressed={m.id === mobility} onClick={() => onMobility(m.id)}>
@@ -427,18 +509,13 @@ function StopsPanel(p: Props) {
     <section className="panel">
       <div className="panel-head">
         <h2 className="step">
-          2 · Stops <span className="num">{p.selected.size}/{p.maxSelected}</span>
+          Stops <span className="num">{p.selected.size}/{p.maxSelected}</span>
         </h2>
-        <button
-          type="button"
-          className={`btn btn--sm${p.adding ? ' btn--active' : ''}`}
-          aria-pressed={p.adding}
-          onClick={() => p.onAdding(!p.adding)}
-        >
-          {p.adding ? 'Cancel' : '+ Add point'}
-        </button>
       </div>
-      {p.adding && <p className="adding-hint">Click the map to place the point. Esc cancels.</p>}
+      <button type="button" className="btn btn--add" aria-pressed={p.adding} onClick={() => p.onAdding(!p.adding)}>
+        {p.adding ? 'Done adding points' : '+ Add your own point on the map'}
+      </button>
+      {p.adding && <p className="adding-hint">Click the map to place points. Press Done (or Esc) when you have them all.</p>}
       {p.notice?.at === 'point' && <p className="field-error" role="alert">{p.notice.text}</p>}
 
       <ul className="stops">
@@ -471,8 +548,17 @@ function StopsPanel(p: Props) {
       )}
 
       <ul className="stops">
-        {p.site.targets.map((t) => row(t, false))}
-        {p.custom.map((t) => row(t, true))}
+        {(() => {
+          // Chosen stops first, the latest choice on top (a Set keeps the order things were added in).
+          // The rest keep their original order, so an unticked stop goes back to its place.
+          const all: [Target, boolean][] = [...p.site.targets.map((t): [Target, boolean] => [t, false]), ...p.custom.map((t): [Target, boolean] => [t, true])]
+          const byId = new Map(all.map((e) => [e[0].id, e]))
+          const chosen = [...p.selected]
+            .reverse()
+            .map((id) => byId.get(id))
+            .filter((e): e is [Target, boolean] => e !== undefined)
+          return [...chosen, ...all.filter(([t]) => !p.selected.has(t.id))].map(([t, custom]) => row(t, custom))
+        })()}
       </ul>
 
       <button type="button" className="btn btn--sm" aria-expanded={typing} onClick={() => setTyping(!typing)} style={{ alignSelf: 'flex-start' }}>
@@ -539,10 +625,12 @@ function DeparturePanel({
   schedule,
   custom,
   onStart,
+  open,
 }: {
   schedule: Schedule
   custom: boolean
   onStart: (minute: number | null) => void
+  open?: boolean
 }) {
   const { best, chosen } = schedule
   const W = 372
@@ -553,17 +641,29 @@ function DeparturePanel({
   for (let t = STRIP_FROM; t <= STRIP_TO; t += 15) curve.push(`${x(t).toFixed(1)},${y(temperatureC(t)).toFixed(1)}`)
   const isBest = chosen.start === best.start
   return (
-    <Fold title="3 · When to leave" hint={`${clock(chosen.start)} → ${clock(chosen.end)}`}>
-      <div className="panel-head">
-        <p>
-          {isBest ? 'Best departure' : 'Your departure'}: <strong className="num">{clock(chosen.start)}</strong>, back at{' '}
-          <strong className="num">{clock(chosen.end)}</strong>.
-        </p>
-        {custom && !isBest && (
-          <button type="button" className="btn btn--sm" onClick={() => onStart(null)}>
-            Use best · {clock(best.start)}
-          </button>
-        )}
+    <Fold title="When to leave" hint={`${clock(chosen.start)} → ${clock(chosen.end)}`} open={open}>
+      <div className="depart-head">
+        <div className="depart-times">
+          <div>
+            <span>{isBest ? 'Best departure' : 'Your departure'}</span>
+            <strong className="num">{clock(chosen.start)}</strong>
+          </div>
+          <div>
+            <span>Back at the habitat</span>
+            <strong className="num">{clock(chosen.end)}</strong>
+          </div>
+        </div>
+        {/* Always in the layout, only hidden, so sliding past the best time does not make the panel jump. */}
+        <button
+          type="button"
+          className="btn btn--sm"
+          style={{ visibility: custom && !isBest ? 'visible' : 'hidden' }}
+          aria-hidden={!(custom && !isBest)}
+          tabIndex={custom && !isBest ? 0 : -1}
+          onClick={() => onStart(null)}
+        >
+          Use best · {clock(best.start)}
+        </button>
       </div>
       <svg className="day" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Day chart: excursion from ${clock(chosen.start)} to ${clock(chosen.end)}, daylight ${clock(DAY.sunrise)} to ${clock(DAY.sunset)}, gust hours ${clock(DAY.gustsFrom)} to ${clock(DAY.gustsTo)}`}>
         <rect x="0" y="0" width={W} height="64" fill="var(--bg)" rx="6" />
@@ -697,16 +797,18 @@ function RoutePanel({
   stops,
   schedule,
   terrainSource,
+  open,
 }: {
   plan: RoutePlan | null
   mobility: MobilityId
   stops: Map<string, Target>
   schedule: Schedule | null
   terrainSource: string | null
+  open?: boolean
 }) {
   if (!plan || plan.legs.length === 0) return null
   return (
-    <Fold title="4 · Route, leg by leg" hint={`${plan.legs.length} legs · climb ${Math.round(plan.ascentM)} m`}>
+    <Fold title="Route, leg by leg" hint={`${plan.legs.length} legs · climb ${Math.round(plan.ascentM)} m`} open={open}>
       <Profile plan={plan} />
       <p className="muted">
         {duration(plan.travelMinutes)} moving, {duration(plan.stopMinutes)} working at stops. Climb{' '}
@@ -757,11 +859,11 @@ function RoutePanel({
   )
 }
 
-function SafetyPanel({ plan }: { plan: RoutePlan | null }) {
+function SafetyPanel({ plan, open }: { plan: RoutePlan | null; open?: boolean }) {
   const hours = (plan?.totalMinutes ?? 0) / 60
   const dose = evaDoseMsv(hours)
   return (
-    <Fold title="5 · Safety and conditions" hint={hours > 0 ? `${dose.toFixed(2)} mSv` : undefined}>
+    <Fold title="Safety and conditions" hint={hours > 0 ? `${dose.toFixed(2)} mSv` : undefined} open={open}>
       <p>
         {hours > 0 && (
           <>
@@ -800,13 +902,16 @@ function StopCard(p: {
   isCustom: boolean
   selected: boolean
   view?: StopView
+  photos: PhotoData | null
   plan: RoutePlan | null
   stops: Map<string, Target>
   mobility: MobilityId
   schedule: Schedule | null
   onFocus: (id: string | null) => void
+  onGoOutside?: (stopId?: string) => void
   onToggle: (id: string) => void
   onRemovePoint: (id: string) => void
+  onNewRoute: () => void
 }) {
   const { stop, view, plan } = p
   const route = plan && plan.legs.length > 0 ? plan.order.slice(1, -1) : []
@@ -821,6 +926,18 @@ function StopCard(p: {
     : 0
   const walkHome = leg && leg.walkHomeMin.length > 0 ? leg.walkHomeMin[leg.walkHomeMin.length - 1] : null
   const arriveAt = inRoute && p.schedule ? p.schedule.steps[at + 1].at : null
+  // Places to mark on the photo: the habitat and every stop of the route. A view from the stop faces the way on.
+  // Without a route only the habitat, which `stops` lists first.
+  const routeIds = plan && plan.legs.length > 0 ? [...new Set(plan.order)] : [...p.stops.keys()].slice(0, 1)
+  const landmarks = routeIds.flatMap((id) => {
+    const s = p.stops.get(id)
+    return s ? [{ id: s.id, name: s.name, lat: s.lat, lon: s.lon }] : []
+  })
+  const ahead = p.isHabitat ? route[0] : next ?? plan?.order[0]
+  const lookAt = [ahead, plan?.order[0]].flatMap((id) => {
+    const s = id ? p.stops.get(id) : undefined
+    return s && s.id !== stop.id ? [{ lat: s.lat, lon: s.lon }] : []
+  })
   const eyebrow = p.isHabitat ? 'Start and end' : inRoute ? `Stop ${at + 1} · ${p.isCustom ? 'your point' : 'science target'}` : 'Not on the route'
 
   return (
@@ -842,15 +959,7 @@ function StopCard(p: {
       </div>
       <div className="sidebar-scroll">
         <div className="card">
-          {view && (
-            <figure>
-              <img src={view.file} alt={`Ground view near ${stop.name}`} />
-              <figcaption>
-                {view.camera}, sol {view.sol}
-                {view.distanceM > 20 ? `, taken ${view.distanceM} m from this spot` : ''} · {view.credit}
-              </figcaption>
-            </figure>
-          )}
+          <StopPhoto stop={stop} landmarks={landmarks} lookAt={lookAt} photos={p.photos} fallback={view} />
           <div>
             <div className="eyebrow">{eyebrow}</div>
             <h1>{stop.name}</h1>
@@ -933,6 +1042,11 @@ function StopCard(p: {
             {next ? `Next: ${p.stops.get(next)?.name}` : 'Back to habitat'} <Arrow />
           </button>
         )}
+        {inRoute && p.onGoOutside && (
+          <button type="button" className="btn btn--block" onClick={() => p.onGoOutside?.(stop.id)} title="Helmet view: start 300 m before this stop">
+            Go outside here (helmet view)
+          </button>
+        )}
         {!inRoute && !p.isHabitat && !p.selected && (
           <button type="button" className="btn btn--primary" onClick={() => p.onToggle(stop.id)}>
             Add to the route
@@ -959,6 +1073,135 @@ function StopCard(p: {
             First stop: {p.stops.get(route[0])?.name} <Arrow />
           </button>
         )}
+        {p.isHabitat && route.length > 0 && (
+          <button type="button" className="btn btn--block" onClick={p.onNewRoute}>
+            New route
+          </button>
+        )}
+      </div>
+    </>
+  )
+}
+
+const BackArrow = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+    <path d="M19 12H5M11 18l-6-6 6-6" />
+  </svg>
+)
+
+const NothingYet = () => (
+  <section className="panel">
+    <p className="muted">Plan a route first: there is nothing to show yet.</p>
+  </section>
+)
+
+/** The summary's stop list, in visiting order. Each row opens its stop card. */
+function RouteStops(p: Props) {
+  const { plan } = p
+  const all = new Map([...p.site.targets, ...p.custom].map((t) => [t.id, t]))
+  const routed = plan !== null && plan.legs.length > 0
+  const order = routed ? plan.order.slice(1, -1) : [...p.selected]
+  const blocked = (plan?.unreachable ?? []).filter((id) => p.selected.has(id) && !order.includes(id))
+  const custom = new Set(p.custom.map((t) => t.id))
+  const row = (id: string, badge: ReactNode, className: string) => {
+    const t = all.get(id)
+    if (!t) return null
+    return (
+      <li key={id} className={`stop-row${p.focusId === id ? ' is-focus' : ''}`}>
+        <span className={className} aria-hidden="true">
+          {badge}
+        </span>
+        <button type="button" className="info" onClick={() => p.onFocus(id)}>
+          <strong>{t.name}</strong>
+          <small>{t.summary}</small>
+        </button>
+      </li>
+    )
+  }
+  return (
+    <section className="panel">
+      <div className="panel-head">
+        <h2 className="step">Your stops</h2>
+        <div className="pair-sm">
+          <button type="button" className="btn btn--sm" onClick={() => p.onEditStep(1)}>
+            Edit route
+          </button>
+          <button type="button" className="btn btn--sm" onClick={p.onNewRoute}>
+            New route
+          </button>
+        </div>
+      </div>
+      <ul className="stops">
+        <li className={`stop-row${p.focusId === p.habitat.id ? ' is-focus' : ''}`}>
+          <span className="badge badge--habitat" aria-hidden="true">H</span>
+          <button type="button" className="info" onClick={() => p.onFocus(p.habitat.id)}>
+            <strong>Habitat</strong>
+            <small>Start and end</small>
+          </button>
+        </li>
+        {order.map((id, i) => row(id, routed ? i + 1 : '', custom.has(id) ? 'badge badge--custom' : 'badge'))}
+        {blocked.map((id) => row(id, '!', 'badge badge--blocked'))}
+      </ul>
+    </section>
+  )
+}
+
+/** Editing the route one question at a time. */
+function Wizard(
+  p: Props & { step: number; schedule: Schedule | null; customStart: boolean; onStart: (minute: number | null) => void },
+) {
+  const { plan, planner } = p
+  const step = Math.min(Math.max(p.step, 1), EDIT_STEPS.length)
+  const last = step === EDIT_STEPS.length
+  const { title, hint } = EDIT_STEPS[step - 1]
+  const routed = plan !== null && plan.legs.length > 0
+  return (
+    <>
+      <div className="wizard-head">
+        <div className="wizard-bar" aria-hidden="true">
+          {EDIT_STEPS.map((_, i) => (
+            <i key={i} className={i < step ? 'is-on' : ''} />
+          ))}
+        </div>
+        <span className="muted">
+          Step {step} of {EDIT_STEPS.length}
+        </span>
+        <h1>{title}</h1>
+        <p className="muted">{hint}</p>
+      </div>
+      <div className="sidebar-scroll">
+        {step === 1 && <MobilityPanel mobility={p.mobility} onMobility={p.onMobility} />}
+        {step === 2 && <StopsPanel {...p} />}
+        {step === 3 &&
+          (p.schedule ? (
+            <DeparturePanel schedule={p.schedule} custom={p.customStart} onStart={p.onStart} open />
+          ) : (
+            <section className="panel">
+              <p className="muted">{planner.planning ? 'Planning the route…' : 'Pick at least one reachable stop first.'}</p>
+            </section>
+          ))}
+      </div>
+      <div className="wizard-foot">
+        <p className={`wizard-status${routed && !plan.fitsOneEva ? ' is-bad' : ''}`} aria-live="polite">
+          {planner.planning
+            ? 'Planning the route…'
+            : routed
+              ? `${duration(plan.totalMinutes)} outside · ${km(plan.distanceM)}${plan.fitsOneEva ? ' · fits one excursion' : ' · too long for one excursion'}`
+              : 'No route yet'}
+        </p>
+        <div className="pair">
+          <button type="button" className="btn" onClick={() => p.onEditStep(step === 1 ? null : step - 1)}>
+            {step === 1 ? 'Close' : 'Back'}
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={step === 2 && p.selected.size === 0}
+            onClick={() => p.onEditStep(last ? null : step + 1)}
+          >
+            {last ? 'See the plan' : 'Next'} <Arrow />
+          </button>
+        </div>
       </div>
     </>
   )

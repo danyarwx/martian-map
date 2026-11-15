@@ -11,7 +11,7 @@ import type {
   WalkBackImage,
 } from '../types.ts'
 import { MOBILITY } from './mobility.ts'
-import { planFixedOrder, planRoutes } from './planner.ts'
+import { planFixedOrder, planFrom, planRoutes } from './planner.ts'
 import { loadTerrain } from './terrain.ts'
 import { walkBackImage, walkHomeSeconds } from './walkback.ts'
 
@@ -44,6 +44,29 @@ export type PlanResponse =
   | { id: number; ok: true; plans: RoutePlans; terrainSource: string; walkBack?: WalkBackImage }
   | { id: number; ok: false; error: string }
 
+/**
+ * Re-plan from where the crew is now (the helmet's global re-route, see planner.ts `planFrom`).
+ * Plan requests have no `type`; this one is told apart by `type: 'replan'`.
+ */
+export interface ReplanRequest {
+  type: 'replan'
+  id: number
+  terrain: SiteConfig['terrain']
+  mobility: MobilityId
+  /** Where the crew is now. */
+  from: LatLon
+  /** Stops still to visit, in this order. */
+  stops: Target[]
+  habitat: Target
+  /** Terrain cell indices (row × width + col) that are no-go on top of the slope limit. */
+  blocked: number[]
+  profile: RouteProfile
+}
+
+export type ReplanResponse =
+  | { type: 'replan'; id: number; ok: true; plan: RoutePlan }
+  | { type: 'replan'; id: number; ok: false; error: string }
+
 export type RerouteResponse =
   | { kind: 'reroute'; id: number; ok: true; plan: RoutePlan }
   | { kind: 'reroute'; id: number; ok: false; error: string }
@@ -64,8 +87,36 @@ function homeFor(t: Terrain, habitat: Target, picture: boolean): { seconds: Floa
   return { seconds: home.seconds, walkBack: walkBackImage(t, home.seconds) }
 }
 
-self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
-  const req = e.data
+async function replan(req: ReplanRequest) {
+  const fail = (err: unknown) =>
+    self.postMessage({ type: 'replan', id: req.id, ok: false, error: String(err) } satisfies ReplanResponse)
+  let t: Terrain
+  try {
+    terrain ??= loadTerrain(req.terrain)
+    t = await terrain
+  } catch (err) {
+    terrain = undefined // try loading again next time
+    return fail(err)
+  }
+  try {
+    const blocked = new Uint8Array(t.width * t.height)
+    for (const i of req.blocked) if (i >= 0 && i < blocked.length) blocked[i] = 1
+    // The cached walk-back times; the planning screen still gets their picture with its next plan.
+    const homeSec = homeFor(t, req.habitat, false).seconds
+    const plan = planFrom(t, MOBILITY[req.mobility], req.from, req.stops, req.habitat, {
+      blocked,
+      profile: req.profile,
+      homeSec,
+    })
+    self.postMessage({ type: 'replan', id: req.id, ok: true, plan } satisfies ReplanResponse)
+  } catch (err) {
+    fail(err) // e.g. no passable ground near the crew: the caller keeps its current plan
+  }
+}
+
+self.onmessage = async (e: MessageEvent<WorkerRequest | ReplanRequest>) => {
+  if ('type' in e.data && e.data.type === 'replan') return replan(e.data)
+  const req = e.data as WorkerRequest
   try {
     terrain ??= loadTerrain(req.terrain)
     const t = await terrain

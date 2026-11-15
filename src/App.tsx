@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { JEZERO } from './data/jezero.ts'
 import { inBounds } from './lib/geo.ts'
 import { usePlanner } from './lib/usePlanner.ts'
+import { usePhotoData } from './lib/usePhotoData.ts'
 import { useTerrainMeta } from './lib/useTerrainMeta.ts'
+import Landing from './Landing.tsx'
 import MarsMap from './map/MarsMap.tsx'
 import Sidebar, { type Notice } from './panels/Sidebar.tsx'
+import type { HelmetEntry, HelmetExit } from './helmet/contracts.ts'
+import { pointBeforeEnd } from './helmet/world/path.ts'
 import type { LatLon, MobilityId, RouteProfile, StopView, Target } from './types.ts'
 
 const site = JEZERO
+/** The helmet (three.js) loads only when someone goes outside, so the planner's first load stays small. */
+const HelmetView = lazy(() => import('./helmet/HelmetView.tsx'))
+const isHelmetHash = () => window.location.hash === '#helmet'
+/** Dev page: scores the helmet's computer vision against the simulated world (src/helmet/eval). */
+const HelmetEval = lazy(() => import('./helmet/eval/EvalView.tsx'))
 // A walk that fits one excursion, so the first screen already shows a planned route.
 const INITIAL = ['three-forks', 'delta-front', 'seitah']
 /** Most targets on one route. The visiting order is found by trying every order, which grows fast. */
@@ -19,6 +28,20 @@ const TOO_MANY = `A route can have at most ${MAX_SELECTED} targets. Untick one f
 const coordinates = (p: LatLon) => `${p.lat.toFixed(5)}° N, ${p.lon.toFixed(5)}° E`
 
 export default function App() {
+  const [helmetOpen, setHelmetOpen] = useState(isHelmetHash)
+  /** The plan handed to the helmet by "Go outside"; null when the helmet was opened by #helmet (its own demo route). */
+  const [helmetEntry, setHelmetEntry] = useState<HelmetEntry | null>(null)
+  /** What the helmet brought back: the ground it saw, the hazards it found, its re-routed plan. */
+  const [helmetExit, setHelmetExit] = useState<HelmetExit | null>(null)
+  const [helmetNote, setHelmetNote] = useState(false)
+  useEffect(() => {
+    const onHash = () => {
+      setHelmetOpen(isHelmetHash())
+      if (!isHelmetHash()) setHelmetEntry(null)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   const [mobility, setMobility] = useState<MobilityId>('walk')
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set(INITIAL))
   const [focusId, setFocusId] = useState<string | null>(null)
@@ -31,8 +54,13 @@ export default function App() {
   const [adding, setAdding] = useState(false)
   /** One line about the last action that was refused. */
   const [notice, setNotice] = useState<Notice | null>(null)
+  /** Step of the step-by-step route editor, or null while the summary is shown. */
+  const [editStep, setEditStep] = useState<number | null>(null)
+  /** The landing page, or the planner. Kept in the URL hash so the browser's back button works. */
+  const [screen, setScreen] = useState<'landing' | 'plan'>(() => (window.location.hash === '#plan' ? 'plan' : 'landing'))
   const pointNo = useRef(0)
   const terrainMeta = useTerrainMeta(site)
+  const photos = usePhotoData(site)
 
   const habitat = useMemo<Target>(
     () =>
@@ -64,6 +92,12 @@ export default function App() {
       .then((r) => (r.ok ? r.json() : {}))
       .then(setViews)
       .catch(() => setViews({}))
+  }, [])
+
+  useEffect(() => {
+    const onHash = () => setScreen(window.location.hash === '#plan' ? 'plan' : 'landing')
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   useEffect(() => {
@@ -119,8 +153,8 @@ export default function App() {
         ...p,
       }
       setCustom((list) => [...list, point])
+      // The point joins the list without opening its card, like ticking a suggested target.
       setSelected(new Set(selected).add(point.id))
-      setFocusId(point.id)
       return null
     },
     [refusal, selected],
@@ -152,30 +186,109 @@ export default function App() {
     setSelected(new Set(INITIAL))
   }, [])
 
+  /** Start over: no stops, no custom points, habitat back at the landing site, then the editor from step 1. */
+  const newRoute = useCallback(() => {
+    setNotice(null)
+    setAdding(false)
+    setCustom([])
+    setSelected(new Set())
+    setHabitatAt(null)
+    setMobility('walk')
+    setProfile('fast')
+    setFocusId(null)
+    pointNo.current = 0
+    setEditStep(1)
+  }, [])
+
   const resetHabitat = useCallback(() => {
     setNotice(null)
     setHabitatAt(null)
   }, [])
 
-  /** A click on the map while "Add point on map" is on. A refused spot leaves the mode on for another try. */
+  /** A click on the map while "Add point on map" is on. The mode stays on, so several points can be added in a row. */
   const pickOnMap = useCallback(
     (p: LatLon) => {
-      if (!addPoint(p)) setAdding(false)
+      addPoint(p)
     },
     [addPoint],
   )
 
+  /** Suit up: the helmet opens 300 m before a stop of the chosen route (its first stop when none is named). */
+  const goOutside = (stopId?: string) => {
+    if (!plan || plan.legs.length === 0) return
+    const legIndex = Math.max(0, stopId ? plan.legs.findIndex((l) => l.toId === stopId) : 0)
+    const start = pointBeforeEnd(plan.legs[legIndex].path, 300)
+    setHelmetEntry({ plan, startAt: start.at, legIndex })
+    setHelmetOpen(true)
+  }
+
+  if (window.location.hash === '#helmet-eval') {
+    return (
+      <Suspense fallback={null}>
+        <HelmetEval />
+      </Suspense>
+    )
+  }
+  if (helmetOpen) {
+    return (
+      <Suspense fallback={<div className="helmet-loading">Suiting up…</div>}>
+        <HelmetView
+          entry={helmetEntry}
+          onExit={(exit) => {
+            // back to where the helmet was opened from: the planner keeps its #plan, #helmet alone goes to the start
+            history.replaceState(null, '', window.location.pathname + window.location.search + (screen === 'plan' ? '#plan' : ''))
+            if (exit.seen || exit.hazards.length || exit.plan) {
+              setHelmetExit(exit)
+              setHelmetNote(true)
+            }
+            setHelmetEntry(null)
+            setHelmetOpen(false)
+          }}
+        />
+      </Suspense>
+    )
+  }
+
+  const openPlanner = () => {
+    window.location.hash = 'plan'
+    setScreen('plan')
+  }
+
+  if (screen === 'landing') {
+    return (
+      <Landing
+        site={site}
+        view={views[site.habitat.id]}
+        onOwn={() => {
+          setNotice(null)
+          setSelected(new Set())
+          setFocusId(null)
+          setEditStep(1)
+          openPlanner()
+        }}
+      />
+    )
+  }
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
+        <button
+          type="button"
+          className="brand-link"
+          aria-label="Martian Map: back to the start page"
+          onClick={() => {
+            window.location.hash = ''
+            setScreen('landing')
+          }}
+        >
           <span className="brand-mark" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a0e06" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 20l6-12 4 7 3-4 5 9z" />
             </svg>
           </span>
           <strong>Martian Map</strong>
-        </div>
+        </button>
         <span className="crumb">Excursion planner</span>
         <span className="sep" aria-hidden="true">/</span>
         <span>{site.name}</span>
@@ -183,6 +296,19 @@ export default function App() {
         <span className="hint">{site.scienceGoal}</span>
       </header>
       <div className="workspace">
+        {helmetExit && helmetNote && (
+          <p className="helmet-return" role="status">
+            <span>
+              Back from the helmet: {helmetExit.hazards.length} hazard{helmetExit.hazards.length === 1 ? '' : 's'} found
+              {helmetExit.rerouteDeltaMin !== undefined &&
+                `, route ${Math.abs(helmetExit.rerouteDeltaMin) < 0.5 ? 'changed (under 1 min longer)' : `${helmetExit.rerouteDeltaMin > 0 ? '+' : '−'}${Math.round(Math.abs(helmetExit.rerouteDeltaMin))} min`} (dashed line)`}
+              . The ground the helmet saw is framed on the map.
+            </span>
+            <button type="button" onClick={() => setHelmetNote(false)} aria-label="Dismiss">
+              Close
+            </button>
+          </p>
+        )}
         <MarsMap
           site={site}
           habitat={habitat}
@@ -199,6 +325,9 @@ export default function App() {
           onMovePoint={movePoint}
           onPick={pickOnMap}
           onProfile={setProfile}
+          seenLayer={helmetExit?.seen ?? null}
+          helmetHazards={helmetExit?.hazards}
+          helmetRoute={helmetExit?.plan ? helmetExit.plan.legs.map((l) => l.path) : undefined}
         />
         <Sidebar
           site={site}
@@ -213,10 +342,13 @@ export default function App() {
           plan={plan}
           profile={shown}
           views={views}
+          photos={photos}
           adding={adding}
           notice={notice}
           maxSelected={MAX_SELECTED}
           onDemo={demo}
+          onGoOutside={mobility === 'walk' ? goOutside : undefined}
+          onNewRoute={newRoute}
           onMobility={setMobility}
           onToggle={toggle}
           onFocus={setFocusId}
@@ -226,6 +358,8 @@ export default function App() {
           onAddPoint={addPoint}
           onRemovePoint={removePoint}
           onProfile={setProfile}
+          editStep={editStep}
+          onEditStep={setEditStep}
         />
       </div>
     </div>
