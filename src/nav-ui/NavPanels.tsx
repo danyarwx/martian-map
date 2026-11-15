@@ -8,6 +8,7 @@ import type { NavState, UpcomingManeuver } from '../nav/events.ts'
 import { GPS_WARN_ACCURACY_M, type GpsStatus } from '../nav/gps.ts'
 import { compassShort } from '../nav/geometry.ts'
 import { spokenDistance, type Maneuver } from '../nav/instructions.ts'
+import { conditions } from '../nav/conditions.ts'
 import type { NavRunControls, NavRunView } from './useNavRun.ts'
 
 /** Clock time of a Date.now() value, hh:mm. */
@@ -221,12 +222,40 @@ function TripRow({ label, name, metres, minutes, bad, note, children }: {
     <section className={`trip-row${bad ? ' is-bad' : ''}`}>
       <span className="label">{label}</span>
       {name && <strong className="trip-name">{name}</strong>}
-      <p className="trip-figures num">
-        <span>{metres === null ? '…' : km(metres)}</span>
-        <span>{minutes === null ? '…' : duration(minutes)}</span>
-      </p>
+      <div className="trip-line">
+        <p className="trip-figures num">
+          <span>{metres === null ? '…' : km(metres)}</span>
+          <span>{minutes === null ? '…' : duration(minutes)}</span>
+        </p>
+        {children}
+      </div>
       {note && <p className="trip-note">{note}</p>}
-      {children}
+    </section>
+  )
+}
+
+/** Time limits and typical conditions, as small tiles. Only the time limits turn amber or red. */
+function ConditionsGrid({ view, returning }: { view: NavRunView; returning: boolean }) {
+  const { state } = view
+  const tiles = conditions({
+    lmst: view.lmst,
+    minutesOut: (view.missionNow - view.missionStart) / 60000,
+    routeRemainingMin: state.routeRemainingMin,
+    turnBackLmst: view.turnBackLmst,
+    returning,
+    finished: state.status === 'finished',
+  })
+  return (
+    <section aria-label="Conditions" title="Typical sol from Perseverance MEDA data, not a forecast">
+      <div className="cond-grid">
+        {tiles.map((t) => (
+          <div key={t.id} className={`cond-tile is-${t.level}`}>
+            <span className="label">{t.label}</span>
+            <strong className="num">{t.value}</strong>
+            {t.note && <span className="cond-note num">{t.note}</span>}
+          </div>
+        ))}
+      </div>
     </section>
   )
 }
@@ -262,7 +291,7 @@ export function NavPanel({ view, stops, onReturn }: NavPanelProps & { onReturn?:
   const homeNext = state.nextStopId === view.plan.order[view.plan.order.length - 1]
   const canReturn = !!onReturn && !returning && !homeNext && state.status !== 'finished' && state.status !== 'idle'
   return (
-    <div className="nav-scroll">
+    <div className="nav-scroll nav-scroll--run">
       <TripRow label="Next stop" name={nextStop?.name ?? '—'} metres={state.legRemainingM} minutes={state.legRemainingMin} />
       <TripRow label="All stops and back" metres={state.routeRemainingM} minutes={state.routeRemainingMin} />
       <TripRow
@@ -274,6 +303,7 @@ export function NavPanel({ view, stops, onReturn }: NavPanelProps & { onReturn?:
       >
         {canReturn && <GoToBase onReturn={onReturn} />}
       </TripRow>
+      <ConditionsGrid view={view} returning={returning || homeNext} />
     </div>
   )
 }

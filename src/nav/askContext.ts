@@ -2,7 +2,7 @@
 // api/ask.js, where a language model picks the ones that answer it. The model is told to use nothing else,
 // so everything the crew may ask about has to be written here, in plain words with units spelled out.
 import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN } from '../lib/safety.ts'
-import { clock, DAY, temperatureC } from '../lib/schedule.ts'
+import { clock, DAY, temperatureC, windAt } from '../lib/schedule.ts'
 import type { Mobility, RoutePlan, Target } from '../types.ts'
 import { saidDuration } from './alerts.ts'
 import type { NavState, UpcomingManeuver } from './events.ts'
@@ -133,6 +133,8 @@ export function askContext(i: AskContextInput): string {
   lines.push(
     `Air temperature now: ${degreesC(temperatureC(i.lmst))}. In one hour: ${degreesC(temperatureC(i.lmst + 60))}. Warmest today ${degreesC(DAY.warmestC)} at ${clock(DAY.warmestAt)}. Typical sol from Perseverance MEDA data, not a forecast.`,
   )
+  const wind = windAt(i.lmst)
+  lines.push(`Wind now: ${Math.round(wind.windMs)} meters per second, gusts up to ${Math.round(wind.gustMs)} meters per second (typical sol).`)
   const gusts =
     i.lmst < DAY.gustsFrom
       ? `start in ${saidDuration(DAY.gustsFrom - i.lmst)}`

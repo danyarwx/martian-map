@@ -67,6 +67,16 @@
 .trip-note { margin: var(--s1) 0 0; font-weight: 600; }
 .trip-row.is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
 .trip-row.is-bad .trip-figures, .trip-row.is-bad .trip-note { color: var(--danger); }
+/* Conditions: time limits and typical weather, two small tiles per line. */
+.cond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.nav-scroll--run { gap: 12px; }
+.cond-tile { display: flex; flex-direction: column; padding: 6px var(--s3); border-radius: var(--r-lg); background: var(--surface-2); }
+.cond-tile strong { font-size: 20px; line-height: 1.2; }
+.cond-note { color: var(--text-2); font-size: 14px; line-height: 1.3; }
+.cond-tile.is-warn { background: #4a3a08; outline: 2px solid var(--warn); }
+.cond-tile.is-warn strong { color: var(--warn); }
+.cond-tile.is-bad { background: var(--danger-bg); outline: 2px solid var(--danger-line); }
+.cond-tile.is-bad strong { color: var(--danger); }
 .compass[aria-pressed="true"] { border-color: var(--accent); }
 .sound-toggle { bottom: 211px; }
 .sound-toggle[aria-pressed="true"] { color: var(--text-3); }
@@ -178,8 +188,9 @@
 .hazard-home { margin: 0; font-size: 22px; font-weight: 700; }
 .big--danger-solid { background: var(--danger-line); border-color: var(--danger-line); color: #fff; }
 /* Go to base, in the Back-to-base row of the panel. */
-.trip-row .base-go { width: 100%; margin-top: var(--s2); }
-.base-confirm { margin-top: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+.trip-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); }
+.trip-row .base-go { flex: none; width: auto; min-height: 56px; padding: 0 var(--s3); font-size: 18px; }
+.base-confirm { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--s2); }
 .base-confirm strong { font-size: 20px; }
 .base-confirm p { margin: 0; color: var(--text-2); }
 .banner-main { display: flex; align-items: center; gap: var(--s4); }

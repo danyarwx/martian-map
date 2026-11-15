@@ -39,6 +39,8 @@ export interface NavRunView {
   missionStart: number
   /** Mars time of day now, LMST minutes since midnight. The excursion leaves at the suggested departure. */
   lmst: number
+  /** Latest time to turn back from the farthest point, LMST minutes; null when unknown. */
+  turnBackLmst: number | null
   /** Mission time of the arrival at the current stop, null when not at a stop. */
   arrivedAt: number | null
   /** Distance actually covered, metres. */
@@ -255,6 +257,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
         missionNow,
         missionStart,
         lmst: lmstAt(missionNow),
+        turnBackLmst: turnBack,
         arrivedAt: latest.state.status === 'at_stop' ? arrivedAt : null,
         walkedM,
         ...clock.current,

@@ -7,7 +7,6 @@ import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
 import { askContext } from '../nav/askContext.ts'
 import { getNavBus } from '../nav/events.ts'
-import { turnBackBy } from '../lib/schedule.ts'
 import { HAZARD_EVENTS } from '../lib/safety.ts'
 import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
@@ -119,7 +118,7 @@ export default function NavApp() {
           stops: r.stops,
           minutesOut,
           lmst: v.lmst,
-          turnBackLmst: turnBackBy(r.plan, v.lmst - minutesOut),
+          turnBackLmst: v.turnBackLmst,
           base: v.base,
         })
       },

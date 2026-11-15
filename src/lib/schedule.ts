@@ -41,15 +41,25 @@ const BEFORE_SUNSET_MIN = WALK_BACK_RESERVE_MIN
 /** Candidate departure times are this far apart. */
 const STEP_MIN = 15
 
-/** Typical air temperature at a time of day, C: the measured half-hour medians, joined by straight lines. */
-export function temperatureC(minute: number): number {
+/** A typical-sol value at a time of day: the measured half-hour medians, joined by straight lines. */
+function medaAt(minute: number, key: 'airC' | 'windMs' | 'gustMs'): number {
   const day = 24 * 60
   const n = MEDA_SOL.length
   // Position in half hours from the first bin's centre, wrapping around midnight.
   const pos = ((((minute - centre(MEDA_SOL[0])) % day) + day) % day) / MEDA_BIN_MIN
   const i = Math.floor(pos) % n
   const share = pos - Math.floor(pos)
-  return MEDA_SOL[i].airC + (MEDA_SOL[(i + 1) % n].airC - MEDA_SOL[i].airC) * share
+  return MEDA_SOL[i][key] + (MEDA_SOL[(i + 1) % n][key] - MEDA_SOL[i][key]) * share
+}
+
+/** Typical air temperature at a time of day, C. */
+export function temperatureC(minute: number): number {
+  return medaAt(minute, 'airC')
+}
+
+/** Typical wind at a time of day, m/s: the half-hour median, and the gusts (95th percentile). */
+export function windAt(minute: number): { windMs: number; gustMs: number } {
+  return { windMs: medaAt(minute, 'windMs'), gustMs: medaAt(minute, 'gustMs') }
 }
 
 export interface DepartureOption {

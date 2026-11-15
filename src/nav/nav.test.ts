@@ -3,10 +3,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { LatLon, RouteLeg, RoutePlan, Target } from '../types.ts'
 import { MOBILITY } from '../lib/mobility.ts'
-import { DAY } from '../lib/schedule.ts'
+import { DAY, windAt } from '../lib/schedule.ts'
+import { MEDA_BIN_MIN, MEDA_SOL } from '../data/medaSol.ts'
 import { saidDuration, statusText, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import { askContext } from './askContext.ts'
+import { conditions, type ConditionsInput } from './conditions.ts'
 import { createNavBus, IDLE_STATE, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
 import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
@@ -627,4 +629,30 @@ test('ending navigation by hand says nothing', () => {
   const ended = events.find((e) => e.type === 'nav_ended')
   assert.ok(ended, 'the event is still sent for listeners')
   assert.equal(ended.text, '')
+})
+
+test('conditions tiles: time limits turn amber and red, weather stays neutral', () => {
+  const base: ConditionsInput = { lmst: DAY.gustsFrom - 25, minutesOut: 60, routeRemainingMin: 120, turnBackLmst: DAY.gustsFrom + 120, returning: false, finished: false }
+  const tile = (over: Partial<ConditionsInput>, id: string) => conditions({ ...base, ...over }).find((t) => t.id === id)!
+  assert.deepEqual([tile({}, 'gusts').value, tile({}, 'gusts').level], ['in 25 min', 'ok'])
+  assert.deepEqual([tile({ lmst: DAY.gustsFrom + 5 }, 'gusts').value, tile({ lmst: DAY.gustsFrom + 5 }, 'gusts').level], ['now', 'warn'])
+  assert.equal(tile({ lmst: DAY.gustsTo + 5 }, 'gusts').value, 'over')
+  const tb = (lmst: number) => tile({ lmst, turnBackLmst: 14 * 60 }, 'turnback')
+  assert.deepEqual([tb(13 * 60).value, tb(13 * 60).level, tb(13 * 60).note], ['in 1 h 00 min', 'ok', 'by 14:00'])
+  assert.deepEqual([tb(14 * 60 - 20).value, tb(14 * 60 - 20).level], ['in 20 min', 'warn'])
+  assert.deepEqual([tb(14 * 60 + 5).value, tb(14 * 60 + 5).level], ['now', 'bad'])
+  assert.deepEqual([tile({ returning: true }, 'turnback').value, tile({ returning: true }, 'turnback').level], ['Heading home', 'ok'])
+  assert.equal(tile({ lmst: DAY.sunset - 45 }, 'daylight').level, 'warn')
+  assert.equal(tile({ lmst: DAY.sunset - 20 }, 'daylight').level, 'bad')
+  assert.equal(tile({ lmst: 9 * 60 }, 'air').note, 'rising')
+  assert.equal(tile({ lmst: DAY.warmestAt + 90 }, 'air').note, 'falling')
+  assert.equal(tile({}, 'dose').value, '0.03 mSv')
+  assert.equal(tile({}, 'dose').note, 'trip 0.08 mSv')
+  assert.ok(['dose', 'air', 'wind'].every((id) => tile({ lmst: DAY.sunset - 10 }, id).level === 'ok'))
+})
+
+test('typical wind: the measured half-hour values at the middle of each half hour', () => {
+  const b = MEDA_SOL[24]
+  const w = windAt(b.lmst + MEDA_BIN_MIN / 2)
+  assert.ok(Math.abs(w.windMs - b.windMs) < 1e-9 && Math.abs(w.gustMs - b.gustMs) < 1e-9)
 })
