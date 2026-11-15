@@ -17,6 +17,10 @@ import { defaultEntry, loadRoutes } from './sim/defaultEntry.ts'
 import { jumpTargets, routeLengths, routePoint, type JumpTarget } from './sim/jump.ts'
 import { loadTileIndex } from './world/tiles.ts'
 import './helmet.css'
+// Onboard vision (src/vision): the camera notices dust storms; "Simulate dust storm" (B) for the demo
+import HelmetVision from '../vision/helmet/HelmetVision.tsx'
+import type { VisionReport } from '../vision/types.ts'
+import { CV_HEIGHT, CV_WIDTH } from './sim/cvRig.ts'
 
 interface Props {
   /** The plan and the jump point from Mission control. Null opens the helmet on its own (#helmet). */
@@ -38,6 +42,7 @@ const KEYS: [string, string][] = [
   ['Tab (hold)', 'full readout: suit, weather, large hazard map'],
   ['M', 'hazard map on / off'],
   ['R', 'the same detector on a real Perseverance stereo photo'],
+  ['B', 'simulate a dust storm (the helmet camera has to notice it)'],
   ['P', 'pause'],
   ['I', 'developer numbers (CV time, frames per second)'],
   ['H', 'this help'],
@@ -72,6 +77,18 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [realPhoto, setRealPhoto] = useState(false)
   const [debug, setDebug] = useState(false)
   const [weather, setWeather] = useState<WeatherCache | null>(null)
+  /** The camera saw a dust storm: what it reported, and whether the way home is planned yet. */
+  const [storm, setStorm] = useState<{ report: VisionReport; homeward: 'planning' | 'ready' | 'failed' } | null>(null)
+  const onStorm = (report: VisionReport) => {
+    setStorm({ report, homeward: 'planning' })
+    session.current
+      ?.returnToHabitat()
+      .then(() => setStorm((s) => s && { ...s, homeward: 'ready' }))
+      .catch((err) => {
+        console.warn('helmet: could not plan the way back:', err?.message ?? err)
+        setStorm((s) => s && { ...s, homeward: 'failed' })
+      })
+  }
   useEffect(() => {
     let live = true
     loadWeather()
@@ -217,6 +234,19 @@ export default function HelmetView({ entry, onExit }: Props) {
   const turn = nav && nav.steerDeg !== null && hud ? ((nav.steerDeg - hud.pose.headingDeg + 540) % 360) - 180 : null
 
   const alerts: VisorWarning[] = []
+  if (storm)
+    alerts.push({
+      id: 'dust-storm',
+      severity: 'danger',
+      text: `Dust storm · camera: visibility ${Math.round(storm.report.visibilityLoss * 100)}% lost · ${
+        storm.homeward === 'planning'
+          ? 'planning the way back…'
+          : storm.homeward === 'ready'
+            ? 'excursion stopped, follow the guide back to the habitat'
+            : 'return to the habitat'
+      }`,
+      source: 'Onboard vision: helmet camera pixels and the CLIP image model, on the suit (src/vision)',
+    })
   if (rerouted)
     alerts.push({
       id: 'rerouted',
@@ -268,6 +298,9 @@ export default function HelmetView({ entry, onExit }: Props) {
       {nav && plan && <NextStop name={stopName(nav.toId)} arrived={nav.arrived} remainingM={nav.remainingM} offRouteM={nav.offRouteM} turnDeg={turn} />}
       {hud && <Gauges elapsedMin={hud.elapsedMin} />}
 
+      {hud && session.current && (
+        <HelmetVision session={session.current} width={CV_WIDTH} height={CV_HEIGHT} onStorm={onStorm} onClear={() => setStorm(null)} />
+      )}
       {hud && readout && <SuitPanel elapsedMin={hud.elapsedMin} lstHours={lst} weather={weather} walkBackMin={nav?.walkBackMin ?? null} />}
       {realPhoto && <RealPhotoTest />}
       {hud && session.current && cvView && !realPhoto && <CvView session={session.current} hud={hud} />}
@@ -310,7 +343,7 @@ export default function HelmetView({ entry, onExit }: Props) {
       )}
 
       <p className="visor-touch-note">The helmet view needs a keyboard and a mouse: W A S D to walk, drag to look, Esc to go back.</p>
-      <p className="visor-keys">W A S D walk · Shift hurry · drag look · Tab readout · M map · V computer vision · R real photo · J jump · H keys · Esc back</p>
+      <p className="visor-keys">W A S D walk · Shift hurry · drag look · Tab readout · M map · V computer vision · R real photo · B dust storm · J jump · H keys · Esc back</p>
     </div>
   )
 }

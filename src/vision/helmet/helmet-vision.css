@@ -1,0 +1,94 @@
+/* Onboard vision panel on the 3D helmet's visor. Uses the helmet's HUD colours (helmet.css), with fallbacks. */
+
+.hv-panel {
+  position: absolute;
+  top: max(76px, calc(env(safe-area-inset-top, 0px) + 76px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  width: 230px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--hud-dim, rgba(143, 227, 214, 0.55));
+  border-radius: 10px;
+  background: rgba(10, 18, 18, 0.62);
+  color: var(--hud, #8fe3d6);
+  font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace;
+}
+.hv-panel--warn {
+  border-color: #ffd166;
+}
+.hv-panel--danger {
+  border-color: #ff5a4e;
+  background: rgba(60, 8, 4, 0.78);
+}
+
+.hv-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.hv-head span:last-child {
+  opacity: 0.7;
+  text-align: right;
+}
+
+.hv-text {
+  color: #f3e6dc;
+}
+
+.hv-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+}
+.hv-bar i {
+  display: block;
+  height: 100%;
+  background: #8fe3a0;
+}
+.hv-panel--warn .hv-bar i {
+  background: #ffd166;
+}
+.hv-panel--danger .hv-bar i {
+  background: #ff5a4e;
+}
+
+.hv-btn {
+  margin-top: 2px;
+  padding: 5px 8px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.hv-btn:hover,
+.hv-btn:focus-visible {
+  background: rgba(143, 227, 214, 0.12);
+}
+.hv-btn[aria-pressed='true'] {
+  color: #ffb4ab;
+}
+.hv-btn kbd {
+  float: right;
+  font: inherit;
+  opacity: 0.7;
+}
+
+.hv-sim {
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 640px) {
+  .hv-panel {
+    width: 180px;
+    font-size: 11px;
+  }
+}
