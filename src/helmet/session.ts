@@ -499,6 +499,9 @@ export class HelmetSession {
     this.controls.dispose()
     this.world.dispose()
     this.renderer.dispose()
+    // dispose() frees three's resources but keeps the WebGL context; browsers keep only ~16 of them, so
+    // every trip into the helmet left one behind until old ones got dropped (and repainted) mid-session.
+    this.renderer.forceContextLoss()
     this.renderer.domElement.remove()
   }
 

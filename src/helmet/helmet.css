@@ -15,6 +15,7 @@
   --hz-drop: #b04aff;
   position: fixed;
   inset: 0;
+  z-index: 2000; /* over the planner, which stays mounted underneath (Leaflet controls sit at 1000) */
   background: #000;
   color: var(--hud);
   font-family: var(--mono, Menlo, Consolas, "Courier New", monospace);
