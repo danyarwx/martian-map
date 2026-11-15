@@ -160,6 +160,28 @@
 }
 .banner--warn { background: #4a3a08; }
 .banner--bad { background: #5a1418; }
+/* Hazard warning kept on screen after "Continue route": tap to reopen the popup. */
+.hazard-strip {
+  display: block; width: 100%; min-height: 48px; margin-top: var(--s2); padding: var(--s2) var(--s3);
+  border: 2px solid var(--danger-line); border-radius: var(--r-lg); background: #5a1418; color: #fff;
+  font: inherit; font-size: 20px; font-weight: 700; text-align: left; cursor: pointer;
+}
+.banner--bad > .hazard-strip:only-child { margin-top: 0; }
+/* Dust storm / solar flare: the crew chooses, base or continue. */
+.hazard-popup {
+  position: absolute; z-index: 1002; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(560px, calc(100% - 2 * var(--s4))); padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3);
+  border: 3px solid var(--danger-line); border-radius: var(--r-xl); background: rgba(14, 17, 22, .97);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .7);
+}
+.hazard-popup h2 { margin: 0; font-size: 30px; color: var(--danger); }
+.hazard-home { margin: 0; font-size: 22px; font-weight: 700; }
+.big--danger-solid { background: var(--danger-line); border-color: var(--danger-line); color: #fff; }
+/* Go to base, in the Back-to-base row of the panel. */
+.trip-row .base-go { width: 100%; margin-top: var(--s2); }
+.base-confirm { margin-top: var(--s2); display: flex; flex-direction: column; gap: var(--s2); }
+.base-confirm strong { font-size: 20px; }
+.base-confirm p { margin: 0; color: var(--text-2); }
 .banner-main { display: flex; align-items: center; gap: var(--s4); }
 /* The way to walk: on open ground there is no path to follow, so the heading is always shown. */
 .banner-heading { margin-bottom: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(255, 255, 255, .25); font-size: 20px; font-weight: 700; }

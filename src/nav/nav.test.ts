@@ -15,7 +15,7 @@ import { createSilenceDetector, SILENCE } from '../nav-ui/voice/silence.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { EARTH_RADIUS_M, earthToMars, GpsSource } from './gps.ts'
 import { SimulatedSource } from './position.ts'
-import { createNavigator } from './tracker.ts'
+import { createNavigator, HAZARD_REMINDER_MS } from './tracker.ts'
 
 const origin = { lat: 18.44, lon: 77.4 }
 const proj = localProjection(origin)
@@ -382,6 +382,47 @@ test('a hazard aborts the excursion: warning first, then a route straight home; 
   assert.deepEqual(order, ['hazard_event', 'rerouted'])
   assert.match(events.find((e) => e.type === 'rerouted')!.text, /^Return route: .+ to Habitat, about 10 minutes\.$/)
   assert.equal(nav.getPlan(), home)
+})
+
+test('a hazard warning waits for the crew: no reroute until they return; continuing brings reminders', async () => {
+  const calls: string[][] = []
+  const home = plan(leg('here', 'habitat', path([100, 0], [0, 0])))
+  const { nav, events, fix } = straightNav(async (_from, ids) => {
+    calls.push(ids)
+    return home
+  })
+  fix(100, 0, 0)
+  assert.equal(nav.warnHazard('dust_storm'), true)
+  assert.equal(nav.getState().hazard, 'dust_storm')
+  assert.equal(nav.getState().abort, null)
+  assert.deepEqual(calls, [], 'the route stays until the crew decides')
+  assert.equal(events.filter((e) => e.type === 'hazard_event').length, 1)
+
+  nav.continueDespiteHazard()
+  assert.equal(nav.getState().hazardDismissed, true)
+  fix(110, 0, HAZARD_REMINDER_MS - 1000)
+  assert.equal(events.filter((e) => e.type === 'hazard_event').length, 1, 'no reminder before 15 minutes')
+  fix(120, 0, HAZARD_REMINDER_MS)
+  const reminder = events.filter((e) => e.type === 'hazard_event')[1]
+  assert.match(reminder.text, /^Reminder: dust storm warning active\. Return to base when you can\.$/)
+
+  assert.equal(nav.returnToBase('dust_storm'), true)
+  assert.deepEqual(calls, [[]], 'straight to the habitat')
+  assert.deepEqual(nav.getState().skipped, ['a'])
+  assert.equal(nav.getState().hazard, null, 'the warning is over once heading home')
+  assert.equal(nav.returnToBase('crew'), false, 'only once')
+})
+
+test('the crew can return to base by choice: fastest route home, stops left are skipped', async () => {
+  const home = plan(leg('here', 'habitat', path([100, 0], [0, 0])))
+  const { nav, events, fix } = straightNav(async () => home)
+  fix(100, 0, 0)
+  assert.equal(nav.returnToBase('crew'), true)
+  assert.equal(nav.getState().abort, 'crew')
+  assert.deepEqual(nav.getState().skipped, ['a'])
+  await new Promise((r) => setTimeout(r, 0))
+  assert.match(events.find((e) => e.type === 'rerouted')!.text, /^Returning to base\. Return route: .+ to Habitat/)
+  assert.ok(!events.some((e) => e.type === 'hazard_event'))
 })
 
 test('on arrival the science reason follows the task', () => {

@@ -52,15 +52,31 @@ export function ManeuverIcon({ m, size = 64 }: { m: Maneuver | undefined; size?:
 const bannerText = (m: Maneuver) => (m.kind === 'arrive' ? m.text.split(' Task:')[0] : m.text)
 
 /** The big instruction across the top of the map, and the one after it. */
-export function Banner({ upcoming, state }: { upcoming: UpcomingManeuver[]; state: NavState }) {
+/**
+ * The turn banner. While a hazard warning is active and the crew chose to continue, a red strip under it
+ * ("⚠ Dust storm · Go to base") reopens the hazard popup.
+ */
+export function Banner({ upcoming, state, onHazard }: { upcoming: UpcomingManeuver[]; state: NavState; onHazard?: () => void }) {
+  const strip =
+    state.hazard && state.hazardDismissed ? (
+      <button type="button" className="hazard-strip" onClick={onHazard}>
+        ⚠ {HAZARD_EVENTS[state.hazard].label} · Go to base
+      </button>
+    ) : null
+  return <BannerBody upcoming={upcoming} state={state} strip={strip} />
+}
+
+function BannerBody({ upcoming, state, strip }: { upcoming: UpcomingManeuver[]; state: NavState; strip: ReactNode }) {
   const actionable = upcoming.filter((u) => u.maneuver.kind !== 'hazard')
   const next = actionable[0]
   const then = actionable[1]
-  if (state.status === 'rerouting') return <div className="banner banner--warn">Planning a new route…</div>
+  if (state.status === 'rerouting') return <div className="banner banner--warn">Planning a new route…{strip}</div>
   if (state.status === 'off_route') {
-    return <div className="banner banner--bad">Off route by {spokenDistance(state.offsetM)}. Head back to the line.</div>
+    return <div className="banner banner--bad">Off route by {spokenDistance(state.offsetM)}. Head back to the line.{strip}</div>
   }
-  if (!next || state.status === 'at_stop' || state.status === 'finished') return null
+  if (!next || state.status === 'at_stop' || state.status === 'finished') {
+    return strip && state.status !== 'finished' ? <div className="banner banner--bad">{strip}</div> : null
+  }
   const heading = state.routeHeadingDeg === null ? null : Math.round(state.routeHeadingDeg) % 360
   return (
     <div className={`banner${state.drifting ? ' banner--warn' : ''}`} role="status">
@@ -86,6 +102,7 @@ export function Banner({ upcoming, state }: { upcoming: UpcomingManeuver[]; stat
           Then: {bannerText(then.maneuver)}
         </div>
       )}
+      {strip}
     </div>
   )
 }
@@ -191,13 +208,14 @@ interface NavPanelProps {
 }
 
 /** One "how far, how long" row of the navigation panel. */
-function TripRow({ label, name, metres, minutes, bad, note }: {
+function TripRow({ label, name, metres, minutes, bad, note, children }: {
   label: string
   name?: string
   metres: number | null
   minutes: number | null
   bad?: boolean
   note?: string
+  children?: ReactNode
 }) {
   return (
     <section className={`trip-row${bad ? ' is-bad' : ''}`}>
@@ -208,26 +226,54 @@ function TripRow({ label, name, metres, minutes, bad, note }: {
         <span>{minutes === null ? '…' : duration(minutes)}</span>
       </p>
       {note && <p className="trip-note">{note}</p>}
+      {children}
     </section>
   )
 }
 
+/** "Go to base" in the Back-to-base row, with a confirm step: a glove tap must not drop the stops left. */
+function GoToBase({ onReturn }: { onReturn: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  return (
+    <>
+      <button type="button" className="big big--danger base-go" aria-expanded={confirming} onClick={() => setConfirming((c) => !c)}>
+        Go to base
+      </button>
+      {confirming && (
+        <div className="base-confirm" role="dialog" aria-label="Return to base?">
+          <strong>Return to base now?</strong>
+          <p>The stops left are skipped.</p>
+          <div className="confirm">
+            <button type="button" className="big big--danger" onClick={onReturn}>Yes, return</button>
+            <button type="button" className="big" onClick={() => setConfirming(false)}>Keep going</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 /** While navigating: the next stop, all stops and back, and the way straight back to base. */
-export function NavPanel({ view, stops }: NavPanelProps) {
+export function NavPanel({ view, stops, onReturn }: NavPanelProps & { onReturn?: () => void }) {
   const { state } = view
   const nextStop = state.nextStopId ? stops[state.nextStopId] : null
   const far = state.walkHomeMin !== null && state.walkHomeMin > WALK_BACK_RESERVE_MIN
+  const returning = state.abort !== null
+  const homeNext = state.nextStopId === view.plan.order[view.plan.order.length - 1]
+  const canReturn = !!onReturn && !returning && !homeNext && state.status !== 'finished' && state.status !== 'idle'
   return (
     <div className="nav-scroll">
       <TripRow label="Next stop" name={nextStop?.name ?? '—'} metres={state.legRemainingM} minutes={state.legRemainingMin} />
       <TripRow label="All stops and back" metres={state.routeRemainingM} minutes={state.routeRemainingMin} />
       <TripRow
-        label="Back to base now"
+        label={returning ? 'Returning to base' : 'Back to base now'}
         metres={view.base?.distanceM ?? null}
         minutes={view.base?.minutes ?? null}
         bad={far}
         note={far ? `Walk home over ${WALK_BACK_RESERVE_MIN} min` : undefined}
-      />
+      >
+        {canReturn && <GoToBase onReturn={onReturn} />}
+      </TripRow>
     </div>
   )
 }
@@ -336,7 +382,7 @@ export function SimBar({ view, controls }: { view: NavRunView; controls: NavRunC
           key={kind}
           type="button"
           className="sim-hazard"
-          disabled={view.state.abort !== null}
+          disabled={view.state.abort !== null || view.state.hazard !== null}
           onClick={() => controls.hazard(kind)}
         >
           {HAZARD_EVENTS[kind].label}
@@ -390,7 +436,31 @@ export function StopCard({ view, stop, onContinue }: {
 }
 
 /** Back at the habitat. */
-export function FinishedCard({ view, onAgain }: { view: NavRunView; onAgain: () => void }) {
+/**
+ * Dust storm or solar flare: a large card on the map. The crew chooses: the fastest route home, or keep
+ * going (a red strip in the banner and spoken reminders follow).
+ */
+export function HazardPopup({ view, onGo, onContinue }: { view: NavRunView; onGo: () => void; onContinue: () => void }) {
+  const kind = view.state.hazard
+  if (!kind) return null
+  return (
+    <div className="hazard-popup" role="alertdialog" aria-label={`${HAZARD_EVENTS[kind].label} warning`}>
+      <h2>⚠ {HAZARD_EVENTS[kind].label}</h2>
+      <p className="stop-text">{HAZARD_EVENTS[kind].text}</p>
+      <p className="hazard-home num">
+        Base: {view.base ? `${km(view.base.distanceM)} · ${duration(view.base.minutes)}` : '…'}
+      </p>
+      <div className="confirm">
+        <button type="button" className="big big--danger-solid" onClick={onGo}>Go to base</button>
+        <button type="button" className="big" onClick={onContinue}>Continue route</button>
+      </div>
+    </div>
+  )
+}
+
+export function FinishedCard({ view, stops, onAgain }: { view: NavRunView; stops: Record<string, Target>; onAgain: () => void }) {
+  const { skipped, abort } = view.state
+  const why = abort === 'crew' ? 'returned early' : abort ? HAZARD_EVENTS[abort].label.toLowerCase() : ''
   return (
     <div className="overlay-card">
       <h1 className="nav-title">Excursion complete</h1>
@@ -399,6 +469,13 @@ export function FinishedCard({ view, onAgain }: { view: NavRunView; onAgain: () 
         <div><span>Distance</span><strong className="num">{km(view.walkedM)}</strong></div>
         <div><span>Reroutes</span><strong className="num">{view.state.rerouteCount}</strong></div>
       </div>
+      {skipped.length > 0 && (
+        <p className="stop-text">
+          <span className="label">Not visited</span>
+          <br />
+          {skipped.map((id) => stops[id]?.name ?? id).join(', ')} — {why}
+        </p>
+      )}
       <p className="muted">Times use the simulated mission clock.</p>
       <button type="button" className="big big--primary" onClick={onAgain}>Plan another</button>
     </div>

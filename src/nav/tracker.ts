@@ -36,6 +36,8 @@ const GUIDE_REPEAT_MS = 30000
 const SAY_AFTER_M = 30
 /** After a failed reroute, wait this long before trying again, milliseconds. */
 const REROUTE_RETRY_MS = 30000
+/** After the crew chose to continue despite a hazard warning, it is said again this often (mission time), ms. */
+export const HAZARD_REMINDER_MS = 15 * 60_000
 
 export interface NavigatorOptions {
   plan: RoutePlan
@@ -67,9 +69,18 @@ export interface Navigator {
   /** Leaves the stop the crew is at and starts the next leg. */
   continueFromStop(): void
   /**
-   * A hazard ends the excursion: the warning is said and the route is planned straight back to the
-   * habitat from here, skipping the stops left. Only the first call counts. Returns whether it did anything.
+   * A dust storm or solar flare: the warning is said and `NavState.hazard` is set, so the screen can ask
+   * the crew to return. The route does not change until `returnToBase`. Returns whether it did anything.
    */
+  warnHazard(kind: HazardKind): boolean
+  /**
+   * Plans the fastest route straight back to the habitat from here, skipping the stops left, for a hazard
+   * or by the crew's choice ('crew'). Only the first call counts. Returns whether it did anything.
+   */
+  returnToBase(reason: HazardKind | 'crew'): boolean
+  /** The crew keeps going despite the hazard warning; a reminder is said every 15 Mars minutes. */
+  continueDespiteHazard(): void
+  /** `warnHazard` and `returnToBase` at once: the hazard ends the excursion. */
   abortToHabitat(kind: HazardKind): boolean
   /** Ends navigation. */
   stop(): void
@@ -103,7 +114,12 @@ export function createNavigator(options: NavigatorOptions): Navigator {
   let rerouteBlockedUntil = -Infinity
   let walkBackWarned = false
   let turnBackSaid = false
-  let abort: HazardKind | null = null
+  let abort: HazardKind | 'crew' | null = null
+  let hazard: HazardKind | null = null
+  let hazardDismissed = false
+  /** Mission time of the last hazard reminder, after the crew chose to continue. */
+  let hazardRemindedAt = 0
+  let skipped: string[] = []
   let lastNow = clock()
   /** Mission time when navigation started, and the Mars time already checked for time-of-day warnings. */
   let startedAt = lastNow
@@ -194,6 +210,9 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       walkHomeMin,
       rerouteCount,
       abort,
+      hazard: abort ? null : hazard,
+      hazardDismissed,
+      skipped: [...skipped],
       routeHeadingDeg:
         leg && (status === 'navigating' || status === 'off_route')
           ? bearingAlong(leg.path, cums[legIndex], legAlong, Math.min(legLen, legAlong + HEADING_AHEAD_M))
@@ -269,7 +288,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
           'rerouted',
           `rerouted-${rerouteCount}`,
           home
-            ? `Return route: ${saidDistance(first.distanceM)} to ${name(first.toId)}, about ${saidDuration(first.minutes)}.`
+            ? `${abort === 'crew' ? 'Returning to base. ' : ''}Return route: ${saidDistance(first.distanceM)} to ${name(first.toId)}, about ${saidDuration(first.minutes)}.`
             : `New route: ${saidDistance(first.distanceM)} to ${name(first.toId)}.${skipText}`,
           home ? 'high' : 'normal',
         )
@@ -400,6 +419,15 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         turnBackSaid = true
         emit('turn_back_time', 'turn-back-time', 'Turn-back time reached. Head back to the habitat now.', 'high')
       }
+      if (hazard && hazardDismissed && !abort && fix.t - hazardRemindedAt >= HAZARD_REMINDER_MS) {
+        hazardRemindedAt = fix.t
+        emit(
+          'hazard_event',
+          `hazard-reminder-${fix.t}`,
+          `Reminder: ${HAZARD_EVENTS[hazard].label.toLowerCase()} warning active. Return to base when you can.`,
+          'normal',
+        )
+      }
 
       const ahead = upcoming()
       if (status === 'navigating') {
@@ -421,13 +449,35 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       publish()
     },
 
-    abortToHabitat(kind) {
+    warnHazard(kind) {
       if (abort || status === 'idle' || status === 'finished') return false
-      abort = kind
-      emit('hazard_event', `hazard-${kind}`, HAZARD_EVENTS[kind].text, 'high')
+      hazard = kind
+      hazardDismissed = false
+      emit('hazard_event', `hazard-${kind}-${lastNow}`, HAZARD_EVENTS[kind].text, 'high')
+      publish()
+      return true
+    },
+
+    returnToBase(reason) {
+      if (abort || status === 'idle' || status === 'finished') return false
+      abort = reason
+      const ahead = plan.legs.slice(status === 'at_stop' ? legIndex + 1 : legIndex).map((l) => l.toId)
+      skipped = ahead.filter((id) => id !== homeId() && !visited.includes(id))
       if (position) reroute(position, true)
       publish()
       return true
+    },
+
+    continueDespiteHazard() {
+      if (!hazard || abort) return
+      hazardDismissed = true
+      hazardRemindedAt = lastNow
+      publish()
+    },
+
+    abortToHabitat(kind) {
+      if (!this.warnHazard(kind)) return false
+      return this.returnToBase(kind)
     },
 
     stop() {

@@ -8,9 +8,10 @@ import { displayPlan } from '../nav/display.ts'
 import { askContext } from '../nav/askContext.ts'
 import { getNavBus } from '../nav/events.ts'
 import { turnBackBy } from '../lib/schedule.ts'
+import { HAZARD_EVENTS } from '../lib/safety.ts'
 import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
-import { Banner, EndOnMap, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
+import { Banner, EndOnMap, FinishedCard, HazardPopup, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput, type NavRunView } from './useNavRun.ts'
@@ -49,6 +50,8 @@ function useOnline(): boolean {
 /** While following, the map shows about this far ahead, metres: walking pace, and the faster rover. */
 const AHEAD_WALK_M = 500
 const AHEAD_ROVER_M = 1000
+/** While the hazard popup waits for a decision, the warning is said again this often (real time), ms. */
+const HAZARD_REPEAT_MS = 30_000
 
 export default function NavApp() {
   const initial = useMemo(() => parseNavParams(window.location.search, site.targets.map((t) => t.id)), [])
@@ -194,6 +197,30 @@ export default function NavApp() {
   const headingUp = !!run && !northUp
   const userZoom = useCallback(() => setAutoZoom(false), [])
 
+  // Hazard popup: open until the crew chooses; after "Continue route" the banner strip reopens it.
+  const [hazardReopened, setHazardReopened] = useState(false)
+  const hazard = s?.hazard ?? null
+  const hazardOpen = !!run && hazard !== null && (!s?.hazardDismissed || hazardReopened)
+  useEffect(() => {
+    if (!hazard) setHazardReopened(false)
+  }, [hazard])
+  useEffect(() => {
+    if (!hazardOpen || !hazard) return
+    const t = setInterval(
+      () => getNavBus().emit({ id: `hazard-repeat-${Date.now()}`, type: 'hazard_event', text: HAZARD_EVENTS[hazard].text, priority: 'high' }),
+      HAZARD_REPEAT_MS,
+    )
+    return () => clearInterval(t)
+  }, [hazardOpen, hazard])
+  const goToBase = useCallback(() => {
+    setHazardReopened(false)
+    controls.returnToBase(hazard ?? 'crew')
+  }, [controls, hazard])
+  const continueRoute = useCallback(() => {
+    setHazardReopened(false)
+    controls.continueDespiteHazard()
+  }, [controls])
+
   const atStopId = s?.status === 'at_stop' ? s.visited[s.visited.length - 1] : null
   // The stop card and the finished card live in the panel: open it when either appears.
   const finished = s?.status === 'finished'
@@ -220,7 +247,8 @@ export default function NavApp() {
           holdTurn={!follow}
           onCompass={compass}
         />
-        {run && view && <Banner upcoming={view.upcoming} state={view.state} />}
+        {run && view && <Banner upcoming={view.upcoming} state={view.state} onHazard={() => setHazardReopened(true)} />}
+        {hazardOpen && view && <HazardPopup view={view} onGo={goToBase} onContinue={continueRoute} />}
         {run && view && s?.status !== 'finished' && <SimBar view={view} controls={controls} />}
         {run && (
           <button
@@ -282,7 +310,7 @@ export default function NavApp() {
         {!online && <p className="offline-chip" role="status">Offline · using saved map and data</p>}
         <div className="nav-body">
           {run && view ? (
-            <NavPanel view={view} stops={stopsById} />
+            <NavPanel view={view} stops={stopsById} onReturn={() => controls.returnToBase('crew')} />
           ) : run ? (
             <div className="nav-scroll"><p className="muted">Starting navigation…</p></div>
           ) : (
@@ -310,7 +338,7 @@ export default function NavApp() {
               onContinue={controls.continueFromStop}
             />
           )}
-          {view && s?.status === 'finished' && <FinishedCard view={view} onAgain={end} />}
+          {view && s?.status === 'finished' && <FinishedCard view={view} stops={stopsById} onAgain={end} />}
         </div>
         {/* Empty for now, kept for later. */}
         <div className="nav-foot" />

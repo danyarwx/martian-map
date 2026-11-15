@@ -46,7 +46,16 @@ export function askContext(i: AskContextInput): string {
   lines.push(`Mars time now: ${clock(i.lmst)} local mean solar time. Out of the habitat for ${saidDuration(i.minutesOut)}.`)
 
   // Where the excursion stands.
-  if (s.abort) lines.push(`Excursion aborted: ${HAZARD_EVENTS[s.abort].label}. Heading straight back to the habitat.`)
+  if (s.abort) {
+    const why = s.abort === 'crew' ? 'the crew chose to return early' : `${HAZARD_EVENTS[s.abort].label.toLowerCase()} warning`
+    lines.push(`Returning to base on the fastest safe route: ${why}.`)
+  }
+  if (s.hazard) {
+    lines.push(
+      `Active warning: ${HAZARD_EVENTS[s.hazard].text} ${s.hazardDismissed ? 'The crew chose to continue the route for now.' : 'Waiting for the crew to choose: go to base or continue.'}`,
+    )
+  }
+  if (s.skipped.length) lines.push(`Stops skipped by returning early: ${s.skipped.map(name).join(', ')}.`)
   const status: Record<NavState['status'], string> = {
     idle: 'Navigation not started.',
     navigating: 'On the way to the next stop.',

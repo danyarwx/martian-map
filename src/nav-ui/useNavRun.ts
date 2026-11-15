@@ -63,8 +63,12 @@ export interface NavRunControls {
   drift(metres: number): void
   backToRoute(): void
   continueFromStop(): void
-  /** Simulates a hazard that ends the excursion: warning, then the route home. */
+  /** Simulates a hazard warning (dust storm, solar flare). The crew then chooses: base or continue. */
   hazard(kind: HazardKind): void
+  /** Plans the fastest route straight home and skips the stops left: for a hazard, or the crew's choice. */
+  returnToBase(reason: HazardKind | 'crew'): void
+  /** Keeps going despite the hazard warning; reminders follow every 15 Mars minutes. */
+  continueDespiteHazard(): void
   /** Says the status readout: Mars time, time out, walk home, air temperature, dose so far. */
   status(): void
   /** Switches between the simulated walker and the tablet's GPS. GPS runs the clock in real time. */
@@ -122,8 +126,10 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       stops: input.stops,
     }
     const rerouter = createWorkerRerouter(routerOptions)
-    // A second worker plans the way home for the panel, so it never delays an off-route replan.
-    const baseRouter = createWorkerRerouter(routerOptions)
+    // A second worker plans the way home for the panel, so it never delays an off-route replan. The way
+    // home is always the fastest safe route, whatever profile the excursion uses: it is the one taken
+    // when the crew returns early or a hazard is announced.
+    const baseRouter = createWorkerRerouter({ ...routerOptions, profile: 'fast' })
     // Everything below works on the drawn line, not on the terrain-cell staircase (see nav/display.ts).
     const plan = displayPlan(input.plan)
     const tracker = createNavigator({
@@ -131,7 +137,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       stops: input.stops,
       mobility: input.mobility,
       bus,
-      requestReroute: (from, ids) => rerouter.requestReroute(from, ids).then((p) => displayPlan(p)),
+      requestReroute: (from, ids) =>
+        (ids.length === 0 ? baseRouter : rerouter).requestReroute(from, ids).then((p) => displayPlan(p)),
       now: () => missionNow,
       departLmst,
       turnBackAtMs: turnBack === null ? undefined : missionStart + (turnBack - departLmst) * 60000,
@@ -302,8 +309,12 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       sim.current?.continueFromStop()
     }, []),
     hazard: useCallback((kind: HazardKind) => {
-      nav.current?.abortToHabitat(kind)
+      nav.current?.warnHazard(kind)
     }, []),
+    returnToBase: useCallback((reason: HazardKind | 'crew') => {
+      nav.current?.returnToBase(reason)
+    }, []),
+    continueDespiteHazard: useCallback(() => nav.current?.continueDespiteHazard(), []),
     status: useCallback(() => {
       const m = mission.current
       const n = nav.current

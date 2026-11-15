@@ -22,7 +22,7 @@ slows down on slopes. Rehearse once and note your own times.
 | ~1:45 (optional, needs Wi-Fi) | Tap the mic icon, ask "What do I do at the next stop?" | The answer, in about 2 s: "At Delta front, sample the fine-grained layers…" | "The crew can ask anything about the excursion: next stop, way home, dose, daylight. Answers come only from our navigation data." |
 | ~1:55 | Delta front stop card | Arrival, task, "Fine lake-bottom layers are where organic matter…" | "Our strongest lead for life." Tap **Continue** |
 | ~2:05 | Drag the map to look ahead, then tap the blue arrow icon (re-centre) | — | "The crew can look around; one tap brings the map back." |
-| ~2:15 | Tap **Dust storm** in the yellow SIMULATION bar | "Dust storm warning… Abort the excursion. Return to the habitat now." then "Return route: … to Habitat, about … minutes." | "When space weather turns, the plan changes in a second: straight home, on safe ground." |
+| ~2:15 | Tap **Dust storm** in the yellow SIMULATION bar. The warning popup appears; tap **Go to base** | "Dust storm warning… Abort the excursion. Return to the habitat now." then, after the tap, "Return route: … to Habitat, about … minutes." | "When space weather turns, the crew gets the warning and the time home, and one tap gives the fastest safe route straight home." |
 | ~2:40 | Let it run | Turn instructions home | Wrap up: data layers, safety, route, ground photos, tablet form factor |
 
 Backup lines if something goes wrong:

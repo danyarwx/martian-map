@@ -70,6 +70,8 @@ time_alert       Gust hours start in 15 minutes. Expect strong gusts and dust de
 time_alert  high Thirty minutes of daylight left. Head for the habitat.
 status           (not triggered by the UI now) Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.
 hazard_event high Dust storm warning. Gusts above 20 meters per second and visibility dropping. Abort the excursion. Return to the habitat now.
+hazard_event     Reminder: dust storm warning active. Return to base when you can.
+rerouted    high Returning to base. Return route: 1.2 kilometers to Habitat, about 25 minutes.
 rerouted    high Return route: 1.2 kilometers to Habitat, about 25 minutes.
 drift            Drifting left. Correct right.
 off_route        Head back to the route, 30 meters to your right.
@@ -80,6 +82,8 @@ turn_back_time   Turn-back time reached. Head back to the habitat now.
 answer           At Delta front (Hawksbill Gap), sample the fine-grained layers by hand, bed by bed. Planned working time is 30 minutes.
 nav_ended        Navigation ended.
 ```
+
+A `hazard_event` warning no longer changes the route by itself. The screen shows a popup, and the `rerouted` home line follows only when the crew taps Go to base. While the popup waits, the warning repeats (high) every 30 s. After "Continue route", a normal-priority reminder comes every 15 Mars minutes. The panel's "Go to base" button gives the same `rerouted` line, starting with "Returning to base.".
 
 Rover routes say "Drive" instead of "Walk", and their announcement distances are longer.
 

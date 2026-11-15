@@ -115,7 +115,13 @@ export interface NavState {
   /** How many times the route has been replanned during this navigation. */
   rerouteCount: number
   /** The hazard that ended the excursion early, or null. */
-  abort: HazardKind | null
+  abort: HazardKind | 'crew' | null
+  /** A dust storm or solar flare warning is out and the crew has not returned yet; null when none. */
+  hazard: HazardKind | null
+  /** The crew chose to continue despite `hazard`; reminders follow. */
+  hazardDismissed: boolean
+  /** Stops left out because the crew returned to base early (see `abort` for why). */
+  skipped: string[]
   /** Compass direction of the route where the crew is, degrees: the way to walk. Null when not moving on a leg. */
   routeHeadingDeg: number | null
   /** The crew has drifted a few metres off the line to this side (drift cue), else null. */
@@ -143,6 +149,9 @@ export const IDLE_STATE: NavState = {
   walkHomeMin: null,
   rerouteCount: 0,
   abort: null,
+  hazard: null,
+  hazardDismissed: false,
+  skipped: [],
   routeHeadingDeg: null,
   drifting: null,
 }
