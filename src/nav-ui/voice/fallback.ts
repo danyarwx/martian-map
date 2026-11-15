@@ -1,6 +1,8 @@
 // Uses a primary voice that can fail (a cloud one) and a fallback that cannot (the browser's own).
 // Pure logic, tested in src/nav/nav.test.ts.
-import type { SpeechEngine } from './queue.ts'
+import type { SpeakOptions, SpeechEngine } from './queue.ts'
+
+export type { SpeakOptions }
 
 /**
  * What became of a line: 'spoken' (or cancelled during its turn), 'slow' (the audio was not there in time;
@@ -10,8 +12,10 @@ export type TryResult = 'spoken' | 'slow' | 'failed'
 
 /** A voice that may be unable to speak a line. */
 export interface TryEngine {
-  trySpeak(text: string): Promise<TryResult>
+  trySpeak(text: string, opts?: SpeakOptions): Promise<TryResult>
   cancel(): void
+  /** Fetches these lines in the background so they are ready when said. Replaces an earlier list. */
+  prefetch?(texts: string[]): void
 }
 
 /** After this many failures in a row (not slow lines) the primary voice is left alone for a while. */
@@ -35,10 +39,10 @@ export function withFallback(primary: TryEngine, fallback: SpeechEngine | null, 
   let cancels = 0
 
   return {
-    async speak(text) {
+    async speak(text, opts) {
       const mine = cancels
       if (available() && now() >= blockedUntil) {
-        const result = await primary.trySpeak(text)
+        const result = await primary.trySpeak(text, opts)
         if (result === 'spoken') {
           failures = 0
           onEngine?.('primary')

@@ -7,6 +7,7 @@ import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
 import { askContext } from '../nav/askContext.ts'
 import { getNavBus } from '../nav/events.ts'
+import { predictableLines } from '../nav/lines.ts'
 import { HAZARD_EVENTS } from '../lib/safety.ts'
 import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
@@ -97,6 +98,14 @@ export default function NavApp() {
     }
   }, [])
   useEffect(() => voice.current?.setMuted(muted), [muted])
+
+  // The route's lines are fetched in the background when navigation starts and after every reroute, so the
+  // OpenAI voice has them ready (src/nav/lines.ts).
+  const routeManeuvers = view?.maneuvers
+  useEffect(() => {
+    if (!run || !routeManeuvers) return
+    voice.current?.prefetch(predictableLines(routeManeuvers, run.stops, run.mobility.id))
+  }, [run, routeManeuvers])
 
   // Voice questions: the facts are read from the latest view at the moment the question is sent.
   const latest = useRef<{ view: NavRunView | null; run: NavRunInput | null }>({ view: null, run: null })

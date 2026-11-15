@@ -8,11 +8,12 @@ import { MEDA_BIN_MIN, MEDA_SOL } from '../data/medaSol.ts'
 import { saidDuration, statusText, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import { askContext } from './askContext.ts'
+import { fixedLines, predictableLines } from './lines.ts'
 import { conditions, type ConditionsInput } from './conditions.ts'
 import { createNavBus, IDLE_STATE, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
 import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
-import { createSpeechQueue, STALE_HIGH_INSTRUCTION_MS, STALE_MS } from '../nav-ui/voice/queue.ts'
+import { createSpeechQueue, isUrgent, STALE_HIGH_INSTRUCTION_MS, STALE_MS, type SpeakOptions } from '../nav-ui/voice/queue.ts'
 import { createSilenceDetector, SILENCE } from '../nav-ui/voice/silence.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { EARTH_RADIUS_M, earthToMars, GpsSource } from './gps.ts'
@@ -680,4 +681,45 @@ test('walk-back caution: said calmly past the reserve, again only after coming w
   assert.equal(said[0].priority, 'normal')
   walk(legs[1])
   assert.equal(said.length, 2, 'back inside (30 min at 300 m), then out past the reserve again')
+})
+
+test('predictable lines: every turn, arrival and stop line of the route, in order, once each', () => {
+  const route = plan(
+    leg('habitat', 'a', path([0, 0], [300, 0], [300, 300])),
+    leg('a', 'habitat', path([300, 300], [0, 0])),
+  )
+  const science = { ...stops, a: { ...stops.a, science: 'Lake mud keeps organics.' } }
+  const ms = buildManeuvers(route, science)
+  const walk = predictableLines(ms, science, 'walk')
+  const turn = ms.find((m) => m.kind === 'turn')!
+  assert.ok(walk.includes(turn.text.endsWith('.') ? turn.text : `${turn.text}.`), 'the turn itself')
+  assert.ok(walk.some((l) => / in 200 meters/.test(l)) && walk.some((l) => / in 50 meters/.test(l)), 'its heads-ups')
+  assert.ok(walk.includes('Lake mud keeps organics.'), 'the stop briefing')
+  assert.ok(walk.includes('Rock A in 50 meters.'))
+  assert.equal(new Set(walk).size, walk.length, 'no duplicates')
+  assert.ok(walk.indexOf('Rock A in 50 meters.') > walk.findIndex((l) => / in 200 meters/.test(l)), 'route order')
+  const rover = predictableLines(ms, science, 'rover')
+  assert.ok(rover.some((l) => / in 400 meters/.test(l)) && rover.some((l) => / in 100 meters/.test(l)))
+  assert.ok(fixedLines().includes('Drifting left. Correct right.'))
+})
+
+test('voice: urgent lines (turn now, alarms, off route) get the short wait, others the long one', async () => {
+  assert.equal(isUrgent('high', 'instruction'), true)
+  assert.equal(isUrgent('normal', 'time_alert'), true)
+  assert.equal(isUrgent('normal', 'off_route'), true)
+  assert.equal(isUrgent('low', 'instruction'), false)
+  assert.equal(isUrgent('normal', 'walkback_warning'), false)
+  const got: [string, SpeakOptions | undefined][] = []
+  const q = createSpeechQueue({ speak: async (text, opts) => { got.push([text, opts]) }, cancel: () => {} }, () => 0)
+  q.push('Bear left in 200 meters.', 'low', 'instruction')
+  q.push('Bear left.', 'high', 'instruction')
+  await new Promise((r) => setTimeout(r, 0))
+  q.speakNow('Daylight left is 6 hours.')
+  await new Promise((r) => setTimeout(r, 0))
+  assert.deepEqual(got.map(([t, o]) => [t, o?.urgent]), [['Bear left in 200 meters.', false], ['Bear left.', true], ['Daylight left is 6 hours.', false]])
+
+  const seen: (SpeakOptions | undefined)[] = []
+  const voice = withFallback({ trySpeak: async (_t, o) => { seen.push(o); return 'spoken' }, cancel: () => {} }, null)
+  await voice.speak('Turn left.', { urgent: true })
+  assert.deepEqual(seen, [{ urgent: true }])
 })

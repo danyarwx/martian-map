@@ -36,6 +36,17 @@ const GUIDE_REPEAT_MS = 30000
 const SAY_AFTER_M = 30
 /** After a failed reroute, wait this long before trying again, milliseconds. */
 const REROUTE_RETRY_MS = 30000
+/** Fixed spoken lines, exported so the voice can fetch their audio before they are needed (lines.ts). */
+export const LINES = {
+  offRoute: 'Off route. Replanning.',
+  backOnRoute: 'Back on route.',
+  drift: (side: 'left' | 'right') => `Drifting ${side}. Correct ${side === 'left' ? 'right' : 'left'}.`,
+  walkBack: `Caution. Habitat is more than ${WALK_BACK_RESERVE_MIN} minutes away on foot. Beyond the emergency reserve.`,
+  turnBack: 'Turn-back time reached. Head back to the habitat now.',
+  hazardReminder: (kind: HazardKind) =>
+    `Reminder: ${HAZARD_EVENTS[kind].label.toLowerCase()} warning active. Return to base when you can.`,
+}
+
 /** The walk-back caution is said again only after the crew came back this far inside the reserve, minutes. */
 export const WALKBACK_REARM_MIN = 5
 /** After the crew chose to continue despite a hazard warning, it is said again this often (mission time), ms. */
@@ -274,7 +285,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
     status = 'rerouting'
     const token = ++rerouteToken
     const remaining = home ? [] : plan.legs.slice(legIndex).map((l) => l.toId).filter((id) => id !== homeId())
-    if (!home) emit('off_route', `reroute-${token}-${fix.t}`, 'Off route. Replanning.', 'high')
+    if (!home) emit('off_route', `reroute-${token}-${fix.t}`, LINES.offRoute, 'high')
     requestReroute({ lat: fix.lat, lon: fix.lon }, remaining).then(
       (p) => {
         if (token !== rerouteToken || status !== 'rerouting') return
@@ -381,7 +392,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         if (status === 'off_route' && offsetM < BACK_ON_ROUTE_M) {
           status = 'navigating'
           announcer.resetNext()
-          emit('back_on_route', `back-on-route-${fix.t}`, 'Back on route.', 'normal')
+          emit('back_on_route', `back-on-route-${fix.t}`, LINES.backOnRoute, 'normal')
         }
       }
 
@@ -394,7 +405,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
           drifting = lastSide === 'left' ? 'right' : 'left'
           if (!driftSaid) {
             driftSaid = true
-            emit('drift', `drift-${fix.t}`, `Drifting ${drifting}. Correct ${lastSide}.`, 'normal')
+            emit('drift', `drift-${fix.t}`, LINES.drift(drifting), 'normal')
           }
         }
       } else {
@@ -410,7 +421,7 @@ export function createNavigator(options: NavigatorOptions): Navigator {
         emit(
           'walkback_warning',
           `walkback-warning-${fix.t}`,
-          `Caution. Habitat is more than ${WALK_BACK_RESERVE_MIN} minutes away on foot. Beyond the emergency reserve.`,
+          LINES.walkBack,
           'normal',
         )
       } else if (walkBackWarned && walkHomeMin !== null && walkHomeMin < WALK_BACK_RESERVE_MIN - WALKBACK_REARM_MIN) {
@@ -423,14 +434,14 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       }
       if (!turnBackSaid && !abort && turnBackAtMs !== undefined && fix.t >= turnBackAtMs) {
         turnBackSaid = true
-        emit('turn_back_time', 'turn-back-time', 'Turn-back time reached. Head back to the habitat now.', 'high')
+        emit('turn_back_time', 'turn-back-time', LINES.turnBack, 'high')
       }
       if (hazard && hazardDismissed && !abort && fix.t - hazardRemindedAt >= HAZARD_REMINDER_MS) {
         hazardRemindedAt = fix.t
         emit(
           'hazard_event',
           `hazard-reminder-${fix.t}`,
-          `Reminder: ${HAZARD_EVENTS[hazard].label.toLowerCase()} warning active. Return to base when you can.`,
+          LINES.hazardReminder(hazard),
           'normal',
         )
       }

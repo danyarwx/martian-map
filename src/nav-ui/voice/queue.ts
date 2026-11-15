@@ -5,9 +5,14 @@
 // is still useful.
 import type { NavEventType, NavPriority } from '../../nav/events.ts'
 
+/** How a line is to be said. `urgent`: it must start soon (a turn now, an alarm), so waiting is short. */
+export interface SpeakOptions {
+  urgent?: boolean
+}
+
 /** The thing that makes sound. `speak` resolves when the line has ended or was cancelled; it must not reject. */
 export interface SpeechEngine {
-  speak(text: string): Promise<void>
+  speak(text: string, opts?: SpeakOptions): Promise<void>
   /** Stops the line being spoken now; its `speak` then resolves. */
   cancel(): void
 }
@@ -18,6 +23,11 @@ export const STALE_MS: Record<NavPriority, number> = { low: 6000, normal: 20000,
 export const STALE_HIGH_INSTRUCTION_MS = 8000
 /** Safety alarms are never dropped, however long they waited. (The walk-back caution is not an alarm.) */
 const ALARMS: ReadonlySet<NavEventType> = new Set(['hazard_event', 'time_alert', 'turn_back_time'])
+
+/** A line that must be said soon: a high-priority one, an alarm, or off route. The voice waits less for it. */
+export function isUrgent(priority: NavPriority, type?: NavEventType): boolean {
+  return priority === 'high' || (type !== undefined && (ALARMS.has(type) || type === 'off_route'))
+}
 
 /** How long a line may wait for its turn, milliseconds. */
 export function staleAfter(priority: NavPriority, type?: NavEventType): number {
@@ -51,6 +61,7 @@ export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date
     text: string
     at: number
     staleMs: number
+    urgent: boolean
   }
   let pending: Item[] = []
   /** A line to say before anything else (`speakNow`), and whether it is being said. */
@@ -76,7 +87,7 @@ export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date
           item = pending.shift()
         }
         if (!item) break
-        if (solo || (!muted && now() - item.at <= item.staleMs)) await engine.speak(item.text)
+        if (solo || (!muted && now() - item.at <= item.staleMs)) await engine.speak(item.text, { urgent: item.urgent })
         solo = false
       }
     } finally {
@@ -92,12 +103,12 @@ export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date
         pending = []
         engine.cancel()
       }
-      pending.push({ text, at: now(), staleMs: staleAfter(priority, type) })
+      pending.push({ text, at: now(), staleMs: staleAfter(priority, type), urgent: isUrgent(priority, type) })
       void pump()
     },
     speakNow(text) {
       if (muted || !text) return
-      first = { text, at: now(), staleMs: Infinity }
+      first = { text, at: now(), staleMs: Infinity, urgent: false }
       engine.cancel()
       void pump()
     },
