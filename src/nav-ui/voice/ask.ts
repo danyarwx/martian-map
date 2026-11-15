@@ -44,6 +44,15 @@ export function createAsker(o: AskerOptions): Asker {
     o.onState(s)
   }
   const say = (text: string) => o.bus.emit({ id: `answer-${Date.now()}`, type: 'answer', text, priority: 'normal' })
+  /**
+   * Ends a question: the answer goes out (the voice says it first), then the held navigation lines are
+   * released; they play after the answer. Lines stay held from the tap to here, the wait included.
+   */
+  const finish = (text: string) => {
+    set('idle')
+    say(text)
+    o.holdVoice(false)
+  }
 
   async function ask() {
     unlockAudio() // the tap is what lets the page's audio (and its loudness meter) run
@@ -68,18 +77,14 @@ export function createAsker(o: AskerOptions): Asker {
       return
     }
     if (!recording) {
-      o.holdVoice(false)
-      set('idle')
-      say(CANT_HEAR)
+      finish(CANT_HEAR)
       return
     }
     const audio = await recording.done
     recording = null
-    o.holdVoice(false)
     if (current() !== 'listening') return // cancelled
     if (!audio) {
-      set('idle')
-      say(NOTHING_HEARD)
+      finish(NOTHING_HEARD)
       return
     }
     set('thinking')
@@ -102,8 +107,7 @@ export function createAsker(o: AskerOptions): Asker {
       abort = null
     }
     if (current() !== 'thinking') return // cancelled
-    set('idle')
-    say(answer ?? CANT_HEAR)
+    finish(answer ?? CANT_HEAR)
   }
 
   return {
@@ -114,11 +118,9 @@ export function createAsker(o: AskerOptions): Asker {
     cancel() {
       const was = state
       set('idle')
-      if (was === 'listening') {
-        recording?.cancel()
-        o.holdVoice(false)
-      }
+      if (was === 'listening') recording?.cancel()
       abort?.abort()
+      if (was !== 'idle') o.holdVoice(false)
     },
   }
 }

@@ -10,7 +10,7 @@ import { askContext } from './askContext.ts'
 import { createNavBus, IDLE_STATE, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
 import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
-import { createSpeechQueue, STALE_MS } from '../nav-ui/voice/queue.ts'
+import { createSpeechQueue, STALE_HIGH_INSTRUCTION_MS, STALE_MS } from '../nav-ui/voice/queue.ts'
 import { createSilenceDetector, SILENCE } from '../nav-ui/voice/silence.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { EARTH_RADIUS_M, earthToMars, GpsSource } from './gps.ts'
@@ -589,4 +589,42 @@ test('ask context: the facts a voice question is answered from', () => {
   assert.match(text, /Latest turn-back time: .*in 1 hour 30 minutes/)
   assert.match(text, /Radiation dose so far: 0\.02 millisieverts/)
   assert.ok(text.length < 4000)
+})
+
+test('speech queue: while held nothing interrupts, alarms are kept, late turn lines are dropped', async () => {
+  const f = fakeEngine()
+  let now = 0
+  const q = createSpeechQueue(f.engine, () => now)
+  q.hold(true)
+  q.push('Dust storm warning.', 'high', 'hazard_event')
+  q.push('Turn left.', 'high', 'instruction')
+  q.push('Keep going.', 'normal', 'instruction')
+  assert.deepEqual(f.spoken, [], 'nothing while held')
+  now = STALE_HIGH_INSTRUCTION_MS + 1
+  q.hold(false)
+  await f.finish()
+  await f.finish()
+  assert.deepEqual(f.spoken, ['Dust storm warning.', 'Keep going.'], 'the late "Turn left." is dropped, the alarm is not')
+})
+
+test('speech queue: the answer is said first, even while held, and held lines follow once released', async () => {
+  const f = fakeEngine()
+  const q = createSpeechQueue(f.engine, () => 0)
+  q.hold(true)
+  q.push('Bear left in 200 meters.', 'low', 'instruction')
+  q.speakNow('Daylight left is 6 hours.')
+  q.hold(false)
+  q.push('Turn left.', 'high', 'instruction')
+  assert.deepEqual(f.spoken, ['Daylight left is 6 hours.'], 'a high line does not cut the answer')
+  await f.finish()
+  await f.finish()
+  assert.deepEqual(f.spoken, ['Daylight left is 6 hours.', 'Bear left in 200 meters.', 'Turn left.'])
+})
+
+test('ending navigation by hand says nothing', () => {
+  const { nav, events } = straightNav()
+  nav.stop()
+  const ended = events.find((e) => e.type === 'nav_ended')
+  assert.ok(ended, 'the event is still sent for listeners')
+  assert.equal(ended.text, '')
 })

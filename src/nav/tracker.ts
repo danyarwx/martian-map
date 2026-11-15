@@ -486,7 +486,8 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       rerouteToken++
       const wasFinished = status === 'finished'
       status = 'idle'
-      if (!wasFinished) emit('nav_ended', 'nav-ended', 'Navigation stopped.', 'low')
+      // Ended by the crew: the event is kept for listeners, but there is nothing to say (silence on End).
+      if (!wasFinished) emit('nav_ended', 'nav-ended', '', 'low')
       publish()
     },
 

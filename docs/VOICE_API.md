@@ -50,6 +50,7 @@ Rules for the voice:
 - **Ignore `type === 'state'`.** It fires about 5 times a second with the full `NavState`, for screens, not speech.
 - **`high` interrupts** whatever is being spoken (the "Turn left now" moment, arrival, off route).
 - **`normal` waits** in the queue. **`low`** (the early "Turn left in 200 meters" heads-up) is dropped if it has waited more than about 6 s, because by then it is stale. A `high` event also clears everything still waiting.
+- **End navigation is silent.** The built-in voice stops the line being spoken and drops everything waiting (`voice.clear()`). The `nav_ended` event of a manual End has empty text; only the arrival at the habitat says "Navigation ended.".
 - The app already handles the timing: each turn is announced at about 200 m, 50 m and "now" when walking (400 m and 100 m by rover). Two announcements are never closer than 2 s apart unless one is high priority. Speak events when they arrive; don't add your own timers.
 
 Example texts, from a real run:
@@ -80,7 +81,7 @@ rerouted         New route: 2.7 kilometers to Delta front (Hawksbill Gap).
 walkback_warning Caution. Habitat is more than 60 minutes away on foot. Beyond the emergency reserve.
 turn_back_time   Turn-back time reached. Head back to the habitat now.
 answer           At Delta front (Hawksbill Gap), sample the fine-grained layers by hand, bed by bed. Planned working time is 30 minutes.
-nav_ended        Navigation ended.
+nav_ended        Navigation ended.   (on arrival at the habitat; a manual End says nothing)
 ```
 
 A `hazard_event` warning no longer changes the route by itself. The screen shows a popup, and the `rerouted` home line follows only when the crew taps Go to base. While the popup waits, the warning repeats (high) every 30 s. After "Continue route", a normal-priority reminder comes every 15 Mars minutes. The panel's "Go to base" button gives the same `rerouted` line, starting with "Returning to base.".
@@ -97,10 +98,10 @@ Every bend of 20° or more in the drawn line is its own announcement (no "…, t
 
 The round mic icon on the map (shown while navigating) lets the crew ask a question. Tap once, speak, and listening ends after a 1.2 s pause; a second tap sends early. Code: [`src/nav-ui/voice/ask.ts`](../src/nav-ui/voice/ask.ts) (flow), `listen.ts` (microphone), `silence.ts` (pause detection).
 
-1. While listening, the built-in voice holds its lines (`voice.hold(true)`), so it doesn't talk into the mic. They play afterwards.
+1. From the tap until the answer has been said (listening, the wait and the answer), the built-in voice holds its lines (`voice.hold(true)`). Nothing interrupts in that time, safety alarms included. Held lines play afterwards under the stale rules: a high "Turn left." older than 8 s is dropped, alarms (`hazard_event`, `time_alert`, `turn_back_time`, `walkback_warning`) are never dropped.
 2. The recording and a plain-text snapshot of the navigation ([`src/nav/askContext.ts`](../src/nav/askContext.ts): next stop and its task, way home, heading, next turn, steep ground, dose, temperature, gust hours, daylight, turn-back time) go to `POST /api/ask` as multipart form data (`audio`, `context`).
 3. [`api/ask.js`](../api/ask.js) transcribes the audio (`whisper-1`) and asks a small model (`gpt-5.4-nano`) to answer from the snapshot only, in at most two short sentences. It returns `{ question, answer }` in about 1.5 s. It uses the same guards as `api/tts.js`: same-site only, audio up to 512 KB, snapshot up to 4000 characters, answer up to 300 characters. The models can be changed with the env vars `OPENAI_STT_MODEL` and `OPENAI_ASK_MODEL`.
-4. The answer goes on the bus as an `answer` event (priority `normal`), and every voice speaks it like any other line. When the question can't be heard (offline, no mic permission, error or no answer within 8 s), the text is "Can't hear you right now." When there was no speech, it is "Didn't catch that. Say again."
+4. The answer goes on the bus as an `answer` event (priority `normal`). The built-in voice says it first, ahead of everything waiting (`queue.speakNow`). Your voice should do the same. When the question can't be heard (offline, no mic permission, error or no answer within 8 s), the text is "Can't hear you right now." When there was no speech, it is "Didn't catch that. Say again."
 
 There are no captions; the mic icon is the only thing on screen (red and pulsing while listening, a turning ring while waiting).
 

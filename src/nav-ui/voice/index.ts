@@ -13,8 +13,10 @@ export interface Voice {
   setMuted(muted: boolean): void
   /** Unlocks audio (call from a tap) and says "Radio check". */
   radioCheck(): void
-  /** Holds navigation lines while the mic listens; they play once released. */
+  /** Holds navigation lines while a question is asked and answered; they play once released. */
   hold(on: boolean): void
+  /** Stops the line being spoken and forgets everything waiting, e.g. when navigation is ended. */
+  clear(): void
   /** Stops listening to the bus and silences the voice. */
   stop(): void
 }
@@ -38,7 +40,9 @@ export function startVoice(bus: NavBus, muted = false): Voice {
   queue.setMuted(muted)
   const off = bus.subscribe('*', (e) => {
     if (e.type === 'state' || !e.text) return
-    queue.push(e.text, e.priority)
+    // The answer to the crew's question goes first, even while navigation lines are held.
+    if (e.type === 'answer') queue.speakNow(e.text)
+    else queue.push(e.text, e.priority, e.type)
   })
   return {
     setMuted: (m) => queue.setMuted(m),
@@ -47,6 +51,7 @@ export function startVoice(bus: NavBus, muted = false): Voice {
       queue.push('Radio check.', 'high')
     },
     hold: (on) => queue.hold(on),
+    clear: () => queue.clear(),
     stop() {
       off()
       queue.clear()

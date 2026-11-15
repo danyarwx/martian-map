@@ -156,6 +156,8 @@ export default function NavApp() {
   }, [plan, habitat, stopsById, demo])
 
   const end = useCallback(() => {
+    // Silence at once: the line being spoken stops and nothing waiting is said.
+    voice.current?.clear()
     setRun(null)
     setPanelOpen(true)
   }, [])
