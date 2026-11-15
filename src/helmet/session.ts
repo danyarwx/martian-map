@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { JEZERO } from '../data/jezero.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import type { LatLon, RoutePlan, Terrain } from '../types.ts'
-import { HAZARD, type CvResult, type Detection, type HelmetDetour, type HelmetEntry, type HelmetExit, type Pose } from './contracts.ts'
+import { HAZARD, type CvFrame, type CvResult, type Detection, type HelmetDetour, type HelmetEntry, type HelmetExit, type Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './nav/follow.ts'
@@ -227,6 +227,9 @@ export class HelmetSession {
   /** Shift is held (whether or not the walk is hurrying right now). */
   private hurryHeld = false
   private cvAt = 0
+  /** CV pixels come back without stalling the frame (CvRig.captureAsync); false after it failed once. */
+  private asyncCapture = true
+  private disposed = false
   private cvPoses = new Map<number, Pose>()
   private cvCount = 0
   private cvHzFrom = this.last
@@ -359,6 +362,15 @@ export class HelmetSession {
     this.navigate()
     this.followDetour()
     for (const cb of this.cvListeners) cb(this.lastCv)
+  }
+
+  /** One captured stereo pair → the CV worker, with the CV's own ground heights around where it was taken. */
+  private sendCv(frame: CvFrame, at: { x: number; y: number }): void {
+    if (this.disposed) return
+    // the CV's own fused ground heights around the astronaut, for drop-offs (never the world's heights)
+    frame.heights = this.hazards.grid.heightWindow(at.x, at.y, DROP_WINDOW_M)
+    this.cvPoses.set(frame.id, frame.pose)
+    if (!this.cv.send(frame)) this.cvPoses.delete(frame.id)
   }
 
   private setLeg(k: number): void {
@@ -595,6 +607,7 @@ export class HelmetSession {
   }
 
   dispose(): void {
+    this.disposed = true // a readback still on its way finds nothing to send to
     this.renderer.setAnimationLoop(null)
     this.replanner.dispose()
     this.overlay.dispose()
@@ -677,14 +690,22 @@ export class HelmetSession {
       now: performance.now(),
     })
 
-    // CV tick: both eyes → pixels → worker. One frame in flight; a busy worker means this tick is skipped.
-    if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy) {
+    // CV tick: both eyes → pixels → worker. One frame in flight; a busy worker or a readback still on its way
+    // means this tick is skipped.
+    if (ready && !this.paused && now - this.cvAt >= CV_EVERY_MS && !this.cv.busy && !this.rig.capturing) {
       this.cvAt = now
-      const frame = this.rig.capture(world.scene, pose)
-      // the CV's own fused ground heights around the astronaut, for drop-offs (never the world's heights)
-      frame.heights = this.hazards.grid.heightWindow(pose.x, pose.y, DROP_WINDOW_M)
-      this.cvPoses.set(frame.id, frame.pose)
-      if (!this.cv.send(frame)) this.cvPoses.delete(frame.id)
+      const at = { x: pose.x, y: pose.y } // where the eyes were rendered: the frame arrives a few ms later
+      if (this.asyncCapture) {
+        this.rig
+          .captureAsync(world.scene, pose)
+          ?.then((frame) => this.sendCv(frame, at))
+          .catch((err) => {
+            // e.g. no fence support: go back to the synchronous readback for the rest of the session
+            if (this.disposed) return
+            console.warn('helmet: async CV capture failed, using the synchronous one:', err?.message ?? err)
+            this.asyncCapture = false
+          })
+      } else this.sendCv(this.rig.capture(world.scene, pose), at)
     }
     if (now - this.cvHzFrom > 2000) {
       this.cvStats.hz = (this.cvCount * 1000) / (now - this.cvHzFrom)
