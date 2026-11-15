@@ -78,6 +78,13 @@ function Metrics({ m }: { m: EvalMetrics }) {
       <tbody>
         <Row name="Rock recall" value={pct(m.rocks.recall)} target="≥ 80 %" pass={m.rocks.recall >= TARGETS.rockRecall} basis={`${m.rocks.found} of ${m.rocks.truth} rocks standing ≥ 0.30 m, 2–12 m away, in view`} />
         <Row name="Rock precision" value={pct(m.rocks.precision)} target="≥ 70 %" pass={m.rocks.precision >= TARGETS.rockPrecision} basis={`${m.rocks.detectionsTrue} of ${m.rocks.detections} rock detections 2–12 m away (${m.rocks.falseOnLowRock} of the false ones sit on a 0.20–0.30 m rock)`} />
+        <Row
+          name="Rocks in the way found in time (walk)"
+          value={pct(m.walk.hazard.recall)}
+          target=""
+          pass={null}
+          basis={`${m.walk.hazard.found} of ${m.walk.hazard.truth} rocks ≥ 0.30 m within ${m.walk.corridorM} m of the walk at the 7 boulder fields, found at least once while ${m.walk.inTimeM} m or more away (frames every ${m.walk.stepM} m from ${m.walk.fromM} m to ${m.walk.toM} m); by height ${m.walk.hazard.byHeight.map((b) => `${b.from}–${b.to} m ${pct(b.recall)}`).join(', ')}; first found at ${m.walk.hazard.medianFirstM.toFixed(1)} m (median). Small rocks: ${pct(m.walk.small.recall)} (${m.walk.small.found} of ${m.walk.small.truth})`}
+        />
         <Row name="Small rocks found (0.10–0.30 m)" value={pct(m.rocks.small.recall)} target="" pass={null} basis={`${m.rocks.small.found} of ${m.rocks.small.truth} within 8 m, in view; ${m.rocks.small.detectionsTrue} of ${m.rocks.small.detections} small-rock detections sit on a rock (${pct(m.rocks.small.precision)}); CV image ${m.cv.width} × ${m.cv.height}, ${m.cv.maxDisp} disparities`} />
         <Row name="Rocks marked on the hazard map" value={pct(m.rocks.onMap.recall)} target="" pass={null} basis={`${m.rocks.onMap.found} of ${m.rocks.truth} rocks with a rock cell on or beside them (neighbours reported as one wide detection count here)`} />
         <Row name="Rock cells at a rock" value={pct(m.rocks.onMap.precision)} target="" pass={null} basis={`${m.rocks.onMap.cellsTrue} of ${m.rocks.onMap.cells} rock cells 2–12 m away`} />

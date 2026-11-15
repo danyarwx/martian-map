@@ -7,7 +7,7 @@ import { toLocal } from '../frames.ts'
 import type { RoutesFile } from '../world/routes.ts'
 import type { TileIndex } from '../world/tileGrid.ts'
 import { predict, prf, trainLogistic } from './logistic.ts'
-import { matchRadius, scoreRockCells, scoreRocks, type TruthRock } from './metrics.ts'
+import { matchRadius, scoreRockCells, scoreRocks, scoreWalk, WALK_IN_TIME_M, type TruthRock } from './metrics.ts'
 import { EVAL_POSES, evalWindows } from './poses.ts'
 
 const data = (name: string) => JSON.parse(readFileSync(new URL(`../../../public/data/helmet/${name}`, import.meta.url), 'utf8'))
@@ -103,4 +103,19 @@ test('the sand trainer separates two clouds, folds the scaling back into raw wei
   assert.deepEqual(trainLogistic(X, y, 2, train), w)
   // one class only: a constant answer, no NaN
   assert.deepEqual(trainLogistic(X, new Uint8Array(n), 2, train), [0, 0, -10])
+})
+
+test('walk score: a rock counts once, found in time when any frame at 3 m or more matched it', () => {
+  const s = scoreWalk([
+    { standM: 0.5, inView: [12, 9, 6, 4], foundAt: [6] }, // missed far, found at 6 m: in time
+    { standM: 0.4, inView: [10, 7, 4, 2], foundAt: [2] }, // found only at 2 m: too late
+    { standM: 0.8, inView: [11, 8], foundAt: [11, 8] }, // found far
+    { standM: 0.35, inView: [2.5], foundAt: [] }, // never in view in time: not counted
+  ])
+  assert.equal(WALK_IN_TIME_M, 3)
+  assert.equal(s.truth, 3)
+  assert.equal(s.found, 2)
+  assert.ok(Math.abs(s.recall - 2 / 3) < 1e-9)
+  assert.equal(s.medianFirstM, 8.5) // first detections 6 and 11 m
+  assert.ok(Number.isNaN(scoreWalk([]).recall))
 })
