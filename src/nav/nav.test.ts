@@ -6,10 +6,12 @@ import { MOBILITY } from '../lib/mobility.ts'
 import { DAY } from '../lib/schedule.ts'
 import { saidDuration, statusText, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
-import { createNavBus, type NavEvent } from './events.ts'
+import { askContext } from './askContext.ts'
+import { createNavBus, IDLE_STATE, type NavEvent } from './events.ts'
 import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
 import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
 import { createSpeechQueue, STALE_MS } from '../nav-ui/voice/queue.ts'
+import { createSilenceDetector, SILENCE } from '../nav-ui/voice/silence.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
 import { EARTH_RADIUS_M, earthToMars, GpsSource } from './gps.ts'
 import { SimulatedSource } from './position.ts'
@@ -478,4 +480,72 @@ test('drift cue: a few metres off for 3 s, said once, again only after coming ba
   fix(160, -12, 15000)
   assert.equal(drift().length, 2)
   assert.equal(drift()[1].text, 'Drifting right. Correct left.')
+})
+
+test('speech queue: lines wait while the mic listens, and play once released', async () => {
+  const f = fakeEngine()
+  const q = createSpeechQueue(f.engine, () => 0)
+  q.push('one', 'normal')
+  q.hold(true)
+  await f.finish()
+  q.push('Turn left.', 'high')
+  q.push('two', 'normal')
+  await f.finish()
+  assert.deepEqual(f.spoken, ['one'], 'nothing new is said while held')
+  q.hold(false)
+  await f.finish()
+  assert.deepEqual(f.spoken, ['one', 'Turn left.', 'two'])
+})
+
+test('silence detector: ends after a pause once speech was heard, gives up when nobody speaks', () => {
+  const run = (levels: (t: number) => number) => {
+    const detect = createSilenceDetector()
+    for (let t = 0; t <= SILENCE.maxMs + 100; t += 50) {
+      const v = detect(levels(t), t)
+      if (v !== 'listen') return { v, t }
+    }
+    return { v: 'listen', t: -1 }
+  }
+  // Background hum, then 2 s of speech from 1 s on, then quiet.
+  const spoken = run((t) => (t >= 1000 && t < 3000 ? 0.1 : 0.005))
+  assert.equal(spoken.v, 'done')
+  assert.ok(spoken.t >= 3000 + SILENCE.quietMs - 50 && spoken.t <= 3000 + SILENCE.quietMs + 50, `ended at ${spoken.t}`)
+  // Only the hum: no question.
+  assert.deepEqual(run(() => 0.005), { v: 'no_speech', t: SILENCE.noSpeechMs })
+  // Talking without a pause is cut at the maximum length.
+  assert.deepEqual(run((t) => (t < 300 ? 0.005 : 0.1)), { v: 'done', t: SILENCE.maxMs })
+  // A loud background (wind) is not mistaken for speech.
+  assert.equal(run(() => 0.05).v, 'no_speech')
+})
+
+test('ask context: the facts a voice question is answered from', () => {
+  const legs: RouteLeg[] = [
+    { fromId: 'habitat', toId: 'a', path: [at(0, 0), at(0, 500)], elev: [0, 0], distanceM: 500, minutes: 12 } as RouteLeg,
+    { fromId: 'a', toId: 'habitat', path: [at(0, 500), at(0, 0)], elev: [0, 0], distanceM: 500, minutes: 12 } as RouteLeg,
+  ]
+  const text = askContext({
+    state: {
+      ...IDLE_STATE, status: 'navigating', legIndex: 0, legCount: 2, nextStopId: 'a', legRemainingM: 1240,
+      legRemainingMin: 31, routeRemainingM: 2000, routeRemainingMin: 90, walkHomeMin: 75, routeHeadingDeg: 130,
+      drifting: 'left',
+    },
+    upcoming: [],
+    plan: plan(...legs),
+    mobility: MOBILITY.walk,
+    stops,
+    minutesOut: 50,
+    lmst: DAY.gustsFrom - 30,
+    turnBackLmst: DAY.gustsFrom + 60,
+    base: { distanceM: 2100, minutes: 55 },
+  })
+  assert.match(text, /Next stop: Rock A\. 1\.2 kilometers away, about 31 minutes on foot\./)
+  assert.match(text, /Task at Rock A: Take a sample\./)
+  assert.match(text, /Straight back to the habitat from here: 2\.1 kilometers, about 55 minutes on foot\./)
+  assert.match(text, /BEYOND the reserve/)
+  assert.match(text, /130 degrees, south-east/)
+  assert.match(text, /Drifting left of the route line; correct right/)
+  assert.match(text, /Gust hours.*start in 30 minutes/)
+  assert.match(text, /Latest turn-back time: .*in 1 hour 30 minutes/)
+  assert.match(text, /Radiation dose so far: 0\.02 millisieverts/)
+  assert.ok(text.length < 4000)
 })

@@ -43,6 +43,8 @@ export type NavEventType =
   | 'stop_briefing'
   /** A few metres off the line (before 'off_route'): "Drifting left. Correct right." */
   | 'drift'
+  /** The answer to a question the crew asked with the mic button (api/ask.js), or why there is none. */
+  | 'answer'
   | 'nav_started'
   | 'nav_ended'
   /** A NavState snapshot, sent with every position update. Not for speaking. */

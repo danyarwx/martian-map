@@ -13,6 +13,8 @@ export interface Voice {
   setMuted(muted: boolean): void
   /** Unlocks audio (call from a tap) and says "Radio check". */
   radioCheck(): void
+  /** Holds navigation lines while the mic listens; they play once released. */
+  hold(on: boolean): void
   /** Stops listening to the bus and silences the voice. */
   stop(): void
 }
@@ -44,6 +46,7 @@ export function startVoice(bus: NavBus, muted = false): Voice {
       unlockAudio()
       queue.push('Radio check.', 'high')
     },
+    hold: (on) => queue.hold(on),
     stop() {
       off()
       queue.clear()

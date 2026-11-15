@@ -35,7 +35,7 @@ interface NavEvent {
   id: string          // unique per announcement
   type: 'instruction' | 'hazard' | 'arrive' | 'off_route' | 'rerouted' | 'back_on_route'
       | 'walkback_warning' | 'turn_back_time' | 'time_alert' | 'hazard_event' | 'status'
-      | 'stop_briefing' | 'drift' | 'nav_started' | 'nav_ended' | 'state'
+      | 'stop_briefing' | 'drift' | 'answer' | 'nav_started' | 'nav_ended' | 'state'
   text: string        // finished English sentence: speak this
   priority: 'low' | 'normal' | 'high'
   maneuver?: Maneuver // structured data, if you want to phrase it yourself
@@ -77,6 +77,7 @@ off_route   high Off route. Replanning.
 rerouted         New route: 2.7 kilometers to Delta front (Hawksbill Gap).
 walkback_warning Caution. Habitat is more than 60 minutes away on foot. Beyond the emergency reserve.
 turn_back_time   Turn-back time reached. Head back to the habitat now.
+answer           At Delta front (Hawksbill Gap), sample the fine-grained layers by hand, bed by bed. Planned working time is 30 minutes.
 nav_ended        Navigation ended.
 ```
 
@@ -87,6 +88,17 @@ Every bend of 20° or more in the drawn line is its own announcement (no "…, t
 ## `Maneuver` (on instruction and hazard events)
 
 `kind` (`depart`, `turn`, `continue`, `hazard`, `arrive`, `arrive_home`); `modifier` for turns (`slight_left` 20–35°, `bear_left` 35–60°, `left` 60–120°, `sharp_left` over 120°, same for right); `angleDeg` (signed, + is right); `headingDeg`; `at` (lat/lon); `alongM`; `distanceToNextM`; `text` (without the distance); `reason` ("to avoid a 24° slope"); `stopId` / `stopName`; `slopeDeg` / `lengthM` on hazards. See `instructions.ts` for exact names.
+
+## Voice questions (`answer` events)
+
+The round mic icon on the map (shown while navigating) lets the crew ask a question. Tap once, speak, and listening ends after a 1.2 s pause; a second tap sends early. Code: [`src/nav-ui/voice/ask.ts`](../src/nav-ui/voice/ask.ts) (flow), `listen.ts` (microphone), `silence.ts` (pause detection).
+
+1. While listening, the built-in voice holds its lines (`voice.hold(true)`), so it doesn't talk into the mic. They play afterwards.
+2. The recording and a plain-text snapshot of the navigation ([`src/nav/askContext.ts`](../src/nav/askContext.ts): next stop and its task, way home, heading, next turn, steep ground, dose, temperature, gust hours, daylight, turn-back time) go to `POST /api/ask` as multipart form data (`audio`, `context`).
+3. [`api/ask.js`](../api/ask.js) transcribes the audio (`whisper-1`) and asks a small model (`gpt-5.4-nano`) to answer from the snapshot only, in at most two short sentences. It returns `{ question, answer }` in about 1.5 s. It uses the same guards as `api/tts.js`: same-site only, audio up to 512 KB, snapshot up to 4000 characters, answer up to 300 characters. The models can be changed with the env vars `OPENAI_STT_MODEL` and `OPENAI_ASK_MODEL`.
+4. The answer goes on the bus as an `answer` event (priority `normal`), and every voice speaks it like any other line. When the question can't be heard (offline, no mic permission, error or no answer within 8 s), the text is "Can't hear you right now." When there was no speech, it is "Didn't catch that. Say again."
+
+There are no captions; the mic icon is the only thing on screen (red and pulsing while listening, a turning ring while waiting).
 
 ## Minimal integration
 

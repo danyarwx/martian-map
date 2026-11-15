@@ -28,7 +28,18 @@
   background: rgba(14, 17, 22, .95); box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
 }
 .end-bubble strong { font-size: 20px; }
-.recentre-fab { bottom: 279px; }
+.recentre-fab { bottom: 347px; }
+/* Voice question: mic icon; red and pulsing while listening, a turning ring while the answer comes. */
+.mic-fab { bottom: 279px; }
+.mic-fab.is-listening { background: var(--danger-line); border-color: var(--danger-line); color: #fff; animation: mic-pulse 1.2s ease-in-out infinite; }
+.mic-fab.is-thinking { color: var(--text-3); }
+.mic-fab.is-thinking::after {
+  content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 3px solid transparent; border-top-color: var(--accent); animation: mic-spin .9s linear infinite;
+}
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, .6); } 50% { box-shadow: 0 0 0 12px rgba(248, 81, 73, 0); } }
+@keyframes mic-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mic-fab.is-listening, .mic-fab.is-thinking::after { animation: none; } }
 /* Zoom: one pill, as wide as the round map buttons. */
 .nav-app .leaflet-control-zoom.leaflet-bar {
   width: 56px; border-radius: 28px; overflow: hidden; border: 2px solid rgba(0, 0, 0, .3);

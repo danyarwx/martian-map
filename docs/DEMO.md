@@ -19,6 +19,7 @@ slows down on slopes. Rehearse once and note your own times.
 | ~0:30 | — | "Gust hours now. Watch your footing…" | |
 | ~1:00 | Point at **Back to base now** going red ("Walk home over 60 min") | "Caution. Habitat is more than 60 minutes away on foot…" | "We always know how long the walk home is. 60 minutes is the emergency reserve." |
 | ~1:30 | Stop card appears: Task, Why here, time at the stop | "Sample cache reached. Task: …" then the science sentence | "At every stop the crew gets the task and why this spot matters for the search for life. The ground photos are on the planning screen, so the crew saw the spot before leaving." Tap **Done — continue** |
+| ~1:45 (optional, needs Wi-Fi) | Tap the mic icon, ask "What do I do at the next stop?" | The answer, in about 2 s: "At Delta front, sample the fine-grained layers…" | "The crew can ask anything about the excursion: next stop, way home, dose, daylight. Answers come only from our navigation data." |
 | ~1:55 | Delta front stop card | Arrival, task, "Fine lake-bottom layers are where organic matter…" | "Our strongest lead for life." Tap **Continue** |
 | ~2:05 | Drag the map to look ahead, then tap the blue arrow icon (re-centre) | — | "The crew can look around; one tap brings the map back." |
 | ~2:15 | Tap **Dust storm** in the yellow SIMULATION bar | "Dust storm warning… Abort the excursion. Return to the habitat now." then "Return route: … to Habitat, about … minutes." | "When space weather turns, the plan changes in a second: straight home, on safe ground." |
@@ -27,6 +28,7 @@ slows down on slopes. Rehearse once and note your own times.
 Backup lines if something goes wrong:
 - No sound: there are no on-screen captions, so check the volume before you start. If the voice fails, read the turn banner and the stop card aloud yourself.
 - Planner slow on first load: wait for the route to appear before tapping Start (about 4 s).
+- Mic question says "Can't hear you right now.": no network or no mic permission. Skip the beat; navigation is not affected.
 - Want more time to talk: tap **60×** in the SIMULATION bar to cycle to 1×, then back to 60×.
 
 ## Before recording
@@ -36,6 +38,7 @@ Backup lines if something goes wrong:
 - [ ] Open the page once on the venue Wi-Fi, press **Download for offline** on the plan screen, then test with Wi-Fi off.
 - [ ] Browser full screen (F11), zoom 100%, landscape. Close other tabs. Turn off notifications (Windows: Focus assist).
 - [ ] Volume up, the voice is the star.
+- [ ] Tap the mic once before recording and allow the microphone, so the permission prompt doesn't appear on camera.
 
 ## Recording the backup video
 

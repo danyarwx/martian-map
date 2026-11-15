@@ -5,13 +5,16 @@ import { MOBILITY } from '../lib/mobility.ts'
 import { usePlanner } from '../lib/usePlanner.ts'
 import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
+import { askContext } from '../nav/askContext.ts'
 import { getNavBus } from '../nav/events.ts'
+import { turnBackBy } from '../lib/schedule.ts'
 import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
 import { Banner, EndOnMap, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
-import { useNavRun, type NavRunInput } from './useNavRun.ts'
+import { useNavRun, type NavRunInput, type NavRunView } from './useNavRun.ts'
+import { createAsker, type Asker, type AskState } from './voice/ask.ts'
 import { startVoice, type Voice } from './voice/index.ts'
 import './nav.css'
 
@@ -92,6 +95,44 @@ export default function NavApp() {
     }
   }, [])
   useEffect(() => voice.current?.setMuted(muted), [muted])
+
+  // Voice questions: the facts are read from the latest view at the moment the question is sent.
+  const latest = useRef<{ view: NavRunView | null; run: NavRunInput | null }>({ view: null, run: null })
+  latest.current = { view, run }
+  const [askState, setAskState] = useState<AskState>('idle')
+  const asker = useRef<Asker | null>(null)
+  useEffect(() => {
+    const a = createAsker({
+      bus: getNavBus(),
+      context: () => {
+        const { view: v, run: r } = latest.current
+        if (!v || !r) return null
+        const minutesOut = (v.missionNow - v.missionStart) / 60000
+        return askContext({
+          state: v.state,
+          upcoming: v.upcoming,
+          plan: v.plan,
+          mobility: r.mobility,
+          stops: r.stops,
+          minutesOut,
+          lmst: v.lmst,
+          turnBackLmst: turnBackBy(r.plan, v.lmst - minutesOut),
+          base: v.base,
+        })
+      },
+      holdVoice: (on) => voice.current?.hold(on),
+      onState: setAskState,
+    })
+    asker.current = a
+    return () => {
+      asker.current = null
+      a.cancel()
+    }
+  }, [])
+  // Ending navigation drops a question still being asked.
+  useEffect(() => {
+    if (!run) asker.current?.cancel()
+  }, [run])
 
   const toggle = useCallback(
     (id: string) =>
@@ -214,6 +255,21 @@ export default function NavApp() {
           </button>
         )}
         {run && s?.status !== 'finished' && <EndOnMap onEnd={end} />}
+        {run && view && s?.status !== 'finished' && (
+          <button
+            type="button"
+            className={`map-fab mic-fab is-${askState}`}
+            aria-pressed={askState === 'listening'}
+            aria-label={askState === 'listening' ? 'Listening, tap to send' : askState === 'thinking' ? 'Getting the answer' : 'Ask a question'}
+            title={askState === 'listening' ? 'Listening · tap to send' : askState === 'thinking' ? 'Getting the answer' : 'Ask a question'}
+            onClick={() => asker.current?.tap()}
+          >
+            <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+              <path d="M6 11a6 6 0 0 0 12 0M12 17v4M8.5 21h7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
         {run && (!follow || !autoZoom) && (
           <button type="button" className="map-fab recentre-fab" onClick={recentre} aria-label="Re-centre" title="Re-centre">
             <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">

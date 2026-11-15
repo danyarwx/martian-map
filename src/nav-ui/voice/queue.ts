@@ -20,6 +20,11 @@ export interface SpeechQueue {
   setMuted(muted: boolean): void
   /** Stops the current line and empties the queue. */
   clear(): void
+  /**
+   * While held (the mic is listening), the current line is stopped and new lines wait instead of playing,
+   * so the voice does not talk into the microphone. Released, they play under the usual stale rules.
+   */
+  hold(on: boolean): void
 }
 
 export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date.now): SpeechQueue {
@@ -30,13 +35,14 @@ export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date
   }
   let pending: Item[] = []
   let muted = false
+  let held = false
   let running = false
 
   async function pump() {
     if (running) return
     running = true
     try {
-      for (let item = pending.shift(); item; item = pending.shift()) {
+      for (let item = held ? undefined : pending.shift(); item; item = held ? undefined : pending.shift()) {
         if (muted || now() - item.at > STALE_MS[item.priority]) continue
         await engine.speak(item.text)
       }
@@ -54,6 +60,11 @@ export function createSpeechQueue(engine: SpeechEngine, now: () => number = Date
       }
       pending.push({ text, priority, at: now() })
       void pump()
+    },
+    hold(on) {
+      held = on
+      if (on) engine.cancel()
+      else void pump()
     },
     setMuted(m) {
       muted = m
