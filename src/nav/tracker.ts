@@ -6,7 +6,7 @@ import { distanceM } from '../lib/geo.ts'
 import { saidDuration, timeAlertsBetween } from './alerts.ts'
 import { createAnnouncer } from './announcer.ts'
 import type { NavBus, NavEventType, NavPriority, NavState, NavStatus, UpcomingManeuver } from './events.ts'
-import { cumulativeM, projectOntoPath, type PathProjection } from './geometry.ts'
+import { bearingAlong, cumulativeM, projectOntoPath, type PathProjection } from './geometry.ts'
 import { buildManeuvers, saidDistance, type Maneuver } from './instructions.ts'
 import type { PositionFix } from './position.ts'
 
@@ -18,6 +18,12 @@ export const REROUTE_M = 50
 export const BACK_ON_ROUTE_M = 15
 /** Off the route for this long before anything is said, milliseconds. Brief wobbles are ignored. */
 export const OFF_ROUTE_DELAY_MS = 5000
+/** Drift cue: this far off the line, metres, on foot and by rover; held this long; re-armed below DRIFT_RESET_M. */
+export const DRIFT_M = { walk: 10, rover: 20 } as const
+export const DRIFT_DELAY_MS = 3000
+export const DRIFT_RESET_M = 5
+/** The direction to walk is measured over this much route ahead, metres. */
+const HEADING_AHEAD_M = 30
 /** The crew has arrived when this close to the stop, metres. */
 export const ARRIVE_M = 15
 
@@ -104,6 +110,10 @@ export function createNavigator(options: NavigatorOptions): Navigator {
   let checkedLmst = departLmst ?? 0
   /** Which side the route is on, from the last position: for "head back to the route ... to your left". */
   let lastSide: 'left' | 'right' = 'left'
+  /** Drift cue: since when the crew is a few metres off, whether it was said, and to which side. */
+  let driftSince: number | null = null
+  let driftSaid = false
+  let drifting: 'left' | 'right' | null = null
 
   function load(p: RoutePlan, idPrefix: string) {
     plan = p
@@ -184,6 +194,11 @@ export function createNavigator(options: NavigatorOptions): Navigator {
       walkHomeMin,
       rerouteCount,
       abort,
+      routeHeadingDeg:
+        leg && (status === 'navigating' || status === 'off_route')
+          ? bearingAlong(leg.path, cums[legIndex], legAlong, Math.min(legLen, legAlong + HEADING_AHEAD_M))
+          : null,
+      drifting,
     }
   }
 
@@ -347,6 +362,24 @@ export function createNavigator(options: NavigatorOptions): Navigator {
           announcer.resetNext()
           emit('back_on_route', `back-on-route-${fix.t}`, 'Back on route.', 'normal')
         }
+      }
+
+      // Drift cue: a few metres off the line for a few seconds, before it counts as off the route. Said once;
+      // said again only after coming back close to the line and drifting again.
+      if (status === 'navigating' && offsetM >= DRIFT_M[mobility.id] && offsetM <= OFF_ROUTE_M) {
+        driftSince ??= fix.t
+        if (fix.t - driftSince >= DRIFT_DELAY_MS) {
+          // lastSide is where the route is; the crew drifted to the other side.
+          drifting = lastSide === 'left' ? 'right' : 'left'
+          if (!driftSaid) {
+            driftSaid = true
+            emit('drift', `drift-${fix.t}`, `Drifting ${drifting}. Correct ${lastSide}.`, 'normal')
+          }
+        }
+      } else {
+        driftSince = null
+        drifting = null
+        if (offsetM < DRIFT_RESET_M) driftSaid = false
       }
 
       if (!walkBackWarned && walkHomeMin !== null && walkHomeMin > WALK_BACK_RESERVE_MIN) {

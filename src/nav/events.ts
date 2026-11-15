@@ -41,6 +41,8 @@ export type NavEventType =
   | 'status'
   /** The science reason of the stop just reached, said after the arrival. */
   | 'stop_briefing'
+  /** A few metres off the line (before 'off_route'): "Drifting left. Correct right." */
+  | 'drift'
   | 'nav_started'
   | 'nav_ended'
   /** A NavState snapshot, sent with every position update. Not for speaking. */
@@ -112,6 +114,10 @@ export interface NavState {
   rerouteCount: number
   /** The hazard that ended the excursion early, or null. */
   abort: HazardKind | null
+  /** Compass direction of the route where the crew is, degrees: the way to walk. Null when not moving on a leg. */
+  routeHeadingDeg: number | null
+  /** The crew has drifted a few metres off the line to this side (drift cue), else null. */
+  drifting: 'left' | 'right' | null
 }
 
 export const IDLE_STATE: NavState = {
@@ -135,6 +141,8 @@ export const IDLE_STATE: NavState = {
   walkHomeMin: null,
   rerouteCount: 0,
   abort: null,
+  routeHeadingDeg: null,
+  drifting: null,
 }
 
 /** What `emit` takes: an event without its timestamp, which the bus adds. */

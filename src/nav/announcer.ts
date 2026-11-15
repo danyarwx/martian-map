@@ -13,8 +13,6 @@ export const ANNOUNCE_M: Record<MobilityId, Record<AnnounceStage, number> & { ha
 /** Two announcements are at least this far apart, unless the second one is high priority, milliseconds. */
 export const MIN_GAP_MS = 2000
 
-/** A turn this close after another is named with it: "Turn left, then bear right." Metres. */
-const THEN_WITHIN_M = 40
 
 /** Departures and "keep going" lines are said when the crew is this close to them, metres. */
 const ONCE_WITHIN_M = 30
@@ -97,13 +95,11 @@ export function createAnnouncer(bus: NavBus, mobility: MobilityId): Announcer {
 
       const stages = stagesOf(m)
       const reach = (stage: AnnounceStage) => (m.kind !== 'turn' && stage === 'now' ? ONCE_WITHIN_M : limits[stage])
-      const then = actionable[1]
-      const follows = then && then.distanceM - distanceM <= THEN_WITHIN_M ? then.maneuver : undefined
       // Say the closest stage that is due. Once it is said, the farther ones are pointless.
       const due = stages.find((s) => !done.has(`${m.id}@${s}`) && distanceM <= reach(s))
       if (!due) return
       const priority = m.kind === 'turn' ? STAGE_PRIORITY[due] : 'normal'
-      if (say(m, due, distanceM, phrase(m, due, distanceM, due === 'now' ? follows : undefined), priority, now)) {
+      if (say(m, due, distanceM, phrase(m, due, distanceM), priority, now)) {
         for (const s of STAGES_OUTWARD.slice(STAGES_OUTWARD.indexOf(due))) done.add(`${m.id}@${s}`)
       }
     },

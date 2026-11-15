@@ -150,6 +150,9 @@
 .banner--warn { background: #4a3a08; }
 .banner--bad { background: #5a1418; }
 .banner-main { display: flex; align-items: center; gap: var(--s4); }
+/* The way to walk: on open ground there is no path to follow, so the heading is always shown. */
+.banner-heading { margin-bottom: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid rgba(255, 255, 255, .25); font-size: 20px; font-weight: 700; }
+.banner-heading span { font-weight: 600; }
 .banner-main svg { flex: none; }
 .banner-dist { font-size: 36px; line-height: 1.1; }
 .banner-text { font-size: var(--nav-instruction); line-height: 1.2; }

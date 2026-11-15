@@ -53,8 +53,10 @@ const stops = { habitat: stop('habitat', 'Habitat'), a: stop('a', 'Rock A') }
 test('turn angles are signed and classed by size', () => {
   assert.equal(turnAngle(350, 10), 20)
   assert.equal(turnAngle(10, 350), -20)
-  assert.equal(classifyTurn(20), null)
-  assert.equal(classifyTurn(45), 'slight_right')
+  assert.equal(classifyTurn(15), null)
+  assert.equal(classifyTurn(25), 'slight_right')
+  assert.equal(classifyTurn(-30), 'slight_left')
+  assert.equal(classifyTurn(45), 'bear_right')
   assert.equal(classifyTurn(-90), 'left')
   assert.equal(classifyTurn(150), 'sharp_right')
   assert.equal(spokenDistance(43), '40 m')
@@ -440,4 +442,40 @@ test('the simulated walker can be put back on the route at the navigator positio
   assert.ok(Math.abs(p.x - 200) < 0.5, JSON.stringify(p))
   sim.placeAt(0, 1000)
   assert.equal(sim.atStop, true)
+})
+
+test('every corner from 20 degrees is a turn, each on its own; smaller wiggles are not', () => {
+  // East 200 m, then 30 degrees right for 25 m, then 40 more degrees right; a separate 5 degree wiggle stays quiet.
+  const dir = (deg: number, m: number): [number, number] => [Math.sin((deg * Math.PI) / 180) * m, Math.cos((deg * Math.PI) / 180) * m]
+  const p1 = dir(120, 25)
+  const p2 = dir(160, 200)
+  const corners: [number, number][] = [[0, 0], [200, 0], [200 + p1[0], p1[1]], [200 + p1[0] + p2[0], p1[1] + p2[1]]]
+  const turns = buildManeuvers(plan(leg('habitat', 'a', path(...corners))), stops).filter((m) => m.kind === 'turn')
+  assert.deepEqual(turns.map((m) => m.modifier), ['slight_right', 'bear_right'])
+  assert.deepEqual(turns.map((m) => m.text), ['Slight right', 'Bear right'])
+
+  const w = dir(95, 300)
+  const wiggle = buildManeuvers(plan(leg('habitat', 'a', path([0, 0], [300, 0], [300 + w[0], w[1]]))), stops)
+  assert.deepEqual(wiggle.map((m) => m.kind), ['depart', 'arrive_home'])
+})
+
+test('drift cue: a few metres off for 3 s, said once, again only after coming back close', () => {
+  const { events, fix, nav } = straightNav()
+  const drift = () => events.filter((e) => e.type === 'drift')
+  fix(100, 0, 0)
+  fix(110, 12, 1000)
+  fix(115, 12, 3000)
+  assert.equal(drift().length, 0, 'not before 3 s')
+  fix(120, 12, 4500)
+  assert.equal(drift().length, 1)
+  assert.equal(drift()[0].text, 'Drifting left. Correct right.')
+  assert.equal(nav.getState().drifting, 'left')
+  fix(130, 14, 9000)
+  assert.equal(drift().length, 1, 'once while it stays off')
+  fix(140, 2, 10000)
+  assert.equal(nav.getState().drifting, null)
+  fix(150, -12, 11000)
+  fix(160, -12, 15000)
+  assert.equal(drift().length, 2)
+  assert.equal(drift()[1].text, 'Drifting right. Correct left.')
 })

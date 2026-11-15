@@ -6,13 +6,15 @@ import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } fro
 import { farthestWalkHome } from '../lib/schedule.ts'
 import type { NavState, UpcomingManeuver } from '../nav/events.ts'
 import { GPS_WARN_ACCURACY_M, type GpsStatus } from '../nav/gps.ts'
+import { compassShort } from '../nav/geometry.ts'
 import { spokenDistance, type Maneuver } from '../nav/instructions.ts'
 import type { NavRunControls, NavRunView } from './useNavRun.ts'
 
 /** Clock time of a Date.now() value, hh:mm. */
 
 const TURN_ANGLE: Record<string, number> = {
-  slight_left: -45, left: -90, sharp_left: -135, slight_right: 45, right: 90, sharp_right: 135,
+  slight_left: -25, bear_left: -45, left: -90, sharp_left: -135,
+  slight_right: 25, bear_right: 45, right: 90, sharp_right: 135,
 }
 
 /** Arrow for a turn or "go straight", a flag for arrival, a triangle for a hazard. */
@@ -59,8 +61,15 @@ export function Banner({ upcoming, state }: { upcoming: UpcomingManeuver[]; stat
     return <div className="banner banner--bad">Off route by {spokenDistance(state.offsetM)}. Head back to the line.</div>
   }
   if (!next || state.status === 'at_stop' || state.status === 'finished') return null
+  const heading = state.routeHeadingDeg === null ? null : Math.round(state.routeHeadingDeg) % 360
   return (
-    <div className="banner" role="status">
+    <div className={`banner${state.drifting ? ' banner--warn' : ''}`} role="status">
+      {heading !== null && (
+        <div className="banner-heading num">
+          Head {heading}° {compassShort(heading)}
+          {state.drifting && <span> · drifting {state.drifting}, correct {state.drifting === 'left' ? 'right' : 'left'}</span>}
+        </div>
+      )}
       <div className="banner-main">
         <ManeuverIcon m={next.maneuver} />
         <div>

@@ -1,9 +1,12 @@
 // Turns a planned route into turn-by-turn instructions, the way a car navigator does.
 // Route paths are chains of 10 m terrain cells, so they zig-zag at the cell scale. The path is first
-// simplified and bearings are measured over tens of metres, so only real changes of direction become turns.
+// simplified like the line drawn on the map, and every corner of 20 degrees or more becomes a turn: on open
+// ground there is no visible path, so each bend the crew has to make is announced.
 import type { LatLon, MobilityId, RouteLeg, RouteNote, RoutePlan, Target } from '../types.ts'
+import { DISPLAY_TOLERANCE_M } from './display.ts'
 import {
   bearingAlong,
+  bearingDeg,
   compassName,
   cumulativeM,
   pointAlong,
@@ -12,12 +15,10 @@ import {
   turnAngle,
 } from './geometry.ts'
 
-/** Douglas–Peucker tolerance, metres: cell zig-zags stay within this of a straight line. */
-const SIMPLIFY_M = 10
-/** Bearings before and after a bend are measured over this distance, metres. */
+/** Douglas–Peucker tolerance, metres: the same as the drawn line, so turns sit at its corners. */
+const SIMPLIFY_M = DISPLAY_TOLERANCE_M
+/** The direction of departure is measured over this distance, metres. */
 const LOOK_M = 30
-/** Bends closer together than this along the path count as one turn, metres. */
-const MERGE_M = 40
 /** Two opposite turns at most this far apart (metres) that shift the path less than JOG_SIDE_M sideways are dropped. */
 const JOG_MAX_M = 100
 const JOG_SIDE_M = 20
@@ -30,11 +31,17 @@ const CONTINUE_AFTER_M = 15
 /** A detour note explains the turn nearest to it within this distance along the path, metres. */
 const NOTE_TO_TURN_M = 80
 
-/** Turns smaller than these angles (degrees) are slight, normal, or sharp. Below the first one, no turn. */
-const TURN_LIMITS = { slight: 35, normal: 60, sharp: 120 }
+/**
+ * Turn classes by angle, degrees: from `slight` a slight turn, from `bear` a bear, from `normal` a turn, above
+ * `sharp` a sharp turn. Below `slight`, no turn: the drawn line's corners are 5-47 degrees, and the smallest
+ * wiggles are covered by the heading on screen and the drift cue.
+ */
+const TURN_LIMITS = { slight: 20, bear: 35, normal: 60, sharp: 120 }
 
 export type ManeuverKind = 'depart' | 'turn' | 'continue' | 'hazard' | 'arrive' | 'arrive_home'
-export type TurnModifier = 'slight_left' | 'left' | 'sharp_left' | 'slight_right' | 'right' | 'sharp_right'
+export type TurnModifier =
+  | 'slight_left' | 'bear_left' | 'left' | 'sharp_left'
+  | 'slight_right' | 'bear_right' | 'right' | 'sharp_right'
 
 /** One instruction on the route, with the data behind it so a voice can phrase it its own way. */
 export interface Maneuver {
@@ -90,16 +97,19 @@ export function classifyTurn(angleDeg: number): TurnModifier | null {
   const a = Math.abs(angleDeg)
   if (a < TURN_LIMITS.slight) return null
   const side = angleDeg > 0 ? 'right' : 'left'
-  if (a < TURN_LIMITS.normal) return `slight_${side}`
+  if (a < TURN_LIMITS.bear) return `slight_${side}`
+  if (a < TURN_LIMITS.normal) return `bear_${side}`
   if (a <= TURN_LIMITS.sharp) return side
   return `sharp_${side}`
 }
 
 const TURN_WORDS: Record<TurnModifier, string> = {
-  slight_left: 'Bear left',
+  slight_left: 'Slight left',
+  bear_left: 'Bear left',
   left: 'Turn left',
   sharp_left: 'Turn sharp left',
-  slight_right: 'Bear right',
+  slight_right: 'Slight right',
+  bear_right: 'Bear right',
   right: 'Turn right',
   sharp_right: 'Turn sharp right',
 }
@@ -118,28 +128,27 @@ function reasonFor(note: RouteNote, profile: RoutePlan['profile']): string {
 interface Bend {
   legAlongM: number
   angleDeg: number
+  /** Compass bearing of the segment after the bend. */
+  outDeg: number
 }
 
 /**
- * Real changes of direction along one path. Bends of the simplified path that lie within MERGE_M of each
- * other are measured as one, from the bearing coming into the first to the bearing leaving the last.
+ * Changes of direction along one path: every corner of the line drawn on the map (the path simplified the
+ * same way as the drawn line), measured from the segment coming in to the segment going out. No merging:
+ * on open ground with no visible path, each bend the crew has to make gets its own instruction.
  */
 function findBends(path: LatLon[], cum: number[]): Bend[] {
   const length = cum[cum.length - 1]
-  const kept = simplifyPath(path, SIMPLIFY_M).slice(1, -1)
-  const vertices = kept.map((i) => cum[i]).filter((a) => a > LEG_END_MARGIN_M && a < length - LEG_END_MARGIN_M)
+  const kept = simplifyPath(path, SIMPLIFY_M)
   const bends: Bend[] = []
-  for (let k = 0; k < vertices.length; ) {
-    let j = k
-    while (j + 1 < vertices.length && vertices[j + 1] - vertices[j] < MERGE_M) j++
-    const first = vertices[k]
-    const last = vertices[j]
-    const before = bearingAlong(path, cum, Math.max(0, first - LOOK_M), first)
-    const after = bearingAlong(path, cum, last, Math.min(length, last + LOOK_M))
-    bends.push({ legAlongM: (first + last) / 2, angleDeg: turnAngle(before, after) })
-    k = j + 1
+  for (let k = 1; k + 1 < kept.length; k++) {
+    const [a, b, c] = [path[kept[k - 1]], path[kept[k]], path[kept[k + 1]]]
+    const along = cum[kept[k]]
+    if (along <= LEG_END_MARGIN_M || along >= length - LEG_END_MARGIN_M) continue
+    const outDeg = bearingDeg(b, c)
+    bends.push({ legAlongM: along, angleDeg: turnAngle(bearingDeg(a, b), outDeg), outDeg })
   }
-  const turns = bends.filter((b) => classifyTurn(b.angleDeg) !== null)
+  const turns = bends.filter((t) => classifyTurn(t.angleDeg) !== null)
   // A jog: two opposite turns close together that shift the path only a little sideways. Walking
   // straight through stays near the line, so neither is worth an instruction.
   const out: Bend[] = []
@@ -194,13 +203,12 @@ function legManeuvers(
   const notes = leg.notes.map((n) => ({ note: n, alongM: projectOntoPath(path, n.at, cum).alongM }))
   const turns: Maneuver[] = findBends(path, cum).map((b) => {
     const modifier = classifyTurn(b.angleDeg)!
-    const after = bearingAlong(path, cum, b.legAlongM, Math.min(length, b.legAlongM + LOOK_M))
     return {
       id: id('turn', b.legAlongM),
       kind: 'turn',
       modifier,
       angleDeg: Math.round(b.angleDeg),
-      headingDeg: after,
+      headingDeg: b.outDeg,
       legIndex,
       at: at(b.legAlongM),
       alongM: 0,

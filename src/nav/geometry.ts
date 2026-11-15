@@ -143,6 +143,13 @@ export function bearingAlong(path: LatLon[], cum: number[], fromM: number, toM: 
 
 const COMPASS = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west']
 
+const COMPASS_SHORT = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
+
+/** Bearing as a short compass direction for the screen, e.g. "NE". */
+export function compassShort(deg: number): string {
+  return COMPASS_SHORT[Math.round((((deg % 360) + 360) % 360) / 45) % 8]
+}
+
 /** Bearing as one of eight compass directions, e.g. "north-east". */
 export function compassName(deg: number): string {
   return COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]
