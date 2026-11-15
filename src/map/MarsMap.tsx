@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
+import type { HelmetDetour } from '../helmet/contracts.ts'
+import { detourCause } from '../panels/DetourCard.tsx'
 import type { LatLon, RoutePlan, RouteProfile, SiteConfig, Target, TerrainMeta, WalkBackImage } from '../types.ts'
 import { NOTE_SIGNS, OBSTACLE_SIGN, slopeLevelLimits } from '../lib/explain.ts'
 import { duration } from '../lib/format.ts'
@@ -44,7 +46,17 @@ interface Props {
   helmetHazards?: { at: LatLon; kind: 'rock' | 'sand' | 'steep' | 'drop'; radiusM: number }[]
   /** From the helmet view: the route after it re-routed round a hazard, one line per leg. */
   helmetRoute?: LatLon[][]
+  /** From the helmet view: its first re-route, drawn as the planned line and the line round the rocks. */
+  detour?: HelmetDetour | null
+  /** Which of the two lines of `detour` is the one to look at. */
+  detourView?: 'before' | 'after'
 }
+
+/** The line round the rocks: the helmet's HUD green, apart from the route's cyan. Same value as DetourCard's swatch. */
+const DETOUR_NEW = '#6dffa8'
+/** Room the view framing the re-route keeps for the card (DetourCard: 380 px wide at 56 px from the left, about 330 px tall), px. */
+const DETOUR_CARD_BOX = { w: 460, h: 370 }
+const DETOUR_SHUT = '#f85149'
 
 /** Route line colour per slope class: easy, moderate, close to the limit. */
 const LEVEL_COLORS = ['#5ce1e6', '#ffd166', '#ff5da2']
@@ -61,7 +73,7 @@ const HELMET_HAZARD_COLOUR = { rock: '#ff5a4e', sand: '#e8b04a', steep: '#ff8a3d
 
 export default function MarsMap(props: Props) {
   const { site, habitat, custom, terrainMeta, walkBack, selected, plan, otherPlan, focusId, adding } = props
-  const { seenLayer, helmetHazards, helmetRoute } = props
+  const { seenLayer, helmetHazards, helmetRoute, detour, detourView = 'after' } = props
   const ref = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const stopsRef = useRef<L.LayerGroup | null>(null)
@@ -82,11 +94,22 @@ export default function MarsMap(props: Props) {
   const fitMaxZoom = useRef(15)
   /** True while the map moves because we fit it, not because the user did. */
   const fitting = useRef(false)
+  /** A box at the top left of the map the fitted view keeps clear (the re-route card), px; null = none. */
+  const fitAvoid = useRef<{ w: number; h: number } | null>(null)
   const fitView = (map: L.Map, bounds: L.LatLngBounds, maxZoom: number) => {
     fitting.current = true
     try {
+      // Keep the view beside the box or below it, whichever leaves room for the closer zoom. When neither leaves
+      // 300 px (phones), the box covers most of the map anyway: fit to all of it.
+      const size = map.getSize()
+      const box = fitAvoid.current
+      const options: L.PointTuple[] = [[50, 50]]
+      if (box && size.x - box.w >= 300) options.push([box.w, 50])
+      if (box && size.y - box.h >= 300) options.push([50, box.h])
+      const zoomWith = (tl: L.PointTuple) => map.getBoundsZoom(bounds, false, L.point(tl[0] + 50, tl[1] + 50))
+      const topLeft = options.length > 1 ? options.slice(1).reduce((a, b) => (zoomWith(b) > zoomWith(a) ? b : a)) : options[0]
       // No animation: the view must land on the route even when the tab is in the background.
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom, animate: false })
+      map.fitBounds(bounds, { paddingTopLeft: topLeft, paddingBottomRight: [50, 50], maxZoom, animate: false })
     } finally {
       fitting.current = false
     }
@@ -399,6 +422,7 @@ export default function MarsMap(props: Props) {
     if (!switched) {
       fitted.current = outline.getBounds()
       fitMaxZoom.current = 15
+      fitAvoid.current = null
       fitView(map, fitted.current, 15)
     }
     return () => {
@@ -422,6 +446,7 @@ export default function MarsMap(props: Props) {
       // this becomes the view the map keeps (also across resizes) until the route changes
       fitted.current = L.latLngBounds([b.south - padLat, b.west - padLon], [b.north + padLat, b.east + padLon])
       fitMaxZoom.current = 17
+      fitAvoid.current = null
       fitView(map, fitted.current, 17)
     }
     if (helmetRoute) {
@@ -436,6 +461,53 @@ export default function MarsMap(props: Props) {
       group.remove()
     }
   }, [seenLayer, helmetHazards, helmetRoute])
+
+  // The helmet's re-route, before and after: the planned line cut at the rocks, and the line round them.
+  // The chosen one is drawn strong, the other faint, so one click on the card shows the change.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !detour || detour.beforePath.length < 2) return
+    const line = (path: LatLon[]) => path.map((p) => [p.lat, p.lon] as L.LatLngTuple)
+    const before = detourView === 'before'
+    const group = L.layerGroup().addTo(map)
+    // dark outline first, so both lines read on the bright HiRISE ground
+    L.polyline(line(detour.beforePath), { color: '#0e1116', weight: before ? 9 : 6, opacity: 0.8, interactive: false }).addTo(group)
+    L.polyline(line(detour.beforePath), {
+      color: before ? '#ffffff' : '#a7b0bc',
+      weight: before ? 5 : 3,
+      opacity: before ? 1 : 0.7,
+      dashArray: before ? undefined : '6 6',
+      interactive: false,
+    }).addTo(group)
+    if (detour.afterPath.length > 1) {
+      L.polyline(line(detour.afterPath), { color: '#0e1116', weight: before ? 6 : 9, opacity: 0.8, interactive: false }).addTo(group)
+      L.polyline(line(detour.afterPath), {
+        color: DETOUR_NEW,
+        weight: before ? 3 : 5,
+        opacity: before ? 0.5 : 1,
+        dashArray: before ? '6 6' : undefined,
+        interactive: false,
+      }).addTo(group)
+    }
+    const html = `<div class="obstacle obstacle--no-go" style="border-color:${DETOUR_SHUT}">✕</div>`
+    L.marker([detour.at.lat, detour.at.lon], { icon: L.divIcon({ className: '', html, iconSize: [22, 22] }), keyboard: false, zIndexOffset: 800 })
+      .bindTooltip(detourCause(detour), { permanent: true, direction: 'top', offset: [0, -12], className: 'detour-label' })
+      .addTo(group)
+    return () => {
+      group.remove()
+    }
+  }, [detour, detourView])
+
+  // Frame the re-route when it arrives: both lines from the rocks to the next stop. Runs after the seen-ground fit, so it wins.
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !detour || detour.beforePath.length < 2) return
+    const all = [...detour.beforePath, ...detour.afterPath].map((p) => [p.lat, p.lon] as L.LatLngTuple)
+    fitted.current = L.latLngBounds(all)
+    fitMaxZoom.current = 17 // HiRISE tiles end at 17
+    fitAvoid.current = DETOUR_CARD_BOX
+    fitView(map, fitted.current, 17)
+  }, [detour]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Opening a stop's card brings it into view, without changing the zoom.
   useEffect(() => {

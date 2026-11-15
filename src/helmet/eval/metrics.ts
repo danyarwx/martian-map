@@ -128,6 +128,48 @@ export function scoreRockCells(visible: readonly TruthRock[], nearby: readonly T
   return { foundFlags, cells, cellsTrue }
 }
 
+// ---------------------------------------------------------------------------------------------------
+// Walk metric: a rock missed in one frame is often found in the next one, a metre closer. What matters for the
+// walker is whether each rock in the way was found at least once BEFORE they reached it.
+
+/** A rock counts as found in time when a frame found it while the camera was at least this far away, metres. */
+export const WALK_IN_TIME_M = 3
+
+/** One rock along a walk, with every distance (camera to rock) at which a frame saw it in view and found it. */
+export interface WalkRock {
+  standM: number
+  /** Distances of the frames that had it in view (the per-pose truth), metres. */
+  inView: number[]
+  /** Distances of the frames whose detections matched it, metres. */
+  foundAt: number[]
+}
+
+export interface WalkScore {
+  truth: number
+  found: number
+  recall: number
+  /** Median of each found rock's first (farthest) detection distance, metres. */
+  medianFirstM: number
+}
+
+/**
+ * Rocks that were in view in at least one frame while the camera was WALK_IN_TIME_M or more away; found = a frame at
+ * that distance or more matched it. Rocks only ever in view closer than that are left out (they were never seen in time
+ * by the truth either).
+ */
+export function scoreWalk(rocks: readonly WalkRock[]): WalkScore {
+  const due = rocks.filter((r) => r.inView.some((d) => d >= WALK_IN_TIME_M))
+  const first: number[] = []
+  let found = 0
+  for (const r of due) {
+    const inTime = r.foundAt.filter((d) => d >= WALK_IN_TIME_M)
+    if (inTime.length === 0) continue
+    found++
+    first.push(Math.max(...inTime))
+  }
+  return { truth: due.length, found, recall: due.length ? found / due.length : NaN, medianFirstM: median(first) }
+}
+
 export function median(values: ArrayLike<number>): number {
   if (!values.length) return NaN
   const s = Array.from(values).sort((a, b) => a - b)

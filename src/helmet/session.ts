@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { JEZERO } from '../data/jezero.ts'
 import { MOBILITY } from '../lib/mobility.ts'
 import type { LatLon, RoutePlan, Terrain } from '../types.ts'
-import { HAZARD, type CvResult, type Detection, type HelmetEntry, type HelmetExit, type Pose } from './contracts.ts'
+import { HAZARD, type CvResult, type Detection, type HelmetDetour, type HelmetEntry, type HelmetExit, type Pose } from './contracts.ts'
 import { CvClient } from './cv/client.ts'
 import { HazardMap } from './mapping/fuse.ts'
 import { buildTrack, locate, pointAhead, remainingM, type RouteTrack } from './nav/follow.ts'
@@ -22,6 +22,7 @@ import { EYE_M, FAST_FACTOR, stepPlayer, type Ground, type MoveResult } from './
 import { makeCoarseGrid } from './world/heightField.ts'
 import { headingAlong } from './world/path.ts'
 import type { RoutesFile } from './world/routes.ts'
+import { DEMO_HALF_WIDTH_M } from './world/rocks.ts'
 import { World } from './world/scene.ts'
 import type { TileIndex } from './world/tileGrid.ts'
 
@@ -130,6 +131,23 @@ const DETOUR_TICKS = 4
 const HARD_AHEAD_MEMORY_MS = 4000
 /** "Loose sand ahead" looks this far along the planned line, metres. */
 const SAND_AHEAD_M = 6
+/**
+ * Rocks this close to the point where the line was shut are named as its cause in the before/after view, metres.
+ * The demo boulder field's half-width (rocks.ts DEMO_HALF_WIDTH_M): the rocks of the field, not the scattered ones beyond.
+ */
+const DETOUR_CAUSE_M = DEMO_HALF_WIDTH_M
+/** The walked detour is recorded as a point every this many metres, at most DETOUR_TRAIL_MAX points (about 1 km). */
+const DETOUR_TRAIL_STEP_M = 2
+const DETOUR_TRAIL_MAX = 500
+
+/** Longest walk straight back to the habitat on the legs from `from` on, minutes; null when no leg has the numbers. */
+function walkBackMax(plan: RoutePlan, from: number): number | null {
+  let max: number | null = null
+  for (const leg of plan.legs.slice(Math.max(0, from))) {
+    for (const v of leg.walkHomeMin) if (Number.isFinite(v) && (max === null || v > max)) max = v
+  }
+  return max
+}
 /** Time between CV frames, ms (PLAN §4: about every 150 ms, at least 4 Hz). */
 export const CV_EVERY_MS = 150
 
@@ -169,6 +187,17 @@ export class HelmetSession {
   private rerouted: NavState['rerouted'] = null
   /** Re-routes so far (for the log and for testing). */
   rerouteCount = 0
+  /** Time outside for the whole trip as planned, and what the re-routes of this walk added to it. */
+  private tripMin: number
+  private tripDeltaMin = 0
+  /** The first re-route that changed the line, kept for the before/after view in Mission control. */
+  private detour: HelmetDetour | null = null
+  /**
+   * What happens after that re-route, until the stop it led to: the way the astronaut really walked (the guide and
+   * any later re-routes take them round the whole field, the first new line only round what was seen by then), and
+   * every boulder of the field the cameras found on the way.
+   */
+  private detourFollow: { stopId: string; causeAt: { x: number; y: number }; trail: LatLon[]; rocks: Map<number, number>; done: boolean } | null = null
   private arrived = false
   private detourTicks = 0
   private hardAheadAt = -Infinity
@@ -198,6 +227,7 @@ export class HelmetSession {
   constructor(host: HTMLElement, entry: HelmetEntry, data: SessionData, onState: (s: HudState) => void, onPlan: (plan: RoutePlan) => void = () => {}, standIn = false) {
     this.entry = entry
     this.plan = entry.plan
+    this.tripMin = entry.plan.totalMinutes
     this.onPlan = onPlan
     this.origin = entry.startAt
     this.legIndex = entry.legIndex
@@ -246,6 +276,7 @@ export class HelmetSession {
         .then((res) => {
           if (this.plan !== before) return
           this.plan = res.plan
+          this.tripMin = res.plan.totalMinutes // the stand-in's times are made up: compare with the real plan
           this.setLeg(0)
           this.guide = null
           this.decider.setRoute(remainingPath(res.plan, 0))
@@ -317,6 +348,7 @@ export class HelmetSession {
     this.hazards.fuse(result)
     this.rocks.update(result.detections, performance.now(), pose)
     this.navigate()
+    this.followDetour()
     for (const cb of this.cvListeners) cb(this.lastCv)
   }
 
@@ -378,8 +410,10 @@ export class HelmetSession {
     })
     if (!decision.replan) return
     const before = this.plan
-    const { stops, habitat } = remainingStops(before, this.legIndex)
-    const oldPath = remainingPath(before, this.legIndex, at)
+    const legIndex = this.legIndex
+    const { stops, habitat } = remainingStops(before, legIndex)
+    const oldPath = remainingPath(before, legIndex, at)
+    const causeAt = shut && shutAt ? shutAt : { x: pose.x, y: pose.y }
     this.replanner
       .replan({
         mobility: before.mobility,
@@ -402,7 +436,14 @@ export class HelmetSession {
         this.setLeg(0)
         this.guide = null
         this.detourTicks = 0
-        if (!same) this.rerouted = { deltaMin: res.deltaMinutes, at: performance.now() }
+        if (!same) {
+          this.rerouted = { deltaMin: res.deltaMinutes, at: performance.now() }
+          this.tripDeltaMin += res.deltaMinutes
+          if (!this.detour) {
+            this.detour = this.describeDetour(before, legIndex, at, causeAt, res.plan, res.deltaMinutes)
+            this.detourFollow = { stopId: before.legs[legIndex].toId, causeAt, trail: [at], rocks: new Map(), done: false }
+          }
+        }
         this.onPlan(res.plan)
       })
       .catch((err) => console.warn('helmet: re-route failed, keeping the current plan:', err?.message ?? err))
@@ -437,6 +478,60 @@ export class HelmetSession {
     this.onPlan(res.plan)
   }
 
+  /**
+   * The detour as it stands now: the trip time with every re-route of this walk, the boulders found so far, and
+   * the after-line = the way walked from the first re-route, then the current plan on to the stop.
+   */
+  private detourNow(d: HelmetDetour): HelmetDetour {
+    const out = { ...d, tripMin: { before: this.tripMin, after: this.tripMin + this.tripDeltaMin } }
+    const f = this.detourFollow
+    if (!f) return out
+    if (f.rocks.size > 0) {
+      out.rocks = Math.max(d.rocks, f.rocks.size)
+      out.tallestM = Math.max(d.tallestM ?? 0, ...f.rocks.values())
+    }
+    if (f.trail.length > 1) {
+      const leg = this.plan.legs[this.legIndex]
+      const rest = !f.done && leg?.toId === f.stopId ? remainingPath({ ...this.plan, legs: [leg] }, 0, toLatLon(this.pose.x, this.pose.y, this.origin)) : []
+      out.afterPath = [...f.trail, ...rest]
+    }
+    return out
+  }
+
+  /** After every CV frame while a detour is being walked: extend the trail, collect the field's boulders. */
+  private followDetour(): void {
+    const f = this.detourFollow
+    if (!f || f.done) return
+    // the trail ends at the stop the detour led to (the next leg starts there), or after a long way
+    if (this.plan.legs[this.legIndex]?.toId !== f.stopId || this.arrived || f.trail.length >= DETOUR_TRAIL_MAX) {
+      f.done = true
+      return
+    }
+    const here = toLatLon(this.pose.x, this.pose.y, this.origin)
+    const last = toLocal(f.trail[f.trail.length - 1], this.origin)
+    if (Math.hypot(this.pose.x - last.x, this.pose.y - last.y) >= DETOUR_TRAIL_STEP_M) f.trail.push(here)
+    for (const t of this.rocks.tracks) {
+      if (t.level !== 'hazard' || Math.hypot(t.x - f.causeAt.x, t.y - f.causeAt.y) > DETOUR_CAUSE_M) continue
+      f.rocks.set(t.id, Math.max(f.rocks.get(t.id) ?? 0, t.heightM))
+    }
+  }
+
+  /** The before/after of one re-route: the rocks that shut the old line, both lines to the next stop, and the cost. */
+  private describeDetour(before: RoutePlan, legIndex: number, at: { lat: number; lon: number }, causeAt: { x: number; y: number }, after: RoutePlan, deltaMin: number): HelmetDetour {
+    const rocks = this.rocks.tracks.filter((t) => t.level === 'hazard' && Math.hypot(t.x - causeAt.x, t.y - causeAt.y) <= DETOUR_CAUSE_M)
+    return {
+      at: toLatLon(causeAt.x, causeAt.y, this.origin),
+      rocks: rocks.length,
+      tallestM: rocks.length ? Math.max(...rocks.map((t) => t.heightM)) : null,
+      // the old line only up to the next stop: the rest of the trip is the same in both
+      beforePath: remainingPath({ ...before, legs: [before.legs[legIndex]] }, 0, at),
+      afterPath: after.legs[0]?.path ?? [],
+      deltaMin,
+      tripMin: { before: this.tripMin, after: this.tripMin + this.tripDeltaMin },
+      walkBackMaxMin: { before: walkBackMax(before, legIndex), after: walkBackMax(after, 0) },
+    }
+  }
+
   /** What goes back to Mission control: the seen ground as a picture, the hazards found, and the plan if it changed. */
   exit(): HelmetExit {
     const grid = this.hazards.grid
@@ -458,6 +553,7 @@ export class HelmetSession {
         .map((h) => ({ at: toLatLon(h.x, h.y, this.origin), kind: h.kind, radiusM: h.radiusM })),
       plan: this.replanned ? this.plan : null,
       rerouteDeltaMin: this.replanned && this.rerouted ? this.rerouted.deltaMin : undefined,
+      detour: this.detour ? this.detourNow(this.detour) : undefined,
     }
   }
 

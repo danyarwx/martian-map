@@ -8,6 +8,7 @@ import {
   D_MIN,
   DEMO_BEFORE_STOP_M,
   DEMO_HALF_WIDTH_M,
+  DEMO_MIN_ROCKS,
   demoBoulderFields,
   demoRocksByTile,
   K_ROUGH,
@@ -114,7 +115,7 @@ test('roughGrid marks textured cells only', () => {
   assert.equal(g.reduce((s, v) => s + v, 0), 1)
 })
 
-test('demo boulder field: 8–14 boulders of 0.5–1.2 m across the path, 240 m before the stop', () => {
+test('demo boulder field: a 50 m band of 0.5–1.2 m boulders across the path, 240 m before the stop', () => {
   // a straight leg due north, 1 km long, ending at the stop
   const start = { lat: 18.45, lon: 77.4 }
   const path: [number, number][] = []
@@ -123,7 +124,7 @@ test('demo boulder field: 8–14 boulders of 0.5–1.2 m across the path, 240 m 
   const fields = demoBoulderFields([{ id: 'three-forks', tiles: [] }], legs)
   assert.equal(fields.length, 1)
   const f = fields[0]
-  assert.ok(f.rocks.length >= 8 && f.rocks.length <= 14)
+  assert.ok(f.rocks.length >= DEMO_MIN_ROCKS && f.rocks.length <= DEMO_MIN_ROCKS + 6)
   const stop = { lat: path[path.length - 1][0], lon: path[path.length - 1][1] }
   let west = Infinity
   let east = -Infinity
@@ -135,7 +136,7 @@ test('demo boulder field: 8–14 boulders of 0.5–1.2 m across the path, 240 m 
     west = Math.min(west, p.x)
     east = Math.max(east, p.x)
   }
-  assert.ok(west < -4 && east > 4, 'the band crosses the path')
+  assert.ok(west < -(DEMO_HALF_WIDTH_M - 2) && east > DEMO_HALF_WIDTH_M - 2, 'the band crosses the path, edge to edge')
   assert.deepEqual(demoBoulderFields([{ id: 'three-forks', tiles: [] }], legs), fields)
 
   // they end up in the tiles' rocks, flagged, with no natural rock inside them

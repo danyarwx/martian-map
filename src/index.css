@@ -492,6 +492,43 @@ details[open] > summary .chevron { transform: rotate(180deg); }
   color: #e8ecf1;
   font-size: 14px;
 }
+/* Before/after of the helmet's re-route (src/panels/DetourCard.tsx), over the map like the note above. */
+.detour {
+  position: absolute; z-index: 1100; top: var(--s3); left: 56px;
+  width: min(380px, calc(100% - 68px));
+  padding: var(--s3) var(--s4); border: 1px solid #8fe3d6; border-radius: var(--r-md);
+  background: rgba(14, 17, 22, 0.94); color: var(--text); font-size: 14px;
+}
+.detour-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.detour-kicker { color: #8fe3d6; font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.detour-close {
+  padding: 2px var(--s2); border: 1px solid var(--control-border); border-radius: var(--r-sm);
+  background: none; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.detour-cause { margin: var(--s2) 0 var(--s3); line-height: 1.4; }
+.detour-x { color: var(--danger-line); font-weight: 700; margin-right: var(--s2); }
+.detour-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); margin-bottom: var(--s3); }
+.detour-toggle button {
+  min-height: 36px; padding: var(--s1) var(--s2); border: 1px solid var(--control-border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.detour-toggle button[aria-pressed='true'] { border-color: #8fe3d6; background: #10302c; color: var(--text); }
+.detour-swatch {
+  display: inline-block; width: 16px; height: 4px; margin-right: var(--s2); border-radius: 2px; vertical-align: middle;
+}
+.detour-swatch--before { background: #ffffff; }
+.detour-swatch--after { background: #6dffa8; }
+.detour-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.detour-table th, .detour-table td { padding: var(--s1) 0; text-align: right; font-weight: 400; }
+.detour-table th[scope='row'] { text-align: left; color: var(--text-2); }
+.detour-table thead th { color: var(--text-3); font-size: 12px; }
+.detour-table td { padding-left: var(--s3); }
+.detour-over { color: var(--danger); }
+.detour-delta { margin: var(--s2) 0 0; padding-top: var(--s2); border-top: 1px solid var(--line); color: var(--text-2); }
+.detour-delta strong { color: var(--text); }
+/* Map: the two lines of the re-route and the point where the planned one was shut. */
+.detour-label { white-space: nowrap; }
+
 .helmet-return button {
   flex: none;
   padding: 4px 10px;

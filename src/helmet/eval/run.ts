@@ -35,7 +35,7 @@ import { BURY } from '../world/rocks.ts'
 import { World } from '../world/scene.ts'
 import { loadTileIndex, strideFor, type TileSlot } from '../world/tiles.ts'
 import { predict, prf, trainLogistic, type Prf } from './logistic.ts'
-import { mean, median, rms, ROCK_FAR_M, ROCK_MIN_STAND_M, ROCK_NEAR_M, SMALL_FAR_M, SMALL_MIN_STAND_M, scoreRockCells, scoreRocks, scoreSmallRocks, type TruthRock } from './metrics.ts'
+import { matchRadius, mean, median, rms, ROCK_FAR_M, ROCK_MIN_STAND_M, ROCK_NEAR_M, SMALL_FAR_M, SMALL_MIN_STAND_M, scoreRockCells, scoreRocks, scoreSmallRocks, scoreWalk, WALK_IN_TIME_M, type TruthRock, type WalkRock, type WalkScore } from './metrics.ts'
 import { evalWindows, poseLocal, type EvalPose } from './poses.ts'
 
 /** PLAN T4.4 targets. */
@@ -46,6 +46,17 @@ const DEPTH_FAR_M = 64
 const DEPTH_BINS: [number, number][] = [[2, 4], [4, 6], [6, 10], [10, 15], [15, 25]]
 /** Probability above which a patch is called sand (the classifier's threshold). */
 const SAND_THRESHOLD = 0.6
+/** The walk at each boulder field: from this far before its middle to this far, one frame per step, metres. */
+const WALK_FROM_M = 25
+const WALK_TO_M = 2
+const WALK_STEP_M = 1
+/** Looking a little down, like the fixed poses. */
+const WALK_PITCH_DEG = -12
+/** Rocks this far to either side of the walk, up to this far past the field's middle, are the rocks in the way, metres. */
+const WALK_CORRIDOR_M = 3
+const WALK_PAST_M = 3
+/** Standing-height bins of the recall tables, metres. */
+const HEIGHT_EDGES = [0.3, 0.4, 0.6, 2]
 
 export interface PoseRecord {
   id: string
@@ -109,6 +120,19 @@ export interface EvalMetrics {
     byDistance: { from: number; to: number; truth: number; found: number; recall: number; onMap: number; recallOnMap: number }[]
     /** Small rocks (0.10–0.30 m) within 8 m: found by a detection of either level; precision of the 'small' detections. */
     small: { truth: number; found: number; recall: number; detections: number; detectionsTrue: number; precision: number }
+  }
+  /**
+   * Walking at each boulder field: was every rock in the way found at least once while it was still WALK_IN_TIME_M
+   * or more away? Counted once per rock, not once per frame. A different question from `rocks.recall`.
+   */
+  walk: {
+    fromM: number
+    toM: number
+    stepM: number
+    corridorM: number
+    inTimeM: number
+    hazard: WalkScore & { byHeight: { from: number; to: number; truth: number; found: number; recall: number }[] }
+    small: WalkScore
   }
   /** CV image size the eval ran at. */
   cv: { width: number; height: number; maxDisp: number }
@@ -397,6 +421,8 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
   const validAll: number[] = []
   let warmed = false
   let poseIndex = -1
+  const walkHazard: WalkRock[] = []
+  const walkSmall: WalkRock[] = []
 
   try {
     for (const w of windows) {
@@ -579,6 +605,50 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
           })
           await tick()
         }
+
+        // Walk: straight at the middle of the boulder field, one frame a metre (a session gets about four), and
+        // every rock in a corridor along the walk remembered with the distances it was in view and found at.
+        const fwd = headingToDir(w.field.headingDeg)
+        const right = headingToDir(w.field.headingDeg + 90)
+        const seen = new Map<string, { list: WalkRock[]; rock: WalkRock }>()
+        for (let back = WALK_FROM_M; back >= WALK_TO_M; back -= WALK_STEP_M) {
+          if (signal.aborted) return result
+          hooks.onProgress(`Walk to the ${w.id} boulders: ${back} m before them`)
+          // the window's origin is the middle of the field, so the walk is along −fwd from there
+          const head: Pose = { x: -fwd.x * back, y: -fwd.y * back, z: 0, headingDeg: w.field.headingDeg, pitchDeg: WALK_PITCH_DEG }
+          if (!(await settle(world, head, signal))) {
+            if (signal.aborted) return result
+            skipped.push(`walk ${w.id} at ${back} m: the ground did not load in time`)
+            continue
+          }
+          head.z = world.heights.heightAt(head.x, head.y) + EYE_M
+          world.update(head)
+          const frame = rig.capture(world.scene, head)
+          const left = frame.pose
+          const res = runFrame(pipeline, frame)
+          const found = res.detections.filter((d) => d.kind === 'rock')
+          const truth = truthRocks(world, left, intr)
+          for (const [rocks, list, anyLevel] of [[truth.visible, walkHazard, false], [truth.small, walkSmall, true]] as const) {
+            for (const r of rocks) {
+              const across = r.x * right.x + r.y * right.y
+              const along = r.x * fwd.x + r.y * fwd.y
+              if (Math.abs(across) > WALK_CORRIDOR_M || along > WALK_PAST_M) continue
+              const key = `${r.x.toFixed(2)},${r.y.toFixed(2)}`
+              let e = seen.get(key)
+              if (!e) {
+                e = { list, rock: { standM: r.standM, inView: [], foundAt: [] } }
+                seen.set(key, e)
+                list.push(e.rock)
+              }
+              const dist = Math.hypot(r.x - left.x, r.y - left.y)
+              e.rock.inView.push(dist)
+              // as in the per-pose scores: hazard rocks need a hazard detection, small ones a detection of either level
+              if (found.some((d) => (anyLevel || d.level !== 'small') && Math.hypot(d.x - r.x, d.y - r.y) <= matchRadius(r))) e.rock.foundAt.push(dist)
+            }
+          }
+          msAll.push(res.ms)
+          await tick()
+        }
       } finally {
         world.dispose()
       }
@@ -621,9 +691,25 @@ export async function runEval(hooks: EvalHooks): Promise<EvalResult & { sandData
           cellsTrue: rockCellsTrue,
           precision: rockCells ? rockCellsTrue / rockCells : NaN,
         },
-        byHeight: by('standM', [0.3, 0.4, 0.6, 2]),
+        byHeight: by('standM', HEIGHT_EDGES),
         byDistance: by('dist', [2, 4, 6, 8, 10, 12.001]),
         small: { ...smallSum, recall: smallSum.truth ? smallSum.found / smallSum.truth : NaN, precision: smallSum.detections ? smallSum.detectionsTrue / smallSum.detections : NaN },
+      },
+      walk: {
+        fromM: WALK_FROM_M,
+        toM: WALK_TO_M,
+        stepM: WALK_STEP_M,
+        corridorM: WALK_CORRIDOR_M,
+        inTimeM: WALK_IN_TIME_M,
+        hazard: {
+          ...scoreWalk(walkHazard),
+          byHeight: HEIGHT_EDGES.slice(0, -1).map((from, k) => {
+            const to = HEIGHT_EDGES[k + 1]
+            const s = scoreWalk(walkHazard.filter((r) => r.standM >= from && r.standM < to))
+            return { from, to, truth: s.truth, found: s.found, recall: s.recall }
+          }),
+        },
+        small: scoreWalk(walkSmall),
       },
       cv: { width: intr.width, height: intr.height, maxDisp },
       depth: {
