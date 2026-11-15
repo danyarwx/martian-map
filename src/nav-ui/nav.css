@@ -3,9 +3,10 @@
   height: 100%; display: flex; font-size: var(--nav-text); line-height: 1.4;
   background: var(--bg); color: var(--text); overflow: hidden;
 }
-.nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; overflow: hidden; }
+/* --turn-time: map, labels, arrow and compass all turn together. */
+.nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; overflow: hidden; --turn-time: .6s; }
 /* Turns with the heading (heading-up); sized by NavMap.tsx. */
-.nav-map-rot { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform .6s ease-out; }
+.nav-map-rot { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform var(--turn-time) ease-out; }
 .nav-map { position: absolute; inset: 0; background: #000; }
 /* Leaflet controls, moved out of the turning map so they stay upright and on screen. */
 .nav-map-ui { position: absolute; inset: 0; z-index: 999; pointer-events: none; font: 12px var(--font); }
@@ -17,7 +18,7 @@
   display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .6); cursor: pointer;
 }
 .compass[aria-pressed="true"] { border-color: var(--accent); }
-.compass-needle { position: relative; display: block; width: 30px; height: 30px; transition: transform .6s ease-out; }
+.compass-needle { position: relative; display: block; width: 30px; height: 30px; transition: transform var(--turn-time) ease-out; }
 .compass-needle svg { display: block; }
 .compass-needle b { position: absolute; left: 0; right: 0; top: -14px; text-align: center; font-size: 11px; color: #ff5b5b; }
 .nav-panel {
@@ -136,15 +137,22 @@
 .nav-stop {
   width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   background: var(--accent); color: var(--on-accent); font: 700 20px var(--font); border: 3px solid #fff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, .6);
+  box-shadow: 0 0 8px rgba(0, 0, 0, .7); position: relative;
 }
+/* A stop's name, above the circle: on hover, or for a few seconds after a tap. */
+.nav-stop-name {
+  display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+  padding: 4px 10px; border-radius: var(--r-lg); background: var(--surface); color: var(--text);
+  font: 600 16px var(--font); white-space: nowrap; box-shadow: 0 0 8px rgba(0, 0, 0, .7); pointer-events: none;
+}
+.nav-stop:hover .nav-stop-name, .nav-stop--named .nav-stop-name { display: block; }
 .nav-stop--home { background: #fff; color: #0e1116; }
 .nav-stop--done { background: var(--nav-walked); }
 /* Labels stay upright while the map turns (--unturn is set by NavMap.tsx). */
-.nav-map-rot .nav-stop, .nav-map-rot .nav-hazard { transform: rotate(var(--unturn, 0deg)); transition: transform .6s ease-out; }
+.nav-map-rot .nav-stop, .nav-map-rot .nav-hazard { transform: rotate(var(--unturn, 0deg)); transition: transform var(--turn-time) ease-out; }
 .nav-hazard { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--warn); font-size: 22px; text-shadow: 0 0 4px #000, 0 0 2px #000; }
-.me { width: 64px; height: 64px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .7)); }
-.me-arrow { display: block; transition: transform .2s linear; transform-origin: 50% 50%; }
+.me { width: 64px; height: 64px; filter: drop-shadow(0 0 4px rgba(0, 0, 0, .8)); }
+.me-arrow { display: block; transition: transform var(--turn-time) ease-out; transform-origin: 50% 50%; }
 .nav-app .leaflet-control-layers-toggle { width: 52px; height: 52px; }
 .nav-app .leaflet-control-zoom a { width: 52px; height: 52px; line-height: 52px; font-size: 26px; }
 

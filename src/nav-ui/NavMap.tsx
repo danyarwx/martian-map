@@ -67,6 +67,12 @@ function followZoom(map: L.Map, visible: { w: number; h: number }, aheadM: numbe
   return Math.max(12, Math.min(18, Math.floor(Math.log2((mPerPx0 * halfPx) / aheadM))))
 }
 
+/** How long a stop's name stays up after a tap, ms. */
+const NAME_SHOWN_MS = 4000
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c)
+
 const latLngs = (path: LatLon[]) => path.map((p) => [p.lat, p.lon] as L.LatLngTuple)
 
 export default function NavMap(props: Props) {
@@ -79,6 +85,12 @@ export default function NavMap(props: Props) {
   const compassRef = useRef<HTMLSpanElement>(null)
   /** Map rotation in degrees, unwrapped (it may pass 360) so the CSS turn takes the short way round. */
   const rotation = useRef(0)
+  /** Arrow angle inside the map, degrees, unwrapped like `rotation` so it never spins the long way round. */
+  const arrowAngle = useRef(0)
+  const setArrow = (el: HTMLElement | null | undefined, deg: number, exact = false) => {
+    arrowAngle.current = exact ? deg : arrowAngle.current + turnAngle(((arrowAngle.current % 360) + 360) % 360, deg)
+    if (el) el.style.transform = `rotate(${arrowAngle.current}deg)`
+  }
   const visible = useRef({ w: 1, h: 1 })
   const headingUpRef = useRef(headingUp)
   headingUpRef.current = headingUp
@@ -178,11 +190,22 @@ export default function NavMap(props: Props) {
     for (const { stop, label, done } of stops) {
       const cls = `nav-stop${label === 'H' ? ' nav-stop--home' : ''}${done ? ' nav-stop--done' : ''}`
       L.marker([stop.lat, stop.lon], {
-        icon: L.divIcon({ className: '', html: `<div class="${cls}">${label}</div>`, iconSize: [40, 40] }),
+        // The name sits inside the circle's element, so it turns back upright together with it.
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="${cls}">${label}<span class="nav-stop-name">${escapeHtml(stop.name)}</span></div>`,
+          iconSize: [40, 40],
+        }),
         title: stop.name,
         keyboard: false,
       })
-        .bindTooltip(stop.name, { direction: 'top', offset: [0, -20] })
+        .on('click', (e) => {
+          // A tap shows the name for a few seconds (hover shows it too, see nav.css).
+          const el = (e.target as L.Marker).getElement()?.querySelector<HTMLElement>('.nav-stop')
+          if (!el) return
+          el.classList.add('nav-stop--named')
+          window.setTimeout(() => el.classList.remove('nav-stop--named'), NAME_SHOWN_MS)
+        })
         .addTo(p.stops)
     }
     p.hazards.clearLayers()
@@ -218,8 +241,8 @@ export default function NavMap(props: Props) {
     if (position) {
       if (!p.map.hasLayer(p.me)) p.me.addTo(p.map)
       p.me.setLatLng([position.lat, position.lon])
-      const arrow = p.me.getElement()?.querySelector<HTMLElement>('.me-arrow')
-      if (arrow) arrow.style.transform = `rotate(${headingDeg ?? 0}deg)`
+      // Heading-up: the map-turning effect below points the arrow up instead.
+      if (!headingUpRef.current) setArrow(p.me.getElement()?.querySelector<HTMLElement>('.me-arrow'), headingDeg ?? 0)
       if (follow) {
         const at = L.latLng(position.lat, position.lon)
         const zoom = autoZoom ? followZoom(p.map, visible.current, aheadM) + (nextTurnM !== null && nextTurnM < CLOSE_TURN_M ? 1 : 0) : null
@@ -241,6 +264,10 @@ export default function NavMap(props: Props) {
     layoutRef.current()
     if (headingUp) p.map.dragging.disable()
     else p.map.dragging.enable()
+    // Wheel, pinch and double-tap zoom around the crew: the point under a finger is in the wrong place on a
+    // turned map. Leaflet reads these options at each event.
+    const o = p.map.options
+    o.scrollWheelZoom = o.touchZoom = o.doubleClickZoom = headingUp ? 'center' : true
   }, [headingUp])
 
   // Turn the map against the heading, so the direction of travel points up. North-up turns it back.
@@ -251,8 +278,15 @@ export default function NavMap(props: Props) {
     const current = ((rotation.current % 360) + 360) % 360
     const target = headingUp && headingDeg !== null ? headingDeg : headingUp ? current : 0
     const delta = turnAngle(current, target)
-    if (Math.abs(delta) < MIN_TURN_DEG && target !== 0) return
+    const arrow = parts.current?.me.getElement()?.querySelector<HTMLElement>('.me-arrow')
+    if (Math.abs(delta) < MIN_TURN_DEG && target !== 0) {
+      if (headingUp) setArrow(arrow, rotation.current, true)
+      return
+    }
     rotation.current += delta
+    // Heading-up: the arrow turns exactly with the map, so it keeps pointing up on screen.
+    if (headingUp) setArrow(arrow, rotation.current, true)
+    else if (headingDeg !== null) setArrow(arrow, headingDeg)
     rot.style.transform = rotation.current ? `rotate(${-rotation.current}deg)` : ''
     // Labels stay upright: they turn back by the same amount.
     rot.style.setProperty('--unturn', `${rotation.current}deg`)
