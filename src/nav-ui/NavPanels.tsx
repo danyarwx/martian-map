@@ -215,14 +215,6 @@ export function NavPanel({ view, stops }: NavPanelProps) {
         </div>
       </div>
       <section>
-        <h2 className="label">Captions</h2>
-        <ol className="captions" aria-live="polite">
-          {view.log.map((e) => (
-            <li key={`${e.id}-${e.at}`} className={`cap cap--${e.priority}`}>{e.text}</li>
-          ))}
-        </ol>
-      </section>
-      <section>
         <h2 className="label">Ahead</h2>
         <ol className="ahead">
           {view.upcoming.slice(0, 12).map((u) => (

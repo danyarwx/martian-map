@@ -85,10 +85,6 @@
 .nav-head .muted { font-size: 15px; }
 .next-stop strong { display: block; font-size: 24px; line-height: 1.2; }
 .next-stop p { margin-top: var(--s1); color: var(--text-2); }
-.captions { list-style: none; margin: 0; padding: var(--s2); display: flex; flex-direction: column; gap: var(--s1); background: #000; border-radius: var(--r-lg); min-height: 120px; }
-.cap { padding: 2px var(--s2); color: #fff; opacity: .55; }
-.cap:last-child { opacity: 1; font-weight: 600; }
-.cap--high { border-left: 4px solid var(--accent); }
 .ahead { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; }
 .ahead li { display: grid; grid-template-columns: 32px 72px 1fr; align-items: center; gap: var(--s2); padding: var(--s1) 0; border-bottom: 1px solid var(--line); font-size: 16px; }
 /* Simulation controls: floating on the map, bottom left above the scale bar */

@@ -25,7 +25,7 @@ slows down on slopes. Rehearse once and note your own times.
 | ~2:40 | Let it run | Turn instructions home | Wrap up: data layers, safety, route, ground photos, tablet form factor |
 
 Backup lines if something goes wrong:
-- No sound: captions show every line on the right. Keep talking over the captions.
+- No sound: there are no on-screen captions, so check the volume before you start. If the voice fails, read the turn banner and the stop card aloud yourself.
 - Planner slow on first load: wait for the route to appear before tapping Start (about 4 s).
 - Want more time to talk: tap **60×** in the SIMULATION bar to cycle to 1×, then back to 60×.
 

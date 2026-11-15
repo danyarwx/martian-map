@@ -59,7 +59,7 @@ Done on branch `feat/safety-timeline` (from `feat/ui-mission-control`, not pushe
 - The demo route (3 stops on foot) is 1 h 30 min from the habitat at its farthest point, so it shows the walk-back warning. Decide whether the demo keeps that or uses a closer selection
 
 Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn navigation at `/nav`
-- Landscape tablet screen, glove-sized controls, dark theme (`src/nav-ui/`). Plan screen, then Google Maps-style navigation: instruction banner, north-up map that follows the crew arrow, walked part greyed, captions of every announcement, stop card with photo and countdown, finished card
+- Landscape tablet screen, glove-sized controls, dark theme (`src/nav-ui/`). Plan screen, then Google Maps-style navigation: instruction banner, north-up map that follows the crew arrow, walked part greyed, voice only (no on-screen captions), stop card with photo and countdown, finished card
 - Position is simulated (`src/nav/position.ts`, yellow SIMULATION bar: speed 1×/10×/60×, Drift 40 m = guided back, Drift 90 m = new route). The `PositionSource` interface allows an Earth-GPS-mapped source later
 - Instruction engine and announcement timing in `src/nav/` (200 m / 50 m / now on foot, 400 m / 100 m by rover). Off route > 25 m for 5 s: guide back up to 50 m, beyond that replan from here (`planFixedOrder` in the worker)
 - Voice API for the AI voice teammate: `docs/VOICE_API.md`. Event bus in `src/nav/events.ts`, also on `window.marsNav` and `BroadcastChannel('mars-nav')`. Optional browser TTS preview

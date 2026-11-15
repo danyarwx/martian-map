@@ -29,7 +29,7 @@ export interface NavRunInput {
 export interface NavRunView {
   state: NavState
   upcoming: UpcomingManeuver[]
-  /** Last spoken announcements, newest last. */
+  /** Last spoken announcements, newest last. Not shown on screen; kept for debugging and future use. */
   log: NavEvent[]
   /** The route being followed: the planned one, or the latest replan. */
   plan: RoutePlan

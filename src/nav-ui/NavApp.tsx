@@ -88,7 +88,7 @@ export default function NavApp() {
       .catch(() => setViews({}))
   }, [])
 
-  // The voice listens to the bus for the whole session; muting only silences it, captions stay.
+  // The voice listens to the bus for the whole session; muting only silences it.
   useEffect(() => {
     const v = startVoice(getNavBus())
     voice.current = v
