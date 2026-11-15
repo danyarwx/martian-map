@@ -63,7 +63,7 @@ Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn 
 - Position is simulated (`src/nav/position.ts`, yellow SIMULATION bar: speed 1×/10×/60×, Drift 40 m = guided back, Drift 90 m = new route). The `PositionSource` interface allows an Earth-GPS-mapped source later
 - Instruction engine and announcement timing in `src/nav/` (200 m / 50 m / now on foot, 400 m / 100 m by rover). Off route > 25 m for 5 s: guide back up to 50 m, beyond that replan from here (`planFixedOrder` in the worker)
 - Voice API for the AI voice teammate: `docs/VOICE_API.md`. Event bus in `src/nav/events.ts`, also on `window.marsNav` and `BroadcastChannel('mars-nav')`. Optional browser TTS preview
-- Planner now straightens A* paths (string pulling, at most 2% slower), which also straightens the web map line. Turns under 35° are not announced
+- Planner now straightens A* paths (string pulling, at most 2% slower), which also straightens the web map line. Every bend of 20° or more is announced on its own (Slight 20–35°, Bear 35–60°, Turn 60–120°, Sharp over 120°); short left-right sidesteps stay quiet. The banner shows the heading to walk ("Head 135° SE"). Drift cue "Drifting left. Correct right." at 10 m on foot / 20 m by rover, held 3 s, before the 25 m guide-back
 - Installable offline PWA (`vite-plugin-pwa`, service worker registered only from `/nav`). Precache 4.9 MB. "Download for offline" saves Trek tiles: whole area up to HiRISE z15 (~73 MB) plus HiRISE z16–17 along the route (~20 MB for the demo)
 - Web app sidebar has "Send to tablet": `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
 - Not yet: tested on a real tablet / Safari

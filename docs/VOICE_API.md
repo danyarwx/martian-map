@@ -35,7 +35,7 @@ interface NavEvent {
   id: string          // unique per announcement
   type: 'instruction' | 'hazard' | 'arrive' | 'off_route' | 'rerouted' | 'back_on_route'
       | 'walkback_warning' | 'turn_back_time' | 'time_alert' | 'hazard_event' | 'status'
-      | 'stop_briefing' | 'nav_started' | 'nav_ended' | 'state'
+      | 'stop_briefing' | 'drift' | 'nav_started' | 'nav_ended' | 'state'
   text: string        // finished English sentence: speak this
   priority: 'low' | 'normal' | 'high'
   maneuver?: Maneuver // structured data, if you want to phrase it yourself
@@ -58,6 +58,7 @@ Example texts, from a real run:
 nav_started      Navigation started. 3 stops, 7.1 kilometers, about 5 hours 10 minutes.
 instruction      Head north-west for 550 meters.
 instruction low  Bear left in 200 meters.
+instruction low  Slight right in 50 meters.
 instruction high Bear left.
 instruction      Walk straight for 2.1 kilometers.
 hazard           Steep ground ahead, 18 degrees, 20 meters. Slow down.
@@ -70,6 +71,7 @@ time_alert  high Thirty minutes of daylight left. Head for the habitat.
 status           (not triggered by the UI now) Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.
 hazard_event high Dust storm warning. Gusts above 20 meters per second and visibility dropping. Abort the excursion. Return to the habitat now.
 rerouted    high Return route: 1.2 kilometers to Habitat, about 25 minutes.
+drift            Drifting left. Correct right.
 off_route        Head back to the route, 30 meters to your right.
 off_route   high Off route. Replanning.
 rerouted         New route: 2.7 kilometers to Delta front (Hawksbill Gap).
@@ -80,9 +82,11 @@ nav_ended        Navigation ended.
 
 Rover routes say "Drive" instead of "Walk", and their announcement distances are longer.
 
+Every bend of 20° or more in the drawn line is its own announcement (no "…, then …" joining). Smaller bends and short left-right sidesteps that end on the same heading are not announced: the banner shows the heading to walk ("Head 135° SE"), and `drift` fires once when the crew is 10 m (on foot) or 20 m (rover) off the line for 3 s. It re-arms after the crew is back within 5 m. Beyond 25 m `off_route` takes over. `NavState.routeHeadingDeg` and `NavState.drifting` carry the same information for screens.
+
 ## `Maneuver` (on instruction and hazard events)
 
-`kind` (`depart`, `turn`, `continue`, `hazard`, `arrive`, `arrive_home`); `modifier` for turns (slight / normal / sharp, left / right); `angleDeg` (signed, + is right); `headingDeg`; `at` (lat/lon); `alongM`; `distanceToNextM`; `text` (without the distance); `reason` ("to avoid a 24° slope"); `stopId` / `stopName`; `slopeDeg` / `lengthM` on hazards. See `instructions.ts` for exact names.
+`kind` (`depart`, `turn`, `continue`, `hazard`, `arrive`, `arrive_home`); `modifier` for turns (`slight_left` 20–35°, `bear_left` 35–60°, `left` 60–120°, `sharp_left` over 120°, same for right); `angleDeg` (signed, + is right); `headingDeg`; `at` (lat/lon); `alongM`; `distanceToNextM`; `text` (without the distance); `reason` ("to avoid a 24° slope"); `stopId` / `stopName`; `slopeDeg` / `lengthM` on hazards. See `instructions.ts` for exact names.
 
 ## Minimal integration
 
