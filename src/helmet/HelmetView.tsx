@@ -17,6 +17,10 @@ import { defaultEntry, loadRoutes } from './sim/defaultEntry.ts'
 import { jumpTargets, routeLengths, routePoint, type JumpTarget } from './sim/jump.ts'
 import { loadTileIndex } from './world/tiles.ts'
 import './helmet.css'
+// Onboard vision (src/vision): the camera notices dust storms; "Simulate dust storm" (B) for the demo
+import HelmetVision from '../vision/helmet/HelmetVision.tsx'
+import type { VisionReport } from '../vision/types.ts'
+import { CV_HEIGHT, CV_WIDTH } from './sim/cvRig.ts'
 
 interface Props {
   /** The plan and the jump point from Mission control. Null opens the helmet on its own (#helmet). */
@@ -37,6 +41,7 @@ const KEYS: [string, string][] = [
   ['V', 'computer vision view: what the helmet computes'],
   ['M', 'hazard map small / large'],
   ['R', 'the same detector on a real Perseverance stereo photo'],
+  ['B', 'simulate a dust storm (the helmet camera has to notice it)'],
   ['P', 'pause'],
   ['H', 'this help'],
   ['Esc', 'back to Mission control'],
@@ -68,6 +73,18 @@ export default function HelmetView({ entry, onExit }: Props) {
   const [bigMap, setBigMap] = useState(false)
   const [realPhoto, setRealPhoto] = useState(false)
   const [weather, setWeather] = useState<WeatherCache | null>(null)
+  /** The camera saw a dust storm: what it reported, and whether the way home is planned yet. */
+  const [storm, setStorm] = useState<{ report: VisionReport; homeward: 'planning' | 'ready' | 'failed' } | null>(null)
+  const onStorm = (report: VisionReport) => {
+    setStorm({ report, homeward: 'planning' })
+    session.current
+      ?.returnToHabitat()
+      .then(() => setStorm((s) => s && { ...s, homeward: 'ready' }))
+      .catch((err) => {
+        console.warn('helmet: could not plan the way back:', err?.message ?? err)
+        setStorm((s) => s && { ...s, homeward: 'failed' })
+      })
+  }
   useEffect(() => {
     let live = true
     loadWeather()
@@ -218,6 +235,16 @@ export default function HelmetView({ entry, onExit }: Props) {
       </div>
 
       <div className="helmet-alerts" aria-live="assertive">
+        {storm && (
+          <p className="is-danger" title="Onboard vision: helmet camera pixels and the CLIP image model, on the suit">
+            Dust storm · camera: visibility {Math.round(storm.report.visibilityLoss * 100)}% lost ·{' '}
+            {storm.homeward === 'planning'
+              ? 'planning the way back…'
+              : storm.homeward === 'ready'
+                ? 'excursion stopped, follow the guide back to the habitat'
+                : 'return to the habitat'}
+          </p>
+        )}
         {rerouted && (
           <p className="is-info">
             Route updated: {rerouted.deltaMin >= 0.5 ? `+${Math.round(rerouted.deltaMin)} min` : rerouted.deltaMin <= -0.5 ? `${Math.round(rerouted.deltaMin)} min` : 'under 1 min longer'} · hazard on the planned route
@@ -257,6 +284,9 @@ export default function HelmetView({ entry, onExit }: Props) {
       )}
 
       {hud && <Compass headingDeg={hud.pose.headingDeg} stopBearingDeg={nav && !nav.arrived ? nav.stopBearingDeg : null} steerDeg={nav?.steerDeg ?? null} />}
+      {hud && session.current && (
+        <HelmetVision session={session.current} width={CV_WIDTH} height={CV_HEIGHT} onStorm={onStorm} onClear={() => setStorm(null)} />
+      )}
       {hud && <SuitPanel elapsedMin={hud.elapsedMin} lstHours={lst} weather={weather} walkBackMin={nav?.walkBackMin ?? null} />}
       {realPhoto && <RealPhotoTest />}
       {hud && session.current && cvView && !realPhoto && <CvView session={session.current} hud={hud} />}
@@ -298,7 +328,7 @@ export default function HelmetView({ entry, onExit }: Props) {
         </div>
       )}
 
-      <p className="helmet-help">W A S D walk · Shift hurry · drag look · J jump · V computer vision · R real photo · M map · H help · Esc back</p>
+      <p className="helmet-help">W A S D walk · Shift hurry · drag look · J jump · V computer vision · R real photo · B dust storm · M map · H help · Esc back</p>
     </div>
   )
 }

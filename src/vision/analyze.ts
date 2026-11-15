@@ -3,7 +3,7 @@
 // public/vision-samples/SOURCES.md: Curiosity's Mastcam during the June 2018 global dust storm
 // against clear-day Perseverance frames.
 
-import type { FrameMetrics, LabelScore, Visibility, VisionHazard, VisionReport } from './types'
+import type { CameraProfile, FrameMetrics, LabelScore, Visibility, VisionHazard, VisionReport } from './types'
 
 /** Visibility loss at which the frame counts as hazy, and as a storm. */
 export const HAZE_AT = 0.45
@@ -19,11 +19,20 @@ const ramp = (v: number, from: number, to: number) => clamp01((v - from) / (to -
 /** Visibility loss from the pixels alone.
  *  Lost ground texture counts most: it held up across cameras (raw Mastcam and Navcam frames and
  *  the stitched helmet panoramas), while overall contrast differs from camera to camera. */
-export function lossFromMetrics(m: FrameMetrics): number {
+export function lossFromMetrics(m: FrameMetrics, profile: CameraProfile = 'rover'): number {
+  if (profile === 'helmet') return lossHelmet(m)
   const blurred = ramp(m.groundDetail, 0.03, 0.012) // ground texture gone
   const hazy = ramp(m.haze, 0.3, 0.45) // dark channel lifted by airborne dust
   const flat = ramp(m.contrast, 0.13, 0.06) // brightness range collapsed
   return 0.5 * blurred + 0.35 * hazy + 0.15 * flat
+}
+
+/** Visibility loss for the 3D helmet's camera (256 x 192, rendered). Its ground has little fine texture and
+ *  no deep shadows, so the rover calibration reads every frame as half hazy. What does change with dust is the
+ *  distance: hills and the horizon fade into a smooth glow. Set on the helmet's own frames in clear air
+ *  (far detail 0.019 to 0.052) and in the simulated storm (0.008 or less at 70 % strength and up). */
+function lossHelmet(m: FrameMetrics): number {
+  return ramp(m.farDetail, 0.016, 0.005)
 }
 
 /** Share of "storm" against "clear" in the model's scores, 0 to 1. Undefined without the model. */
@@ -34,8 +43,8 @@ export function stormShare(labels: LabelScore[]): number | undefined {
   return storm / (storm + clear)
 }
 
-export function buildReport(metrics: FrameMetrics, labels: LabelScore[] = []): VisionReport {
-  const fromPixels = lossFromMetrics(metrics)
+export function buildReport(metrics: FrameMetrics, labels: LabelScore[] = [], profile: CameraProfile = 'rover'): VisionReport {
+  const fromPixels = lossFromMetrics(metrics, profile)
   const share = stormShare(labels)
   // The model can be fooled by any bright hazy sky, the metrics by a camera pointed at smooth sand.
   // Together they have to agree before the helmet calls a storm.

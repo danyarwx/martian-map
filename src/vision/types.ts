@@ -17,7 +17,13 @@ export type FrameMetrics = {
   haze: number
   /** Average brightness of the frame. */
   brightness: number
+  /** Structure in the distance: brightness spread along each row of the upper 60 % of the frame, averaged.
+   *  Hills, the horizon and far rocks make rows uneven; airborne dust leaves only a smooth top-to-bottom glow. */
+  farDetail: number
 }
+
+/** Which camera the frame came from. Each has its own calibration (see analyze.ts). */
+export type CameraProfile = 'rover' | 'helmet'
 
 /** One zero-shot label from the image model with its share of the probability. */
 export type LabelScore = { id: string; hazard: VisionHazard; score: number }

@@ -61,5 +61,18 @@ export function measureFrame(frame: Frame): FrameMetrics {
   }
   const haze = patches ? darkSum / patches : 0
 
-  return { contrast, groundDetail, haze, brightness: mean }
+  // Structure in the distance: spread of brightness along each row of the upper 60 % of the frame.
+  let rowSum = 0
+  const farRows = Math.max(1, Math.floor(h * 0.6))
+  for (let y = 0; y < farRows; y++) {
+    let rowMean = 0
+    for (let x = 0; x < w; x++) rowMean += luma[y * w + x]
+    rowMean /= w
+    let rowVar = 0
+    for (let x = 0; x < w; x++) rowVar += (luma[y * w + x] - rowMean) ** 2
+    rowSum += Math.sqrt(rowVar / w)
+  }
+  const farDetail = rowSum / farRows
+
+  return { contrast, groundDetail, haze, brightness: mean, farDetail }
 }

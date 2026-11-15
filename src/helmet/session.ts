@@ -389,6 +389,35 @@ export class HelmetSession {
       .catch((err) => console.warn('helmet: re-route failed, keeping the current plan:', err?.message ?? err))
   }
 
+  /**
+   * The onboard vision saw a dust storm (src/vision): drop the stops still ahead and plan the way back to the
+   * habitat from here, with the hazards found so far still blocked. Resolves once the new plan is in place.
+   */
+  async returnToHabitat(): Promise<void> {
+    while (this.replanner.busy) await new Promise((r) => setTimeout(r, 200))
+    const before = this.plan
+    const { habitat } = remainingStops(before, this.legIndex)
+    const at = toLatLon(this.pose.x, this.pose.y, this.origin)
+    const fix = this.guide?.fix ?? locate(this.track, this.pose.x, this.pose.y)
+    const res = await this.replanner.replan({
+      mobility: before.mobility,
+      profile: before.profile,
+      from: at,
+      stops: [],
+      habitat,
+      blocked: this.decider.blockedCells(),
+      remainingMinutes: remainingMinutes(before, this.legIndex, this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0),
+    })
+    this.plan = res.plan
+    this.replanned = true
+    this.decider.setRoute(remainingPath(res.plan, 0))
+    this.setLeg(0)
+    this.guide = null
+    this.detourTicks = 0
+    this.hudAt = 0
+    this.onPlan(res.plan)
+  }
+
   /** What goes back to Mission control: the seen ground as a picture, the hazards found, and the plan if it changed. */
   exit(): HelmetExit {
     const grid = this.hazards.grid
