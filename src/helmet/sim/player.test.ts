@@ -82,3 +82,19 @@ test('a player dropped inside a rock (after a jump) can walk out', () => {
   walk(p, ground(() => 0, [{ x: 0, y: 5, d: 1.2, h: 1 }]), 5)
   assert.ok(p.x > 3)
 })
+
+test('walking nearly head-on into a wide rock: reports the rock and slides round its edge at walking speed', () => {
+  const wide: RockLike = { x: 0, y: 5, d: 2, h: 1 }
+  const g = ground(() => 0, [wide])
+  const p = start(5) // 5° east of north: the step barely has a part along the rock's edge
+  let first: ReturnType<typeof stepPlayer> | null = null
+  for (let t = 0; t < 3 * 20; t++) {
+    const res = stepPlayer(p, { fwd: 1, side: 0, fast: false }, 0.05, g)
+    if (res.hit && !first) first = res
+  }
+  assert.equal(first?.hit, wide)
+  assert.equal(first?.blocked, 'rock')
+  // 3 s at 4 m/s: round the 2 m rock and on, not creeping along it a few centimetres per step
+  assert.ok(p.y > 6.5, `got to y = ${p.y.toFixed(2)}`)
+  assert.ok(Math.hypot(p.x - wide.x, p.y - wide.y) > 1.0)
+})

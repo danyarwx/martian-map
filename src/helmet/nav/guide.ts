@@ -36,6 +36,10 @@ export interface GuideOptions {
   clearTicks?: number
   /** Where the steering arrow points: this far along the shown guide, metres. */
   steerAheadM?: number
+  /** CV ticks a fresh path that turns back (over 90°) is held off while the kept detour is clear ahead. */
+  holdTicks?: number
+  /** How much of the kept detour must be clear ahead for that, metres. */
+  holdM?: number
 }
 
 export type GuideMode = 'route' | 'detour' | 'blocked'
@@ -52,10 +56,16 @@ export class GuideKeeper {
   readonly clearTicks: number
   readonly steerAheadM: number
 
+  /** Ticks a fresh path that turns back is held off while the kept detour is still clear ahead (about 1 s). */
+  readonly holdTicks: number
+  /** ... for at least this far, metres. */
+  readonly holdM: number
+
   mode: GuideMode = 'route'
   /** The detour being kept, local ENU metres, from where it was adopted to its goal. */
   private kept: P[] | null = null
   private clearRun = 0
+  private holdRun = 0
 
   constructor(o: GuideOptions = {}) {
     this.lookaheadM = o.lookaheadM ?? 30
@@ -64,6 +74,8 @@ export class GuideKeeper {
     this.keepAheadM = o.keepAheadM ?? 6
     this.clearTicks = o.clearTicks ?? 4
     this.steerAheadM = o.steerAheadM ?? 3
+    this.holdTicks = o.holdTicks ?? 6
+    this.holdM = o.holdM ?? 4
   }
 
   /** Forget everything (new leg, new plan, jump). */
@@ -71,6 +83,7 @@ export class GuideKeeper {
     this.mode = 'route'
     this.kept = null
     this.clearRun = 0
+    this.holdRun = 0
   }
 
   /**
@@ -103,13 +116,43 @@ export class GuideKeeper {
 
     // a hard hazard is on the line (or we are still passing one): keep the detour while it is good
     if (this.kept && this.keepable(this.kept, grid, x, y)) {
+      this.holdRun = 0
       const path = this.trimmed(this.kept, x, y)
       this.mode = 'detour'
       return { ...fresh, path, steerDeg: this.steer(path, x, y, fresh.steerDeg) }
     }
+    // The kept detour is shut somewhere ahead (a rock seen only now). The fresh path often goes round the other
+    // end of the field: the arrow swung by up to 180° and back (review H-P0-1). While the kept path is still clear
+    // for HOLD_M ahead, walk on along that clear part for a few ticks; as the astronaut gets nearer, the planner
+    // usually finds the way round on the same side. If it still turns back after holdTicks, it is taken.
+    if (this.kept && this.holdRun < this.holdTicks) {
+      const clear = this.clearPart(this.kept, grid, x, y)
+      if (clear && pathLength(clear) >= this.holdM) {
+        const keepDeg = this.steer(clear, x, y, fresh.steerDeg)
+        const turn = Math.abs(((fresh.steerDeg - keepDeg + 540) % 360) - 180)
+        if (turn > 90) {
+          this.holdRun++
+          this.mode = 'detour'
+          return { ...fresh, path: clear, steerDeg: keepDeg }
+        }
+      }
+    }
+    this.holdRun = 0
     this.kept = fresh.path.length > 1 ? fresh.path.map((p) => ({ x: p.x, y: p.y })) : null
     this.mode = 'detour'
     return fresh
+  }
+
+  /** The kept detour from the astronaut up to its first shut stretch, or null when the astronaut is off it. */
+  private clearPart(path: P[], grid: GuideCells, x: number, y: number): P[] | null {
+    if (distToPolyline(path, x, y) > this.keepNearM) return null
+    const ahead = this.trimmed(path, x, y)
+    const out: P[] = [ahead[0]]
+    for (let i = 1; i < ahead.length; i++) {
+      if (!this.segmentClear(grid, ahead[i - 1], ahead[i])) break
+      out.push(ahead[i])
+    }
+    return out.length > 1 ? out : null
   }
 
   /** True when no hard hazard (grown by the margin) lies on the planned line between s0 and goalS. */
@@ -230,6 +273,12 @@ export function distToPolyline(path: P[], x: number, y: number): number {
     best = Math.min(best, Math.hypot(a.x + vx * t - x, a.y + vy * t - y))
   }
   return best
+}
+
+function pathLength(path: P[]): number {
+  let len = 0
+  for (let i = 1; i < path.length; i++) len += Math.hypot(path[i].x - path[i - 1].x, path[i].y - path[i - 1].y)
+  return len
 }
 
 function remainingLength(path: P[], k: number, x: number, y: number): number {

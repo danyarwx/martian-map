@@ -35,7 +35,7 @@ const DEPARTURE_LST_H = 10.5
 
 const KEYS: [string, string][] = [
   ['W A S D / arrows', 'walk'],
-  ['Shift', 'hurry (time ×4)'],
+  ['Shift', 'hurry (time ×4), normal speed near hazards'],
   ['Drag', 'look around'],
   ['J', 'jump to a point of the route'],
   ['V', 'computer vision view: what the helmet computes'],
@@ -267,6 +267,7 @@ export default function HelmetView({ entry, onExit }: Props) {
   if ((!hud || hud.loading) && !error) flags.push('loading terrain')
   if (hud?.coarse && !hud.loading) flags.push('coarse terrain')
   if (hud?.fast) flags.push('time ×4')
+  if (hud?.slowedNearHazard) flags.push('slowed near hazard')
   if (hud?.blocked === 'rock') flags.push('rock in the way')
   if (hud?.blocked === 'slope') flags.push('too steep to climb')
   if (paused) flags.push('paused')
