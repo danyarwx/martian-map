@@ -6,6 +6,8 @@ helmet display that finds hazards from its own cameras.
 
 Live: https://martian-map-nasa.vercel.app
 
+New here? Start with the [reviewer guide](REVIEWER_GUIDE.md).
+
 ## What it does
 
 **Mission control (habitat planning screen)**
