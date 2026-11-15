@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { MobilityId, RoutePlan, RoutePlans, RouteProfile, StopView, Target } from '../types.ts'
+import type { MobilityId, RoutePlan, RoutePlans, RouteProfile, Target } from '../types.ts'
 import { duration, km } from '../lib/format.ts'
 import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } from '../lib/safety.ts'
@@ -338,10 +338,9 @@ export function SimBar({ view, controls }: { view: NavRunView; controls: NavRunC
 }
 
 /** Full-height card while the crew works at a stop. */
-export function StopCard({ view, stop, photo, onContinue }: {
+export function StopCard({ view, stop, onContinue }: {
   view: NavRunView
   stop: Target | undefined
-  photo: StopView | undefined
   onContinue: () => void
 }) {
   const minutes = MOBILITY[view.plan.mobility].stopMinutes
@@ -355,14 +354,27 @@ export function StopCard({ view, stop, photo, onContinue }: {
   const ss = Math.floor((leftMs % 60000) / 1000)
   return (
     <div className="overlay-card">
-      {photo && <img src={photo.file} alt={`Ground view near ${stop?.name ?? 'the stop'}`} />}
-      {photo && <p className="source">{photo.camera}, sol {photo.sol} · {photo.credit}</p>}
+      <span className="label">At stop</span>
       <h1 className="nav-title">{stop?.name ?? 'Stop'}</h1>
-      {stop?.task && <p className="task"><span className="label">Task</span>{stop.task}</p>}
-      {stop?.science && <p className="muted">{stop.science}</p>}
-      <p className="countdown num" aria-live="off">
-        {leftMs > 0 ? `${mm}:${String(ss).padStart(2, '0')} of ${minutes} min planned` : 'Planned time is up'}
-      </p>
+      {stop?.task && (
+        <section className="trip-row">
+          <span className="label">Task</span>
+          <p className="stop-text">{stop.task}</p>
+        </section>
+      )}
+      {stop?.science && (
+        <section className="trip-row">
+          <span className="label">Why here</span>
+          <p className="stop-text">{stop.science}</p>
+        </section>
+      )}
+      <section className="trip-row">
+        <span className="label">Time at the stop</span>
+        <p className="countdown num" aria-live="off">
+          {leftMs > 0 ? `${mm}:${String(ss).padStart(2, '0')}` : 'Time is up'}
+        </p>
+        <p className="stop-text muted">{minutes} min planned</p>
+      </section>
       <button type="button" className="big big--primary" onClick={onContinue}>Done — continue</button>
     </div>
   )

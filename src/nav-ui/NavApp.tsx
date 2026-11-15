@@ -6,7 +6,7 @@ import { usePlanner } from '../lib/usePlanner.ts'
 import { useTerrainMeta } from '../lib/useTerrainMeta.ts'
 import { displayPlan } from '../nav/display.ts'
 import { getNavBus } from '../nav/events.ts'
-import type { MobilityId, RouteProfile, StopView, Target } from '../types.ts'
+import type { MobilityId, RouteProfile, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
 import { Banner, EndOnMap, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
@@ -53,7 +53,6 @@ export default function NavApp() {
   const [selected, setSelected] = useState<string[]>(initial.stopIds)
   const [mobility, setMobility] = useState<MobilityId>(initial.mobility)
   const [profile, setProfile] = useState<RouteProfile>(initial.profile)
-  const [views, setViews] = useState<Record<string, StopView>>({})
   const [run, setRun] = useState<NavRunInput | null>(null)
   const [follow, setFollow] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
@@ -82,13 +81,6 @@ export default function NavApp() {
   const plan = planner.plans ? planner.plans[shown] : null
 
   const { view, controls } = useNavRun(run)
-
-  useEffect(() => {
-    fetch(site.views)
-      .then((r) => (r.ok ? r.json() : {}))
-      .then(setViews)
-      .catch(() => setViews({}))
-  }, [])
 
   // The voice listens to the bus for the whole session; muting only silences it.
   useEffect(() => {
@@ -259,7 +251,6 @@ export default function NavApp() {
             <StopCard
               view={view}
               stop={stopsById[atStopId]}
-              photo={atStopId === habitat.id && initial.home ? undefined : views[atStopId]}
               onContinue={controls.continueFromStop}
             />
           )}

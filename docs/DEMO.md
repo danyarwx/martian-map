@@ -12,13 +12,13 @@ slows down on slopes. Rehearse once and note your own times.
 
 | Time | On screen / you do | Voice says | What you tell the judges |
 |---|---|---|---|
-| Before 0:00 | Plan screen: 2 stops, on foot, Fastest. Point at the map layers | — | "One Marswalk at Jezero. Our science goal: signs of ancient life. Collect the samples Perseverance cached, then visit the lake-bottom layers." Optical (HiRISE 25 cm), topography (slope from a 1 m DTM), thermal, minerals |
+| Before 0:00 | Plan screen: 2 stops, on foot, Fastest. Point at the map layers (and, on the web planning screen, the Perseverance ground photo on each stop card) | — | "One Marswalk at Jezero. Our science goal: signs of ancient life. Collect the samples Perseverance cached, then visit the lake-bottom layers." Optical (HiRISE 25 cm), topography (slope from a 1 m DTM), thermal, minerals |
 | 0:00 | Tap **Start navigation** | "Radio check." "Navigation started. 2 stops, 6.5 kilometers, about 4 hours 19 minutes." | "This is the astronaut's tablet. It talks, so hands stay free." |
 | ~0:05 | Point at the slope-coloured line | "Head … for … meters." | "The route avoids slopes over 20° on foot. Every turn is announced like a car navigator." |
 | ~0:15 | Point at the three rows in the panel (next stop, all stops and back, back to base now) | "Gust hours start in 15 minutes…" | "The gust hours come from real Perseverance MEDA weather data, not a guess." |
 | ~0:30 | — | "Gust hours now. Watch your footing…" | |
 | ~1:00 | Point at **Back to base now** going red ("Walk home over 60 min") | "Caution. Habitat is more than 60 minutes away on foot…" | "We always know how long the walk home is. 60 minutes is the emergency reserve." |
-| ~1:30 | Stop card with the rover photo appears | "Sample cache reached. Task: …" then the science sentence | "Ground-level photo from Perseverance, so the crew knows what the stop looks like." Tap **Continue** |
+| ~1:30 | Stop card appears: Task, Why here, time at the stop | "Sample cache reached. Task: …" then the science sentence | "At every stop the crew gets the task and why this spot matters for the search for life. The ground photos are on the planning screen, so the crew saw the spot before leaving." Tap **Done — continue** |
 | ~1:55 | Delta front stop card | Arrival, task, "Fine lake-bottom layers are where organic matter…" | "Our strongest lead for life." Tap **Continue** |
 | ~2:05 | Drag the map to look ahead, then tap the blue arrow icon (re-centre) | — | "The crew can look around; one tap brings the map back." |
 | ~2:15 | Tap **Dust storm** in the yellow SIMULATION bar | "Dust storm warning… Abort the excursion. Return to the habitat now." then "Return route: … to Habitat, about … minutes." | "When space weather turns, the plan changes in a second: straight home, on safe ground." |
