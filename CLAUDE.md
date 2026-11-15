@@ -66,7 +66,7 @@ Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn 
 - Planner now straightens A* paths (string pulling, at most 2% slower), which also straightens the web map line. Turns under 35° are not announced
 - Installable offline PWA (`vite-plugin-pwa`, service worker registered only from `/nav`). Precache 4.9 MB. "Download for offline" saves Trek tiles: whole area up to HiRISE z15 (~73 MB) plus HiRISE z16–17 along the route (~20 MB for the demo)
 - Web app sidebar has "Send to tablet": `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
-- Not yet: heading-up map (needs `leaflet-rotate`), Earth GPS mode, turn-back-time event, tested on a real tablet / Safari
+- Not yet: tested on a real tablet / Safari
 
 Branch `feat/voice-browser-tts` (from `feat/tablet-nav`): built-in voice for `/nav`. Terse radio phrasing with units spelled out, speech queue (high interrupts, stale low dropped), browser voice, radio click, mute button, "Radio check" on Start.
 
@@ -81,7 +81,9 @@ On `feat/tablet-nav` (both voice branches merged in, then task B): safety alerts
 - Talk-back (task C) dropped: no Repeat, Where am I or hold-to-talk. Status is the only on-demand readout
 - Real weather (task E): `scripts/fetch_meda.py` builds `src/data/medaSol.ts` from Perseverance MEDA (NASA PDS), sols 120-129, medians per half hour. It drives the temperature curve, the gust hours (now 11:00-17:30, wind 95th percentile >= 8 m/s) and the conditions panel
 - Demo mode `/nav?demo=1`: Sample cache + Delta front on foot (4.3 h, the only on-foot routes that fit go past the 60 min reserve), leaves 10:30 Mars time, 60x. Script and recording checklist: `docs/DEMO.md`
-- Next: task D (heading-up map, Earth GPS), if there is time
+- Heading-up map (task D): the map turns with the direction of travel while following (CSS rotation in `NavMap.tsx`, no `leaflet-rotate`: it is GPL-3.0). Compass button switches to north-up; Re-centre returns to heading-up. Panning by hand is off while heading-up; Leaflet controls are moved outside the turning map
+- Earth GPS mode (task D): "Real GPS" in the SIMULATION bar. The tablet's GPS drives the arrow, 1 m on Earth = 1 m on Mars, north = north, first fix = where the arrow is at the switch (`src/nav/gps.ts`). Fixes worse than 50 m are skipped, worse than 25 m shown as a warning. Clock runs at 1x. "Simulation" puts the walker back at the navigator's position
+- Not tested yet: heading-up and GPS on a real tablet (GPS needs HTTPS, so the Vercel URL, and works poorly indoors)
 
 Commands:
 - `npm run fetch-data`: rover data, ground photos, terrain grid from the 20 m CTX DTM. Add `-- --full` to download the 1 m HiRISE DTM (1.8 GB) and build from that

@@ -132,6 +132,21 @@ export class SimulatedSource implements PositionSource {
     this.loadLeg(0)
   }
 
+  /**
+   * Puts the walker on leg `legIndex`, `alongM` metres from its start, back on the route. Used when the
+   * simulation takes over from GPS at the navigator's position.
+   */
+  placeAt(legIndex: number, alongM: number): void {
+    this.sideM = 0
+    this.sideTargetM = 0
+    this.loadLeg(Math.max(0, Math.min(legIndex, this.legs.length - 1)))
+    const end = this.cum[this.cum.length - 1]
+    this.alongM = Math.max(0, Math.min(alongM, end))
+    if (this.alongM >= end - 1e-6) this.waiting = true
+    this.lastTick = this.now()
+    this.report(0)
+  }
+
   /** Moves the walker forward by `seconds` of real time (times the multiplier) and reports a fix. */
   step(seconds: number): void {
     let left = this.paused || this.waiting ? 0 : seconds * this.multiplier

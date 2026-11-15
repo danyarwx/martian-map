@@ -5,6 +5,7 @@ import { MOBILITY, ROUTE_LABELS } from '../lib/mobility.ts'
 import { evaDoseMsv, HAZARD_EVENTS, WALK_BACK_RESERVE_MIN, type HazardKind } from '../lib/safety.ts'
 import { clock, farthestWalkHome } from '../lib/schedule.ts'
 import type { NavState, UpcomingManeuver } from '../nav/events.ts'
+import { GPS_WARN_ACCURACY_M, type GpsStatus } from '../nav/gps.ts'
 import { spokenDistance, type Maneuver } from '../nav/instructions.ts'
 import type { NavRunControls, NavRunView } from './useNavRun.ts'
 
@@ -256,30 +257,56 @@ const SPEEDS = [1, 10, 60]
  * Demo controls for the simulated walker, floating on the map. Clearly marked as simulation,
  * and folds into a small pill so it never hides the route for long.
  */
+/** What the GPS is doing, for the SIMULATION bar. */
+function gpsLabel(g: GpsStatus | null): { text: string; warn: boolean } {
+  if (!g || g.kind === 'waiting') return { text: 'GPS: waiting for a fix…', warn: true }
+  if (g.kind === 'error') return { text: `GPS: ${g.message}`, warn: true }
+  const m = Math.round(g.accuracyM)
+  if (g.kind === 'weak') return { text: `GPS weak ±${m} m, not used`, warn: true }
+  return { text: `GPS ±${m} m`, warn: g.accuracyM > GPS_WARN_ACCURACY_M }
+}
+
 export function SimBar({ view, controls }: { view: NavRunView; controls: NavRunControls }) {
   const [open, setOpen] = useState(true)
   if (!open) {
     return (
       <button type="button" className="sim-pill" onClick={() => setOpen(true)} aria-label="Show simulation controls">
-        SIMULATION · {view.speed}×
+        {view.source === 'gps' ? 'EARTH GPS' : `SIMULATION · ${view.speed}×`}
       </button>
     )
   }
   const nextSpeed = SPEEDS[(SPEEDS.indexOf(view.speed) + 1) % SPEEDS.length]
+  const gps = view.source === 'gps' ? gpsLabel(view.gps) : null
   return (
     <section className="sim-bar" aria-label="Simulation">
       <button type="button" className="sim-fold" onClick={() => setOpen(false)} aria-label="Hide simulation controls">
-        SIMULATION ▾
+        {gps ? 'EARTH GPS ▾' : 'SIMULATION ▾'}
       </button>
-      <button type="button" onClick={view.playing ? controls.pause : controls.play}>
-        {view.playing ? 'Pause' : 'Play'}
-      </button>
-      <button type="button" onClick={() => controls.setSpeed(nextSpeed)} aria-label={`Speed ${view.speed}×, tap for ${nextSpeed}×`}>
-        {view.speed}×
-      </button>
-      <button type="button" onClick={() => controls.drift(40)}>Drift 40</button>
-      <button type="button" onClick={() => controls.drift(90)}>Drift 90</button>
-      <button type="button" onClick={controls.backToRoute}>Back</button>
+      {gps ? (
+        <>
+          <span className={`sim-gps${gps.warn ? ' sim-gps--warn' : ''}`} role="status">{gps.text}</span>
+          <button type="button" onClick={() => controls.setSource('sim')}>Simulation</button>
+        </>
+      ) : (
+        <>
+          <button type="button" onClick={view.playing ? controls.pause : controls.play}>
+            {view.playing ? 'Pause' : 'Play'}
+          </button>
+          <button type="button" onClick={() => controls.setSpeed(nextSpeed)} aria-label={`Speed ${view.speed}×, tap for ${nextSpeed}×`}>
+            {view.speed}×
+          </button>
+          <button type="button" onClick={() => controls.drift(40)}>Drift 40</button>
+          <button type="button" onClick={() => controls.drift(90)}>Drift 90</button>
+          <button type="button" onClick={controls.backToRoute}>Back</button>
+          <button
+            type="button"
+            onClick={() => controls.setSource('gps')}
+            title="Walk outside: 1 metre on Earth = 1 metre on Mars, starting where the arrow is now"
+          >
+            Real GPS
+          </button>
+        </>
+      )}
       {(Object.keys(HAZARD_EVENTS) as HazardKind[]).map((kind) => (
         <button
           key={kind}

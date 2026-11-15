@@ -57,6 +57,8 @@ export default function NavApp() {
   const [run, setRun] = useState<NavRunInput | null>(null)
   const [follow, setFollow] = useState(true)
   const [autoZoom, setAutoZoom] = useState(true)
+  /** The crew chose north-up with the compass. Heading-up is the default while following. */
+  const [northUp, setNorthUp] = useState(false)
   const [muted, setMuted] = useState(false)
   const voice = useRef<Voice | null>(null)
   const online = useOnline()
@@ -110,6 +112,7 @@ export default function NavApp() {
     voice.current?.radioCheck() // this tap is what unlocks audio in the browser
     setFollow(true)
     setAutoZoom(true)
+    setNorthUp(false)
     setRun({ site, plan, habitat, stops: stopsById, mobility: MOBILITY[plan.mobility], demo: demo ? DEMO_RUN : undefined })
   }, [plan, habitat, stopsById, demo])
 
@@ -144,7 +147,11 @@ export default function NavApp() {
   const recentre = useCallback(() => {
     setFollow(true)
     setAutoZoom(true)
+    setNorthUp(false)
   }, [])
+  // Back to heading-up also follows the crew again; north-up keeps the map where it is.
+  const compass = useCallback(() => (northUp ? recentre() : setNorthUp(true)), [northUp, recentre])
+  const headingUp = !!run && follow && !northUp
   const userZoom = useCallback(() => setAutoZoom(false), [])
 
   const atStopId = s?.status === 'at_stop' ? s.visited[s.visited.length - 1] : null
@@ -164,6 +171,8 @@ export default function NavApp() {
           aheadM={run?.mobility.id === 'rover' ? AHEAD_ROVER_M : AHEAD_WALK_M}
           onFollow={setFollow}
           onUserZoom={userZoom}
+          headingUp={headingUp}
+          onCompass={compass}
         />
         {run && view && <Banner upcoming={view.upcoming} state={view.state} />}
         {run && view && s?.status !== 'finished' && <SimBar view={view} controls={controls} />}

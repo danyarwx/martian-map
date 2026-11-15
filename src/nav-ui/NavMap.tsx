@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import L from 'leaflet'
 import type { LatLon, RoutePlan, SiteConfig, Target } from '../types.ts'
 import { createBaseMap } from '../map/baseMap.ts'
-import { cumulativeM, pointAlong } from '../nav/geometry.ts'
+import { cumulativeM, pointAlong, turnAngle } from '../nav/geometry.ts'
 
 /** Where the crew is on the route, while navigating. */
 export interface NavProgress {
@@ -34,6 +34,10 @@ interface Props {
   onFollow: (on: boolean) => void
   /** Called when the user zooms by hand while navigating. */
   onUserZoom: () => void
+  /** Turn the map so the direction of travel points up. Panning by hand is off while it is on. */
+  headingUp: boolean
+  /** The compass button: switch between heading-up and north-up. */
+  onCompass: () => void
 }
 
 /** A turn closer than this gets a closer look, metres. */
@@ -46,13 +50,16 @@ const ME_ICON =
   '<path d="M32 8 L50 52 L32 42 L14 52 Z" fill="#2f81f7" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>' +
   '</svg></div>'
 
+/** Heading changes smaller than this do not turn the map, degrees: keeps it from wobbling. */
+const MIN_TURN_DEG = 4
+
 /**
  * Whole zoom level at which about `aheadM` metres fit between the middle of the map and its top or side edge,
- * whichever is closer, so the next stretch of route is in view while following.
+ * whichever is closer, so the next stretch of route is in view while following. `visible` is the part of the
+ * map on screen, which is smaller than the map while it is turned.
  */
-function followZoom(map: L.Map, aheadM: number): number {
-  const size = map.getSize()
-  const halfPx = Math.max(100, Math.min(size.x, size.y) / 2)
+function followZoom(map: L.Map, visible: { w: number; h: number }, aheadM: number): number {
+  const halfPx = Math.max(100, Math.min(visible.w, visible.h) / 2)
   const c = map.getCenter()
   // Metres per pixel at zoom 0 here; each zoom level halves it.
   const p = map.project(c, 0)
@@ -63,8 +70,19 @@ function followZoom(map: L.Map, aheadM: number): number {
 const latLngs = (path: LatLon[]) => path.map((p) => [p.lat, p.lon] as L.LatLngTuple)
 
 export default function NavMap(props: Props) {
-  const { site, stops, plan, hazards, progress, follow, autoZoom, nextTurnM, aheadM } = props
+  const { site, stops, plan, hazards, progress, follow, autoZoom, nextTurnM, aheadM, headingUp } = props
   const ref = useRef<HTMLDivElement>(null)
+  /** Turns with the heading. Holds the map, sized to the screen's diagonal while turned so no corner is empty. */
+  const rotRef = useRef<HTMLDivElement>(null)
+  /** Holds the Leaflet controls outside the turning part, so they stay put and on screen. */
+  const uiRef = useRef<HTMLDivElement>(null)
+  const compassRef = useRef<HTMLSpanElement>(null)
+  /** Map rotation in degrees, unwrapped (it may pass 360) so the CSS turn takes the short way round. */
+  const rotation = useRef(0)
+  const visible = useRef({ w: 1, h: 1 })
+  const headingUpRef = useRef(headingUp)
+  headingUpRef.current = headingUp
+  const layoutRef = useRef<() => void>(() => {})
   const parts = useRef<{
     map: L.Map
     outline: L.Polyline
@@ -85,6 +103,9 @@ export default function NavMap(props: Props) {
     if (!ref.current) return
     const { map } = createBaseMap(ref.current, site, { zoomControl: false })
     L.control.zoom({ position: 'bottomright' }).addTo(map)
+    // Controls live outside the turning part of the map.
+    const controls = ref.current.querySelector('.leaflet-control-container')
+    if (controls && uiRef.current) uiRef.current.appendChild(controls)
     const outline = L.polyline([], { color: '#0e1116', weight: 11, opacity: 0.85, interactive: false }).addTo(map)
     const done = L.polyline([], { color: '#8a94a1', weight: 6, opacity: 0.8, interactive: false }).addTo(map)
     const ahead = L.polyline([], { color: '#5ce1e6', weight: 7, interactive: false }).addTo(map)
@@ -107,11 +128,24 @@ export default function NavMap(props: Props) {
     })
     parts.current = { map, outline, done, ahead, stops: stopGroup, hazards: hazardGroup, me }
 
-    const resize = new ResizeObserver(() => {
-      map.invalidateSize({ pan: false })
+    // Sizes the map to the screen, or to the screen's diagonal while heading-up, keeping its centre.
+    const layout = () => {
+      const rot = rotRef.current
+      const wrap = rot?.parentElement
+      if (!rot || !wrap) return
+      const w = wrap.clientWidth
+      const h = wrap.clientHeight
+      visible.current = { w, h }
+      const d = headingUpRef.current ? Math.ceil(Math.hypot(w, h)) : 0
+      Object.assign(rot.style, d
+        ? { left: `${(w - d) / 2}px`, top: `${(h - d) / 2}px`, width: `${d}px`, height: `${d}px` }
+        : { left: '0', top: '0', width: '100%', height: '100%' })
+      map.invalidateSize({ animate: false })
       if (fitted.current) map.fitBounds(fitted.current, { padding: [40, 40], maxZoom: 16, animate: false })
-    })
-    resize.observe(ref.current)
+    }
+    layoutRef.current = layout
+    const resize = new ResizeObserver(layout)
+    if (rotRef.current?.parentElement) resize.observe(rotRef.current.parentElement)
     return () => {
       resize.disconnect()
       map.remove()
@@ -188,7 +222,7 @@ export default function NavMap(props: Props) {
       if (arrow) arrow.style.transform = `rotate(${headingDeg ?? 0}deg)`
       if (follow) {
         const at = L.latLng(position.lat, position.lon)
-        const zoom = autoZoom ? followZoom(p.map, aheadM) + (nextTurnM !== null && nextTurnM < CLOSE_TURN_M ? 1 : 0) : null
+        const zoom = autoZoom ? followZoom(p.map, visible.current, aheadM) + (nextTurnM !== null && nextTurnM < CLOSE_TURN_M ? 1 : 0) : null
         if (zoom !== null && zoom !== wanted.current) {
           wanted.current = zoom
           // No animation: an animated zoom never finishes while the page is in the background.
@@ -200,5 +234,52 @@ export default function NavMap(props: Props) {
     }
   }, [plan, cums, progress, follow, autoZoom, nextTurnM, aheadM])
 
-  return <div ref={ref} className="nav-map" />
+  // Heading-up: size the map for turning, and no panning by hand (it would go sideways on screen).
+  useEffect(() => {
+    const p = parts.current
+    if (!p) return
+    layoutRef.current()
+    if (headingUp) p.map.dragging.disable()
+    else p.map.dragging.enable()
+  }, [headingUp])
+
+  // Turn the map against the heading, so the direction of travel points up. North-up turns it back.
+  const headingDeg = progress?.headingDeg ?? null
+  useEffect(() => {
+    const rot = rotRef.current
+    if (!rot) return
+    const current = ((rotation.current % 360) + 360) % 360
+    const target = headingUp && headingDeg !== null ? headingDeg : headingUp ? current : 0
+    const delta = turnAngle(current, target)
+    if (Math.abs(delta) < MIN_TURN_DEG && target !== 0) return
+    rotation.current += delta
+    rot.style.transform = rotation.current ? `rotate(${-rotation.current}deg)` : ''
+    // Labels stay upright: they turn back by the same amount.
+    rot.style.setProperty('--unturn', `${rotation.current}deg`)
+    if (compassRef.current) compassRef.current.style.transform = `rotate(${-rotation.current}deg)`
+  }, [headingUp, headingDeg])
+
+  return (
+    <>
+      <div ref={rotRef} className="nav-map-rot">
+        <div ref={ref} className="nav-map" />
+      </div>
+      <div ref={uiRef} className="nav-map-ui leaflet-touch" />
+      {progress && (
+        <button
+          type="button"
+          className="compass"
+          onClick={props.onCompass}
+          aria-pressed={headingUp}
+          aria-label={headingUp ? 'Heading up. Tap for north up' : 'North up. Tap for heading up'}
+          title={headingUp ? 'Heading up · tap for north up' : 'North up · tap for heading up'}
+        >
+          <span ref={compassRef} className="compass-needle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="30" height="30"><path d="M12 2 L17 12 H7 Z" fill="#ff5b5b" /><path d="M12 22 L7 12 H17 Z" fill="#c9d1d9" /></svg>
+            <b>N</b>
+          </span>
+        </button>
+      )}
+    </>
+  )
 }

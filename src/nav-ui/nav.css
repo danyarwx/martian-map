@@ -3,8 +3,23 @@
   height: 100%; display: flex; font-size: var(--nav-text); line-height: 1.4;
   background: var(--bg); color: var(--text); overflow: hidden;
 }
-.nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; }
+.nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; overflow: hidden; }
+/* Turns with the heading (heading-up); sized by NavMap.tsx. */
+.nav-map-rot { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform .6s ease-out; }
 .nav-map { position: absolute; inset: 0; background: #000; }
+/* Leaflet controls, moved out of the turning map so they stay upright and on screen. */
+.nav-map-ui { position: absolute; inset: 0; z-index: 999; pointer-events: none; font: 12px var(--font); }
+.nav-map-ui .leaflet-control-attribution { margin: 0; padding: 0 5px; background: rgba(255, 255, 255, .8); color: #333; }
+.nav-map-ui .leaflet-control-attribution a { color: #0078a8; }
+.compass {
+  position: absolute; z-index: 1000; right: 10px; bottom: 170px; width: 56px; height: 56px; padding: 0;
+  border-radius: 50%; border: 2px solid rgba(0, 0, 0, .3); background: var(--surface); color: var(--text);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0, 0, 0, .6); cursor: pointer;
+}
+.compass[aria-pressed="true"] { border-color: var(--accent); }
+.compass-needle { position: relative; display: block; width: 30px; height: 30px; transition: transform .6s ease-out; }
+.compass-needle svg { display: block; }
+.compass-needle b { position: absolute; left: 0; right: 0; top: -14px; text-align: center; font-size: 11px; color: #ff5b5b; }
 .nav-panel {
   position: relative; flex: 3 1 0; min-width: 320px; max-width: 520px;
   display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line);
@@ -129,6 +144,8 @@
 }
 .nav-stop--home { background: #fff; color: #0e1116; }
 .nav-stop--done { background: var(--nav-walked); }
+/* Labels stay upright while the map turns (--unturn is set by NavMap.tsx). */
+.nav-map-rot .nav-stop, .nav-map-rot .nav-hazard { transform: rotate(var(--unturn, 0deg)); transition: transform .6s ease-out; }
 .nav-hazard { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: var(--warn); font-size: 22px; text-shadow: 0 0 4px #000, 0 0 2px #000; }
 .me { width: 64px; height: 64px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .7)); }
 .me-arrow { display: block; transition: transform .2s linear; transform-origin: 50% 50%; }

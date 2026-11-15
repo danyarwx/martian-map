@@ -1,5 +1,6 @@
 // One navigation run: the navigator, the simulated walker and the replanning worker, wired together.
-// Positions come from the simulator; everything the screen shows comes from the navigation bus.
+// Positions come from the simulator, or the tablet's GPS in Earth GPS mode; everything the screen shows comes
+// from the navigation bus.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Mobility, RoutePlan, SiteConfig, Target } from '../types.ts'
 import { distanceM } from '../lib/geo.ts'
@@ -8,7 +9,8 @@ import { bestDeparture, temperatureC, turnBackBy } from '../lib/schedule.ts'
 import { statusText } from '../nav/alerts.ts'
 import { getNavBus, IDLE_STATE, type NavEvent, type NavState, type UpcomingManeuver } from '../nav/events.ts'
 import type { Maneuver } from '../nav/instructions.ts'
-import { SimulatedSource } from '../nav/position.ts'
+import { GpsSource, type GpsStatus } from '../nav/gps.ts'
+import { SimulatedSource, type PositionFix } from '../nav/position.ts'
 import { createWorkerRerouter } from '../nav/reroute.ts'
 import { displayPlan } from '../nav/display.ts'
 import { createNavigator, type Navigator } from '../nav/tracker.ts'
@@ -43,7 +45,13 @@ export interface NavRunView {
   walkedM: number
   playing: boolean
   speed: number
+  /** Where positions come from: the simulated walker or the tablet's GPS. */
+  source: PositionKind
+  /** GPS state while `source` is 'gps', else null. */
+  gps: GpsStatus | null
 }
+
+export type PositionKind = 'sim' | 'gps'
 
 export interface NavRunControls {
   play(): void
@@ -57,6 +65,8 @@ export interface NavRunControls {
   hazard(kind: HazardKind): void
   /** Says the status readout: Mars time, time out, walk home, air temperature, dose so far. */
   status(): void
+  /** Switches between the simulated walker and the tablet's GPS. GPS runs the clock in real time. */
+  setSource(kind: PositionKind): void
 }
 
 /** Screen updates per second at most. */
@@ -77,6 +87,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
   const clock = useRef({ playing: true, speed: START_SPEED })
   /** Reads the mission clock for the Status button. */
   const mission = useRef<{ start: number; now: () => number; departLmst: number } | null>(null)
+  const switchSource = useRef<((kind: PositionKind) => void) | null>(null)
 
   useEffect(() => {
     if (!input) {
@@ -125,6 +136,9 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
     let walkedM = 0
     let last: { lat: number; lon: number } | null = null
     let dirty = true
+    let source: PositionKind = 'sim'
+    let gps: GpsSource | null = null
+    let gpsStatus: GpsStatus | null = null
 
     const offs = [
       bus.subscribe('state', (e) => {
@@ -141,8 +155,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       }),
     ]
 
-    tracker.start()
-    walker.start((fix) => {
+    const onFix = (fix: PositionFix) => {
       // The mission clock runs at the simulation speed, so stops, off-route timers and ETAs stay consistent.
       const real = Date.now()
       if (clock.current.playing) missionNow += (real - lastReal) * clock.current.speed
@@ -153,7 +166,38 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       }
       last = fix
       tracker.update({ ...fix, t: missionNow })
-    })
+    }
+    tracker.start()
+    walker.start(onFix)
+
+    switchSource.current = (kind) => {
+      if (kind === source) return
+      if (kind === 'gps') {
+        // Real walking runs in real time. The first fix lands where the crew is now.
+        walker.stop()
+        clock.current = { playing: true, speed: 1 }
+        walker.setSpeedMultiplier(1)
+        gps = new GpsSource({
+          anchor: last ?? input.habitat,
+          onStatus: (st) => {
+            gpsStatus = st
+            dirty = true
+          },
+        })
+        gps.start(onFix)
+      } else {
+        // The walker takes over on the route, at the navigator's position.
+        gps?.stop()
+        gps = null
+        gpsStatus = null
+        const st = tracker.getState()
+        walker.setPath(tracker.getPlan().legs)
+        walker.placeAt(st.legIndex, st.legAlongM)
+        walker.start(onFix)
+      }
+      source = kind
+      dirty = true
+    }
 
     const timer = setInterval(() => {
       if (!dirty) return
@@ -169,6 +213,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
         arrivedAt: latest.state.status === 'at_stop' ? arrivedAt : null,
         walkedM,
         ...clock.current,
+        source,
+        gps: gpsStatus,
       })
     }, 1000 / UPDATES_HZ)
 
@@ -185,6 +231,8 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       clearInterval(timer)
       offs.forEach((off) => off())
       walker.stop()
+      gps?.stop()
+      switchSource.current = null
       tracker.stop()
       rerouter.dispose()
       wake?.release().catch(() => {})
@@ -232,6 +280,7 @@ export function useNavRun(input: NavRunInput | null): { view: NavRunView | null;
       })
       getNavBus().emit({ id: `status-${now}`, type: 'status', text, priority: 'normal', at: now })
     }, []),
+    setSource: useCallback((kind: PositionKind) => switchSource.current?.(kind), []),
   }
   return { view, controls }
 }

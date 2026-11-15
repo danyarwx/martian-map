@@ -11,6 +11,7 @@ import { localProjection, projectOntoPath, turnAngle } from './geometry.ts'
 import { MAX_FAILURES, RETRY_AFTER_MS, withFallback } from '../nav-ui/voice/fallback.ts'
 import { createSpeechQueue, STALE_MS } from '../nav-ui/voice/queue.ts'
 import { buildManeuvers, classifyTurn, saidDistance, spokenDistance, type Maneuver } from './instructions.ts'
+import { EARTH_RADIUS_M, earthToMars, GpsSource } from './gps.ts'
 import { SimulatedSource } from './position.ts'
 import { createNavigator } from './tracker.ts'
 
@@ -393,4 +394,50 @@ test('on arrival the science reason follows the task', () => {
   const i = said.findIndex((e) => e.type === 'arrive')
   assert.equal(said[i + 1]?.type, 'stop_briefing')
   assert.equal(said[i + 1]?.text, 'Lake mud keeps organics.')
+})
+
+test('Earth GPS: metres walked on Earth become the same metres on Mars, north stays north', () => {
+  const earth = { lat: 52.37, lon: 4.9 }
+  const toMars = earthToMars(earth, origin)
+  const k = (EARTH_RADIUS_M * Math.PI) / 180
+  // 100 m north and 50 m east on Earth.
+  const p = proj.toXY(toMars({ lat: earth.lat + 100 / k, lon: earth.lon + 50 / (k * Math.cos((earth.lat * Math.PI) / 180)) }))
+  assert.ok(Math.abs(p.y - 100) < 0.01 && Math.abs(p.x - 50) < 0.01, JSON.stringify(p))
+  assert.deepEqual(toMars(earth), origin)
+})
+
+test('Earth GPS: the first fix lands on the anchor, inaccurate fixes are skipped, heading comes from movement', () => {
+  type Ok = (p: GeolocationPosition) => void
+  let send: Ok = () => {}
+  const geo = { watchPosition: (ok: Ok) => ((send = ok), 1), clearWatch: () => {} }
+  const anchor = at(200, 0)
+  const statuses: string[] = []
+  const fixes: { lat: number; lon: number; headingDeg: number }[] = []
+  const src = new GpsSource({ anchor, geolocation: geo, onStatus: (s) => statuses.push(s.kind) })
+  src.start((f) => fixes.push(f))
+  const k = (EARTH_RADIUS_M * Math.PI) / 180
+  const pos = (northM: number, accuracy: number) =>
+    ({ timestamp: 0, coords: { latitude: 10 + northM / k, longitude: 20, accuracy, heading: null, speed: null } }) as unknown as GeolocationPosition
+  send(pos(0, 5))
+  send(pos(10, 120))
+  send(pos(10, 5))
+  assert.deepEqual(statuses, ['waiting', 'ok', 'weak', 'ok'])
+  assert.equal(fixes.length, 2)
+  const first = proj.toXY(fixes[0])
+  assert.ok(Math.abs(first.x - 200) < 0.01 && Math.abs(first.y) < 0.01)
+  const second = proj.toXY(fixes[1])
+  assert.ok(Math.abs(second.y - 10) < 0.01)
+  assert.ok(fixes[1].headingDeg < 1 || fixes[1].headingDeg > 359, 'walking north')
+})
+
+test('the simulated walker can be put back on the route at the navigator position', () => {
+  const legs = [leg('habitat', 'a', path([0, 0], [300, 0])), leg('a', 'habitat', path([300, 0], [0, 0]))]
+  const sim = new SimulatedSource({ legs, mobility: MOBILITY.walk, now: () => 0, autoTick: false })
+  const fixes: LatLon[] = []
+  sim.start((f) => fixes.push(f))
+  sim.placeAt(1, 100)
+  const p = proj.toXY(fixes[fixes.length - 1])
+  assert.ok(Math.abs(p.x - 200) < 0.5, JSON.stringify(p))
+  sim.placeAt(0, 1000)
+  assert.equal(sim.atStop, true)
 })
