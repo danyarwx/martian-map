@@ -1,6 +1,7 @@
-# Martian Map
+# Mars Seek (Martian Map)
 
-NASA Space Apps 2026, challenge "Interplanetary Survival Guide: Martian Map".
+NASA Space Apps 2026, challenge "Interplanetary Survival Guide: Martian Map". Team "To Mars and Back", project
+"Mars Seek"; the app itself is called Martian Map.
 A hyperlocal map for one Marswalk in Jezero crater: plan the excursion on a habitat screen, then walk it with a
 helmet display that finds hazards from its own cameras.
 
@@ -26,7 +27,15 @@ New here? Start with the [reviewer guide](REVIEWER_GUIDE.md).
 - A hazard map fills in as the astronaut walks; when the planned line is shut, the mission planner gives a new
   route from where the astronaut stands.
 - The same detector runs on a real Perseverance stereo photo (key R).
+- Onboard vision watches the air: the helmet camera notices a dust storm on its own (pixel checks plus the CLIP
+  image model, run in the browser) and sends the astronaut back to the habitat. Press **B** for a simulated storm.
+  Checked on real Curiosity images of the June 2018 global dust storm: test page at `/vision.html` (local dev
+  server only).
 - Back inside, the ground the helmet saw and the hazards it found are on the planning map.
+
+**Tablet (turn-by-turn on the walk)**
+- `/nav`: the planned route as turn-by-turn navigation with voice, the way back to base and the conditions outside.
+- Installs as an app and works offline once opened. Demo at 60× speed: `/nav?demo=1`.
 
 ## Run
 
@@ -37,7 +46,8 @@ npm run dev          # http://localhost:5173
 npm test
 ```
 
-Open `/#plan` for the planner and `/#helmet` for the helmet on a demo route. Helmet keys and the demo steps:
+Open `/#plan` for the planner, `/#helmet` for the helmet on a demo route, `/nav` for the tablet and
+`/vision.html` (dev server only) for the dust storm detector on real rover images. Helmet keys and the demo steps:
 `docs/helmet/DEMO.md`. The helmet needs a laptop with a GPU, a keyboard and a mouse.
 
 ## What is real and what is simulated
