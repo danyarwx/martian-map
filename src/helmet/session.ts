@@ -108,11 +108,14 @@ const HUD_EVERY_MS = 200
 /** How often the route is checked against the hazard map for a global re-route, ms. */
 const REPLAN_CHECK_MS = 1000
 /**
- * Share of a 10 m planner cell on the route that must be rock / steep / drop before it is blocked. PLAN §5.8 says
- * 30 %, but a row of boulders across the path covers well under 10 % of a planner cell, so 30 % never fires on
- * the very thing a re-route is for. 6 % is about 6 m² of obstacle in a cell (deviation, logged in STATUS.md).
+ * Share of a 10 m planner cell on the route that must be rock / steep / drop before it is blocked: PLAN §5.8's
+ * 30 %. It was 6 % for a while (a row of boulders covers under 10 % of a cell), but once the CV found most rocks,
+ * every cell with a few scattered stones was blocked and the route changed again and again. Scattered rocks are
+ * the local guide's job (it steers round them); a row of boulders is caught by the detour rule below.
  */
-const REPLAN_COVERAGE = 0.06
+const REPLAN_COVERAGE = 0.3
+/** At least this long between two re-routes, ms: a route that keeps changing cannot be followed. */
+const REPLAN_MIN_INTERVAL_MS = 30000
 /** The leg counts as walked when its end is this close, metres. */
 const ARRIVE_M = 6
 /** Half-side of the fused height window sent with each CV frame, metres (drop-offs matter close by). */
@@ -164,6 +167,8 @@ export class HelmetSession {
   private replanner: ReplanClient
   private replanAt = 0
   private rerouted: NavState['rerouted'] = null
+  /** Re-routes so far (for the log and for testing). */
+  rerouteCount = 0
   private arrived = false
   private detourTicks = 0
   private hardAheadAt = -Infinity
@@ -228,7 +233,7 @@ export class HelmetSession {
       this.elapsedS = 60 * (before + stopsBefore + entry.plan.legs[entry.legIndex].minutes * (this.track.lengthM > 0 ? fix.s / this.track.lengthM : 0))
     }
     this.overlay = new SceneOverlay(host)
-    this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE })
+    this.decider = new ReplanDecider(data.terrain, this.origin, { coverage: REPLAN_COVERAGE, minIntervalMs: REPLAN_MIN_INTERVAL_MS })
     this.decider.setRoute(remainingPath(this.plan, this.legIndex, entry.startAt))
     this.replanner = new ReplanClient(JEZERO.terrain)
     // The stand-in plan of #helmet has made-up times (routes.json holds lines only): ask the planner for the real
@@ -393,6 +398,7 @@ export class HelmetSession {
         const same = newPath.length === oldPath.length && newPath.every((p, k) => Math.abs(p.lat - oldPath[k].lat) < 1e-7 && Math.abs(p.lon - oldPath[k].lon) < 1e-7)
         this.plan = res.plan
         this.replanned = true
+        this.rerouteCount++
         this.setLeg(0)
         this.guide = null
         this.detourTicks = 0
