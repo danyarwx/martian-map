@@ -46,6 +46,9 @@ export function ManeuverIcon({ m, size = 64 }: { m: Maneuver | undefined; size?:
   )
 }
 
+/** What the banner shows for a maneuver: arrivals without their task (the voice and the stop card have it). */
+const bannerText = (m: Maneuver) => (m.kind === 'arrive' ? m.text.split(' Task:')[0] : m.text)
+
 /** The big instruction across the top of the map, and the one after it. */
 export function Banner({ upcoming, state }: { upcoming: UpcomingManeuver[]; state: NavState }) {
   const actionable = upcoming.filter((u) => u.maneuver.kind !== 'hazard')
@@ -65,13 +68,13 @@ export function Banner({ upcoming, state }: { upcoming: UpcomingManeuver[]; stat
           {next.maneuver.kind !== 'depart' && next.maneuver.kind !== 'continue' && (
             <div className="banner-dist num">{spokenDistance(next.distanceM)}</div>
           )}
-          <div className="banner-text">{next.maneuver.text}</div>
+          <div className="banner-text">{bannerText(next.maneuver)}</div>
         </div>
       </div>
       {then && (
         <div className="banner-then">
           <ManeuverIcon m={then.maneuver} size={28} />
-          Then: {then.maneuver.text}
+          Then: {bannerText(then.maneuver)}
         </div>
       )}
     </div>
