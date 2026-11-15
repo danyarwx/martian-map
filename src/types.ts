@@ -43,6 +43,8 @@ export interface SiteConfig {
   terrain: { meta: string; slope: string; elev: string; overlay: string }
   /** Index of ground-level photos, keyed by stop id. */
   views: string
+  /** Navcam frames with camera models, for photos with markers (scripts/fetch_frames.py). */
+  frames: string
 }
 
 /** Header written by scripts/build_terrain.py. Row 0 is the northern edge. */
