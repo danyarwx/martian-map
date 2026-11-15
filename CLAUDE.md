@@ -68,7 +68,7 @@ Done on branch `feat/tablet-nav` (from `main`, not pushed): tablet turn-by-turn 
 - Web app sidebar has "Send to tablet": `/nav?stops=a,b&mode=walk|rover&profile=fast|gentle[&home=lat,lon][&pt=lat,lon,name]`
 - Not yet: tested on a real tablet / Safari
 
-Branch `feat/voice-browser-tts` (from `feat/tablet-nav`): built-in voice for `/nav`. Terse radio phrasing with units spelled out, speech queue (high interrupts, stale low dropped), browser voice, radio click, mute button, "Radio check" on Start.
+Branch `feat/voice-browser-tts` (from `feat/tablet-nav`): built-in voice for `/nav`. Terse radio phrasing with units spelled out, speech queue (high interrupts, stale low dropped), browser voice, radio click, mute as a round sound icon on the map while navigating, "Radio check" on Start.
 
 Branch `feat/voice-openai-tts` (from `feat/tablet-nav`, same voice work plus): OpenAI `gpt-4o-mini-tts` through the Vercel function `api/tts.js` (key in Vercel env `OPENAI_API_KEY`, same-site requests and 300 characters max). Falls back to the browser voice when offline or after 1.5 s. No radio click before lines (removed: it sounded like crackling). This adds a backend: agree as a team before merging. OpenAI shuts this model down on 6 Jan 2027. Piper is parked.
 

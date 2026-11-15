@@ -302,7 +302,7 @@ export default function NavMap(props: Props) {
       {progress && (
         <button
           type="button"
-          className="compass"
+          className="map-fab compass"
           onClick={props.onCompass}
           aria-pressed={headingUp}
           aria-label={headingUp ? 'Heading up. Tap for north up' : 'North up. Tap for heading up'}

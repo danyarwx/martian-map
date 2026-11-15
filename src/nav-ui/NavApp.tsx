@@ -176,6 +176,25 @@ export default function NavApp() {
         />
         {run && view && <Banner upcoming={view.upcoming} state={view.state} />}
         {run && view && s?.status !== 'finished' && <SimBar view={view} controls={controls} />}
+        {run && (
+          <button
+            type="button"
+            className="map-fab sound-toggle"
+            aria-pressed={muted}
+            aria-label={muted ? 'Voice muted, tap to unmute' : 'Voice on, tap to mute'}
+            title={muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
+            onClick={() => setMuted((m) => !m)}
+          >
+            <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true">
+              <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
+              {muted ? (
+                <path d="M3 3 21 21" stroke="#ff5b5b" strokeWidth="2.5" strokeLinecap="round" />
+              ) : (
+                <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              )}
+            </svg>
+          </button>
+        )}
         {run && (!follow || !autoZoom) && (
           <button type="button" className="big recentre" onClick={recentre}>
             Re-centre
@@ -224,9 +243,6 @@ export default function NavApp() {
               Status
             </button>
           )}
-          <button type="button" className="big voice-toggle" aria-pressed={muted} onClick={() => setMuted((m) => !m)}>
-            {muted ? 'Voice muted · tap to unmute' : 'Voice on · tap to mute'}
-          </button>
         </div>
       </aside>
     </div>
