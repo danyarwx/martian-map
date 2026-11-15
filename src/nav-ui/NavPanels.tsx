@@ -233,16 +233,33 @@ export function NextStopCard({ view, stops }: NavPanelProps) {
   )
 }
 
-/** End navigation, with a confirm step. Sits below the panel, so stop cards never cover it. */
-export function EndControl({ onEnd }: { onEnd: () => void }) {
+/** End navigation: a red icon on the map, with a confirm step in a bubble next to it. */
+export function EndOnMap({ onEnd }: { onEnd: () => void }) {
   const [confirming, setConfirming] = useState(false)
-  return confirming ? (
-    <div className="confirm">
-      <button type="button" className="big big--danger" onClick={onEnd}>Yes, end</button>
-      <button type="button" className="big" onClick={() => setConfirming(false)}>Keep going</button>
-    </div>
-  ) : (
-    <button type="button" className="big" onClick={() => setConfirming(true)}>End navigation</button>
+  return (
+    <>
+      <button
+        type="button"
+        className="map-fab end-fab"
+        aria-expanded={confirming}
+        aria-label="End navigation"
+        title="End navigation"
+        onClick={() => setConfirming((c) => !c)}
+      >
+        <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+          <path d="M6 6 18 18M18 6 6 18" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      </button>
+      {confirming && (
+        <div className="end-bubble" role="dialog" aria-label="End navigation?">
+          <strong>End navigation?</strong>
+          <div className="confirm">
+            <button type="button" className="big big--danger" onClick={onEnd}>Yes, end</button>
+            <button type="button" className="big" onClick={() => setConfirming(false)}>Keep going</button>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

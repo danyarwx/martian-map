@@ -8,7 +8,7 @@ import { displayPlan } from '../nav/display.ts'
 import { getNavBus } from '../nav/events.ts'
 import type { MobilityId, RouteProfile, StopView, Target } from '../types.ts'
 import NavMap, { type NavProgress } from './NavMap.tsx'
-import { Banner, EndControl, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
+import { Banner, EndOnMap, FinishedCard, NavPanel, NextStopCard, PlanPanel, SimBar, StopCard } from './NavPanels.tsx'
 import { OfflineDownload } from './OfflineDownload.tsx'
 import { DEMO_RUN, isDemo, parseNavParams } from './params.ts'
 import { useNavRun, type NavRunInput } from './useNavRun.ts'
@@ -157,7 +157,8 @@ export default function NavApp() {
   }, [])
   // Back to heading-up also follows the crew again; north-up keeps the map where it is.
   const compass = useCallback(() => (northUp ? recentre() : setNorthUp(true)), [northUp, recentre])
-  const headingUp = !!run && follow && !northUp
+  // Heading-up stays on while browsing the map; the turn just holds still until re-centre.
+  const headingUp = !!run && !northUp
   const userZoom = useCallback(() => setAutoZoom(false), [])
 
   const atStopId = s?.status === 'at_stop' ? s.visited[s.visited.length - 1] : null
@@ -183,6 +184,7 @@ export default function NavApp() {
           onFollow={setFollow}
           onUserZoom={userZoom}
           headingUp={headingUp}
+          holdTurn={!follow}
           onCompass={compass}
         />
         {run && view && <Banner upcoming={view.upcoming} state={view.state} />}
@@ -219,9 +221,12 @@ export default function NavApp() {
             </svg>
           </button>
         )}
+        {run && s?.status !== 'finished' && <EndOnMap onEnd={end} />}
         {run && (!follow || !autoZoom) && (
-          <button type="button" className="big recentre" onClick={recentre}>
-            Re-centre
+          <button type="button" className="map-fab recentre-fab" onClick={recentre} aria-label="Re-centre" title="Re-centre">
+            <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+              <path d="M12 3 19 20 12 16 5 20Z" fill="#2f81f7" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
           </button>
         )}
       </div>
@@ -260,14 +265,8 @@ export default function NavApp() {
           )}
           {view && s?.status === 'finished' && <FinishedCard view={view} onAgain={end} />}
         </div>
-        <div className="nav-foot">
-          {run && s?.status !== 'finished' && <EndControl onEnd={end} />}
-          {run && view && s?.status !== 'finished' && (
-            <button type="button" className="big" onClick={controls.status}>
-              Status
-            </button>
-          )}
-        </div>
+        {/* Empty for now, kept for later. */}
+        <div className="nav-foot" />
       </aside>
     </div>
   )

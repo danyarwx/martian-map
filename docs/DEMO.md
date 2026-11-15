@@ -20,7 +20,7 @@ slows down on slopes. Rehearse once and note your own times.
 | ~1:00 | Point at **Back to base now** going red ("Walk home over 60 min") | "Caution. Habitat is more than 60 minutes away on foot…" | "We always know how long the walk home is. 60 minutes is the emergency reserve." |
 | ~1:30 | Stop card with the rover photo appears | "Sample cache reached. Task: …" then the science sentence | "Ground-level photo from Perseverance, so the crew knows what the stop looks like." Tap **Continue** |
 | ~1:55 | Delta front stop card | Arrival, task, "Fine lake-bottom layers are where organic matter…" | "Our strongest lead for life." Tap **Continue** |
-| ~2:05 | Tap **Status** in the footer | "Status. Mars time … Out … Habitat … on foot. Air minus … degrees. Dose … millisieverts." | "Radiation dose and temperature, on request." |
+| ~2:05 | Drag the map to look ahead, then tap the blue arrow icon (re-centre) | — | "The crew can look around; one tap brings the map back." |
 | ~2:15 | Tap **Dust storm** in the yellow SIMULATION bar | "Dust storm warning… Abort the excursion. Return to the habitat now." then "Return route: … to Habitat, about … minutes." | "When space weather turns, the plan changes in a second: straight home, on safe ground." |
 | ~2:40 | Let it run | Turn instructions home | Wrap up: data layers, safety, route, ground photos, tablet form factor |
 

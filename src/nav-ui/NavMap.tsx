@@ -36,6 +36,8 @@ interface Props {
   onUserZoom: () => void
   /** Turn the map so the direction of travel points up. Panning by hand is off while it is on. */
   headingUp: boolean
+  /** The user is looking around (not following): the map keeps its angle until re-centre. */
+  holdTurn: boolean
   /** The compass button: switch between heading-up and north-up. */
   onCompass: () => void
 }
@@ -50,6 +52,8 @@ const ME_ICON =
   '<path d="M32 8 L50 52 L32 42 L14 52 Z" fill="#2f81f7" stroke="#fff" stroke-width="4" stroke-linejoin="round"/>' +
   '</svg></div>'
 
+/** A press that moves this far is a drag, not a tap, pixels. */
+const DRAG_START_PX = 6
 /** Heading changes smaller than this do not turn the map, degrees: keeps it from wobbling. */
 const MIN_TURN_DEG = 4
 
@@ -76,7 +80,7 @@ const escapeHtml = (s: string) =>
 const latLngs = (path: LatLon[]) => path.map((p) => [p.lat, p.lon] as L.LatLngTuple)
 
 export default function NavMap(props: Props) {
-  const { site, stops, plan, hazards, progress, follow, autoZoom, nextTurnM, aheadM, headingUp } = props
+  const { site, stops, plan, hazards, progress, follow, autoZoom, nextTurnM, aheadM, headingUp, holdTurn } = props
   const ref = useRef<HTMLDivElement>(null)
   /** Turns with the heading. Holds the map, sized to the screen's diagonal while turned so no corner is empty. */
   const rotRef = useRef<HTMLDivElement>(null)
@@ -113,7 +117,9 @@ export default function NavMap(props: Props) {
   // Map and the layers updated on every position: built once.
   useEffect(() => {
     if (!ref.current) return
-    const { map } = createBaseMap(ref.current, site, { zoomControl: false })
+    const { map, control } = createBaseMap(ref.current, site, { zoomControl: false })
+    // The tablet shows fixed layers (Viking colour, CTX, HiRISE): no layer menu.
+    control.remove()
     L.control.zoom({ position: 'bottomright' }).addTo(map)
     // Controls live outside the turning part of the map.
     const controls = ref.current.querySelector('.leaflet-control-container')
@@ -131,6 +137,42 @@ export default function NavMap(props: Props) {
     })
     // Panning by hand stops following. Zooming by hand keeps following but leaves the zoom to the user.
     map.on('dragstart', () => handlers.current.onFollow(false))
+    // While the map is turned, Leaflet's own dragging would move it sideways, so this drags it instead:
+    // the finger's movement on screen is turned back into map pixels. One finger only; pinch stays Leaflet's.
+    const el = ref.current
+    const pointers = new Set<number>()
+    let drag: { id: number; x: number; y: number; moved: boolean } | null = null
+    const swallowClick = (e: Event) => e.stopPropagation()
+    const onDown = (e: PointerEvent) => {
+      pointers.add(e.pointerId)
+      drag = headingUpRef.current && pointers.size === 1 && e.button <= 0 ? { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false } : null
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id || pointers.size > 1) return
+      const dx = e.clientX - drag.x
+      const dy = e.clientY - drag.y
+      if (!drag.moved) {
+        if (Math.hypot(dx, dy) < DRAG_START_PX) return
+        drag.moved = true
+        handlers.current.onFollow(false)
+      }
+      const r = (rotation.current * Math.PI) / 180
+      const mx = dx * Math.cos(r) - dy * Math.sin(r)
+      const my = dx * Math.sin(r) + dy * Math.cos(r)
+      map.panBy([-mx, -my], { animate: false })
+      drag.x = e.clientX
+      drag.y = e.clientY
+    }
+    const onUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId)
+      // A drag is not a tap: keep it from opening a stop's name.
+      if (drag?.moved) el.addEventListener('click', swallowClick, { capture: true, once: true })
+      drag = null
+    }
+    el.addEventListener('pointerdown', onDown)
+    el.addEventListener('pointermove', onMove)
+    el.addEventListener('pointerup', onUp)
+    el.addEventListener('pointercancel', onUp)
     map.on('zoomend', () => {
       const { progress: navigating, autoZoom: auto } = handlers.current
       if (navigating && auto && wanted.current !== null && map.getZoom() !== wanted.current) {
@@ -160,6 +202,10 @@ export default function NavMap(props: Props) {
     if (rotRef.current?.parentElement) resize.observe(rotRef.current.parentElement)
     return () => {
       resize.disconnect()
+      el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointermove', onMove)
+      el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('pointercancel', onUp)
       map.remove()
       parts.current = null
     }
@@ -279,6 +325,11 @@ export default function NavMap(props: Props) {
     const target = headingUp && headingDeg !== null ? headingDeg : headingUp ? current : 0
     const delta = turnAngle(current, target)
     const arrow = parts.current?.me.getElement()?.querySelector<HTMLElement>('.me-arrow')
+    // Looking around: the map holds its angle; the arrow shows the real direction on the turned map.
+    if (headingUp && holdTurn) {
+      if (headingDeg !== null) setArrow(arrow, headingDeg)
+      return
+    }
     if (Math.abs(delta) < MIN_TURN_DEG && target !== 0) {
       if (headingUp) setArrow(arrow, rotation.current, true)
       return
@@ -291,7 +342,7 @@ export default function NavMap(props: Props) {
     // Labels stay upright: they turn back by the same amount.
     rot.style.setProperty('--unturn', `${rotation.current}deg`)
     if (compassRef.current) compassRef.current.style.transform = `rotate(${-rotation.current}deg)`
-  }, [headingUp, headingDeg])
+  }, [headingUp, holdTurn, headingDeg])
 
   return (
     <>

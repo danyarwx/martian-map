@@ -67,7 +67,7 @@ arrive      high Delta front (Hawksbill Gap) reached. Task: Sample the fine-grai
 stop_briefing    Fine lake-bottom layers are where organic matter and traces of microbes are most likely to be preserved.
 time_alert       Gust hours start in 15 minutes. Expect strong gusts and dust devils until 15:00.
 time_alert  high Thirty minutes of daylight left. Head for the habitat.
-status           Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.
+status           (not triggered by the UI now) Status. Mars time 10:45. Out 1 hour 20 minutes. Habitat 35 minutes on foot. Air minus 32 degrees. Dose 0.04 millisieverts.
 hazard_event high Dust storm warning. Gusts above 20 meters per second and visibility dropping. Abort the excursion. Return to the habitat now.
 rerouted    high Return route: 1.2 kilometers to Habitat, about 25 minutes.
 off_route        Head back to the route, 30 meters to your right.

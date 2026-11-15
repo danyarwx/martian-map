@@ -7,7 +7,7 @@
 .nav-map-wrap { position: relative; flex: 7 1 0; min-width: 0; overflow: hidden; --turn-time: .6s; }
 /* Turns with the heading (heading-up); sized by NavMap.tsx. */
 .nav-map-rot { position: absolute; inset: 0; transform-origin: 50% 50%; transition: transform var(--turn-time) ease-out; }
-.nav-map { position: absolute; inset: 0; background: #000; }
+.nav-map { position: absolute; inset: 0; background: #000; touch-action: none; }
 /* Leaflet controls, moved out of the turning map so they stay upright and on screen. */
 .nav-map-ui { position: absolute; inset: 0; z-index: 999; pointer-events: none; font: 12px var(--font); }
 .nav-map-ui .leaflet-control-attribution { margin: 0; padding: 0 5px; background: rgba(255, 255, 255, .8); color: #333; }
@@ -20,8 +20,15 @@
 }
 .compass { bottom: 143px; }
 .panel-toggle { top: var(--s3); font-size: 30px; line-height: 1; }
-/* The layers control sits under the panel toggle. */
-.nav-map-ui .leaflet-top.leaflet-right { top: 64px; }
+/* End navigation: red icon under the panel toggle, confirm bubble to its left. */
+.end-fab { top: 80px; color: var(--danger); border-color: var(--danger-line); }
+.end-bubble {
+  position: absolute; z-index: 1001; top: 80px; right: 76px; width: 300px; padding: var(--s3);
+  display: flex; flex-direction: column; gap: var(--s2); border-radius: var(--r-xl);
+  background: rgba(14, 17, 22, .95); box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
+}
+.end-bubble strong { font-size: 20px; }
+.recentre-fab { bottom: 279px; }
 /* Zoom: one pill, as wide as the round map buttons. */
 .nav-app .leaflet-control-zoom.leaflet-bar {
   width: 56px; border-radius: 28px; overflow: hidden; border: 2px solid rgba(0, 0, 0, .3);
@@ -60,7 +67,7 @@
   display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line);
 }
 .nav-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.nav-foot { flex: none; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s4); border-top: 1px solid var(--line); }
+.nav-foot { flex: none; min-height: 48px; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s4); border-top: 1px solid var(--line); }
 .nav-scroll { flex: 1; overflow-y: auto; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s4); }
 .nav-title { margin: 0; font-size: 26px; line-height: 1.2; }
 .label { display: block; margin: 0 0 var(--s1); font-size: 14px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
@@ -147,7 +154,6 @@
 .banner-dist { font-size: 36px; line-height: 1.1; }
 .banner-text { font-size: var(--nav-instruction); line-height: 1.2; }
 .banner-then { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid rgba(255, 255, 255, .25); font-size: 18px; font-weight: 600; opacity: .9; }
-.recentre { position: absolute; z-index: 1000; right: 76px; bottom: 44px; width: auto; padding: 0 var(--s5); box-shadow: 0 6px 24px rgba(0, 0, 0, .5); }
 
 /* Full-height cards over the panel: at a stop, finished */
 .overlay-card {
