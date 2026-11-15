@@ -538,3 +538,24 @@
     pointer-events: none;
   }
 }
+
+/* What to do next (HelmetView `hint`): the site is judged from a link, with nobody to give the demo. One line of
+   HUD text under the warnings, never a dialog: it must not hide the ground ahead. */
+.visor-hint {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 48px));
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--hud-dim);
+  border-radius: 6px;
+  background: var(--hud-panel);
+  color: var(--hud);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  text-shadow: var(--hud-glow);
+  pointer-events: none;
+}
